@@ -27,9 +27,10 @@ const COLUMNS: { key: SortKey; label: string; right?: boolean; num?: boolean }[]
 /** On-chain DRep image (CIP-119) if present, else a generic initials avatar. */
 function Avatar({ name, image }: { name: string; image: string | null }) {
   const initial = (name?.trim()?.[0] ?? '?').toUpperCase();
-  if (image) {
+  const [broken, setBroken] = useState(false);
+  if (image && !broken) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={image} alt={name} className="h-7 w-7 shrink-0 rounded-full object-cover" />;
+    return <img src={image} alt={name} onError={() => setBroken(true)} className="h-7 w-7 shrink-0 rounded-full object-cover" />;
   }
   return (
     <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-neutral-200 text-xs font-semibold text-neutral-600 dark:bg-neutral-700 dark:text-neutral-200">

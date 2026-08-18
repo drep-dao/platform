@@ -8,5 +8,6 @@ import { GovernanceController } from './governance.controller';
   imports: [AuthModule],
   controllers: [GovernanceController],
   providers: [GovernanceService, BoardGuard],
+  exports: [GovernanceService],
 })
 export class GovernanceModule {}

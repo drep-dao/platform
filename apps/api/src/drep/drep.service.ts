@@ -134,8 +134,9 @@ export class DrepService {
         return {
           drepId: r.drepId,
           displayName: m?.name ?? r.displayName,
-          // User-uploaded photo overrides the on-chain CIP-119 image when set.
-          image: r.photo ?? m?.image ?? null,
+          // User-uploaded photo (data URI) passes through; on-chain CIP-119 images are
+          // served through our caching proxy (download once, no hotlinking / IP leak).
+          image: r.photo ?? (m?.image ? `/api/v1/public/drep-image/${encodeURIComponent(r.drepId)}` : null),
           isBoard: r.isBoard,
           votingPowerAda: Math.round(Number(power.votingPowerLovelace) / 1_000_000),
           delegators: power.delegators,

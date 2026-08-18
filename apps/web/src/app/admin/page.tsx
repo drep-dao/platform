@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAdminAuth } from '@/lib/admin-auth-context';
 import { adminApi, type AdminHealth, type AuditRow } from '@/lib/admin-api';
 import { AdminGenesis } from '@/components/admin/admin-genesis';
+import { AdminConfigPanel } from '@/components/admin/admin-config-panel';
 import { AdminsPanel } from '@/components/admin/admins-panel';
 import { WalletPanel } from '@/components/admin/wallet-panel';
 import { ResetPanel } from '@/components/admin/reset-panel';
@@ -74,6 +75,8 @@ export default function AdminDashboard() {
       </section>
 
       <AdminGenesis key={`genesis-${resetGen}`} onBoardChange={refreshOverview} />
+
+      <AdminConfigPanel nonce={resetGen} />
 
       <WalletPanel key={`wallet-${resetGen}`} />
 

@@ -348,9 +348,10 @@ function AspectSquare({ children }: { children: React.ReactNode }) {
 }
 
 function Avatar({ src, name }: { src: string | null; name: string }) {
-  if (src) {
+  const [broken, setBroken] = useState(false);
+  if (src && !broken) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={src} alt={name} className="h-full w-full object-cover" />;
+    return <img src={src} alt={name} onError={() => setBroken(true)} className="h-full w-full object-cover" />;
   }
   // §2.1 — universal placeholder: a funny black-and-white head, stable per name.
   return <FallbackAvatar name={name} className="h-full w-full object-cover" />;

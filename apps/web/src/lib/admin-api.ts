@@ -1,5 +1,7 @@
 'use client';
 
+import type { GovParam, OnchainSourceConfig } from './api';
+
 const API_BASE = `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000'}/api/v1/sysadmin`;
 
 export interface AdminMe {
@@ -105,6 +107,15 @@ export const adminApi = {
   health: () => request<AdminHealth>('/health'),
   admins: () => request<AdminRow[]>('/admins'),
   auditLog: () => request<AuditRow[]>('/audit-log'),
+  // §18 break-glass: platform-admin sets board-gated governance config (no board yet at genesis).
+  config: {
+    params: () => request<GovParam[]>('/config'),
+    updateParam: (key: string, value: unknown) =>
+      request<{ key: string; value: unknown }>('/config', { method: 'PATCH', body: JSON.stringify({ key, value }) }),
+    onchainSource: () => request<OnchainSourceConfig>('/config/onchain-source'),
+    updateOnchainSource: (dto: { order?: string[]; koiosApiToken?: string; blockfrostProjectId?: string; dbsyncUrl?: string }) =>
+      request<OnchainSourceConfig>('/config/onchain-source', { method: 'PATCH', body: JSON.stringify(dto) }),
+  },
   wallet: () => request<AdminWalletStatus>('/wallet'),
   sweepWallet: () => request<{ txHash: string; to: string }>('/wallet/sweep', { method: 'POST' }),
   rotateSeed: () => request<{ address: string | null }>('/wallet/rotate-seed', { method: 'POST' }),

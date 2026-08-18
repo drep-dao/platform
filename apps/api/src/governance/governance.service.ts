@@ -25,7 +25,9 @@ export class GovernanceService {
   }
 
   /** Board updates one parameter (type-checked against its default). */
-  async updateParam(userId: string, key: string, value: unknown) {
+  // userId is the AppUser (board member) who made the change, or null for a platform-admin
+  // break-glass change (an admin is not an AppUser, and updated_by is an AppUser FK).
+  async updateParam(userId: string | null, key: string, value: unknown) {
     if (!(key in PLATFORM_CONFIG_DEFAULTS)) {
       throw new BadRequestException(`unknown governance parameter: ${key}`);
     }
@@ -80,7 +82,7 @@ export class GovernanceService {
 
   /** Board updates the order and/or the credentials. An empty string clears a credential. */
   async updateOnchainSource(
-    userId: string,
+    userId: string | null,
     dto: { order?: string[]; koiosApiToken?: string; blockfrostProjectId?: string; dbsyncUrl?: string },
   ) {
     if (dto.order !== undefined) {
@@ -119,7 +121,7 @@ export class GovernanceService {
     return url.replace(/(:\/\/[^:]+:)[^@]+(@)/, '$1***$2');
   }
 
-  private async setSecret(key: string, value: string, userId: string) {
+  private async setSecret(key: string, value: string, userId: string | null) {
     const v = value.trim();
     if (!v) {
       await this.prisma.platformSecret.deleteMany({ where: { key } });

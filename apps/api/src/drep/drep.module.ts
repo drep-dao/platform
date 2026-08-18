@@ -9,6 +9,7 @@ import { BoardExpertsController } from './board-experts.controller';
 import { BoardRemovalController } from './board-removal.controller';
 import { DaoController } from './dao.controller';
 import { BoardProofsController } from './board-proofs.controller';
+import { DrepImageController } from './drep-image.controller';
 
 @Module({
   imports: [AuthModule], // provides JwtAuthGuard
@@ -20,6 +21,7 @@ import { BoardProofsController } from './board-proofs.controller';
     BoardRemovalController,
     DaoController,
     BoardProofsController,
+    DrepImageController,
   ],
   providers: [DrepService, BoardGuard],
 })

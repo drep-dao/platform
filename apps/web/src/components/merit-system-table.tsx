@@ -5,14 +5,14 @@ import { MERIT_DELTAS, type MeritReason } from '@drep-dao/shared';
 import { useT } from '@/lib/prefs-context';
 import { brand } from '@/lib/brand';
 
-// Merit reasons tied to FUNDING proposals (rounds, filtering, Debate & Vote, quick polls,
-// milestones, reward distribution). They only apply to the funding edition; the governance
-// (DRep Council) edition has no funding, so these rows are hidden there.
+// Merit reasons hidden in the governance (DRep Council) edition: everything tied to FUNDING
+// proposals (rounds, filtering, Debate & Vote, quick polls, milestones, reward distribution)
+// plus the monthly treasury ledger row — none of which apply without funding.
 const FUNDING_ONLY = new Set<MeritReason>([
   'FILTER_COMPLETE', 'DV_VOTE', 'QUICK_POLL_VOTE', 'MILESTONE_CHECK',
   'MISSED_FILTER', 'MISSED_DV', 'MISSED_QUICK_POLL', 'MISSED_MILESTONE',
   'BOARD_PAYOUT_SIGNED', 'BOARD_ROUND_CONFIGURE', 'BOARD_ROUND_START', 'BOARD_ROUND_END',
-  'BOARD_REWARD_DISTRIBUTE', 'BOARD_REWARD_LATE', 'BOARD_PAYOUT_LATE',
+  'BOARD_REWARD_DISTRIBUTE', 'BOARD_REWARD_LATE', 'BOARD_PAYOUT_LATE', 'BOARD_LEDGER_MONTHLY',
 ]);
 
 /**
@@ -32,6 +32,7 @@ const MEMBER_GAINS: Row[] = [
   { reason: 'INTERNAL_SUBMIT', what: 'Submitted an internal proposal' },
 ];
 const MEMBER_LOSSES: Row[] = [
+  { reason: 'MISSED_INTERNAL', what: 'Missed an internal-proposal vote' },
   { reason: 'MISSED_FILTER', what: 'Missed an assigned filtering review deadline' },
   { reason: 'MISSED_DV', what: 'Missed a Debate & Vote window' },
   { reason: 'MISSED_QUICK_POLL', what: 'Missed a quick poll' },

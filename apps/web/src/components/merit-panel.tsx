@@ -104,7 +104,7 @@ export function MeritPanel() {
       <div>
         <h4 className="text-sm font-semibold">{t('Availability (avoid periods)')}</h4>
         <p className="text-xs text-neutral-500">
-          {t('Signal time off — while an avoid period is active you won’t be assigned to filtering/milestone reviews, and missed Debate & Vote ballots won’t cost you merit.')}
+          {t('Declare yourself unavailable (e.g. away or sick). While an avoid period is active, missed proposal votes won’t cost you merit, and you won’t be assigned to any reviews.')}
         </p>
         {avoid.length ? (
           <ul className="mt-2 space-y-1 text-xs">

@@ -231,10 +231,6 @@ export function DaoOverview() {
         </div>
       )}
 
-      {members && members.length > 0 ? (
-        <VotingPowerTotals members={members} />
-      ) : null}
-
       {members && members.some((m) => m.delegators === 0) ? (
         <p className="text-xs text-neutral-400">
           {t('0 voting power / 0 delegators means no account has delegated its vote to that DRep yet (CIP-1694 vote delegation, separate from stake-pool delegation).')}
@@ -305,24 +301,3 @@ function ExpertsSection({ experts, onOpen }: { experts: DaoExpert[]; onOpen: (id
  * non-board — votes on internal proposals when balanced. This ignores the
  * per-proposal voting-style nuances; that's a separate concern.)
  */
-function VotingPowerTotals({ members }: { members: DaoMember[] }) {
-  const t = useT();
-  const internalTotal = members.reduce((s, m) => s + m.adjustedPower, 0);
-
-  return (
-    <div className="mt-2 rounded-md border border-neutral-200 bg-neutral-50/40 p-3 text-sm dark:border-neutral-800 dark:bg-neutral-900/40">
-      <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-        {t('Aggregate voting power (adjusted)')}
-      </div>
-      <dl className="mt-1 grid grid-cols-1 gap-x-6 gap-y-1">
-        <div className="flex items-baseline justify-between gap-3">
-          <dt className="text-neutral-600 dark:text-neutral-400">
-            {t('Internal proposals')}
-            <span className="ml-1 text-xs text-neutral-400">{t('— all')} {members.length} {t('members')}</span>
-          </dt>
-          <dd className="font-semibold tabular-nums">{internalTotal.toFixed(2)}</dd>
-        </div>
-      </dl>
-    </div>
-  );
-}

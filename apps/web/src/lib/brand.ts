@@ -15,7 +15,7 @@ export interface Brand {
 
 export const brand: Brand = {
   name: 'DRep DAO',
-  icon: '/icons/drep-globe.svg',
+  icon: '/icons/drep-ballot-check.svg',
   description: 'Cardano governance DAO platform',
   kind: 'governance',
 };

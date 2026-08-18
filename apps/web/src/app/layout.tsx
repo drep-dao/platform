@@ -7,10 +7,10 @@ import { LanguageThemeSwitcher } from '@/components/language-theme-switcher';
 export const metadata: Metadata = {
   title: 'DRep DAO',
   description: 'Cardano governance DAO platform',
-  // Browser-tab icon: a bold wireframe globe with an orbit ring. Deliberately kept to a few
-  // thick strokes — a detailed globe turns to mush at the 16px a tab actually renders.
-  // Alternatives live in /public/icons (drep-globe-network, drep-globe, drep-globe-grid, drep-ballot).
-  icons: { icon: '/icons/drep-globe-orbit.svg', shortcut: '/icons/drep-globe-orbit.svg', apple: '/icons/drep-globe-orbit.svg' },
+  // Browser-tab icon: a ballot card with a cast vote (checkmark), in the DAO green. Kept to a few
+  // thick strokes so it stays legible at the 16px a tab actually renders.
+  // Alternatives live in /public/icons (drep-globe, drep-globe-orbit, drep-globe-network, drep-ballot).
+  icons: { icon: '/icons/drep-ballot-check.svg', shortcut: '/icons/drep-ballot-check.svg', apple: '/icons/drep-ballot-check.svg' },
 };
 
 // Apply the saved theme + language to <html> BEFORE first paint, so there's no flash of the

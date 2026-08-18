@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="DRep DAO">
+  <defs>
+    <!-- The orbit's front half: everything below the globe's mid-line. -->
+    <clipPath id="front"><rect x="0" y="33" width="64" height="31"/></clipPath>
+  </defs>
+
+  <rect width="64" height="64" rx="14" fill="#4f46e5"/>
+
+  <!-- Orbit ring, drawn first so the globe hides its back half. -->
+  <g transform="rotate(-20 32 33)">
+    <ellipse cx="32" cy="33" rx="29" ry="10" fill="none" stroke="#ffffff" stroke-width="4.4"/>
+  </g>
+
+  <!-- Globe body: opaque so the ring passes behind it. -->
+  <circle cx="32" cy="29" r="19" fill="#4f46e5"/>
+
+  <!-- Wireframe kept to two strokes — outline + one meridian — so it still reads at 16px;
+       the orbit ring supplies the horizontal, standing in for the equator. -->
+  <g fill="none" stroke="#ffffff" stroke-width="4.4">
+    <circle cx="32" cy="29" r="19"/>
+    <ellipse cx="32" cy="29" rx="8" ry="19"/>
+  </g>
+
+  <!-- Orbit again, clipped to the front so it crosses over the globe's lower face. -->
+  <g transform="rotate(-20 32 33)" clip-path="url(#front)">
+    <ellipse cx="32" cy="33" rx="29" ry="10" fill="none" stroke="#ffffff" stroke-width="4.4"/>
+  </g>
+</svg>

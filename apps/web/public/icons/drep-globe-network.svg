@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="DRep DAO">
+  <defs>
+    <radialGradient id="sphere" cx="36%" cy="28%" r="78%">
+      <stop offset="0%" stop-color="#dcebfa"/>
+      <stop offset="42%" stop-color="#7aa9d8"/>
+      <stop offset="78%" stop-color="#3a6fac"/>
+      <stop offset="100%" stop-color="#24507f"/>
+    </radialGradient>
+    <radialGradient id="gloss" cx="34%" cy="24%" r="46%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.34"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="ball"><circle cx="32" cy="32" r="27"/></clipPath>
+  </defs>
+
+  <!-- Sphere + deep navy rim. -->
+  <circle cx="32" cy="32" r="27" fill="url(#sphere)"/>
+
+  <!-- Simplified landmasses: Americas on the left, Europe/Africa on the right. -->
+  <g clip-path="url(#ball)" fill="#255a97" opacity="0.95">
+    <path d="M20 12 C24 11 27 13 26 16 C24 19 20 18 18 20 C16 22 18 25 16 27 C13 28 10 25 9 21 C9 17 14 13 20 12 Z"/>
+    <path d="M22 30 C25 30 27 33 26 37 C25 42 22 47 21 53 C19 52 18 47 18 42 C18 36 19 31 22 30 Z"/>
+    <path d="M36 16 C41 15 46 17 49 20 C51 23 48 25 45 25 C42 25 39 23 36 21 Z"/>
+    <path d="M35 27 C41 26 47 28 49 33 C50 39 45 45 40 49 C36 51 33 48 33 43 C33 37 33 30 35 27 Z"/>
+  </g>
+
+  <!-- Glossy highlight. -->
+  <circle cx="32" cy="32" r="27" fill="url(#gloss)" clip-path="url(#ball)"/>
+
+  <!-- Network arcs — the connections between delegates. -->
+  <g fill="none" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round" clip-path="url(#ball)">
+    <path d="M6 22 C20 12 44 12 58 26"/>
+    <path d="M5 34 C18 46 42 48 59 38"/>
+    <path d="M14 7 C10 24 20 44 40 58"/>
+  </g>
+
+  <!-- Nodes. -->
+  <g fill="#ffffff">
+    <circle cx="17" cy="17" r="4.4"/>
+    <circle cx="32" cy="15" r="4.8"/>
+    <circle cx="15" cy="34" r="4.4"/>
+    <circle cx="46" cy="45" r="5"/>
+  </g>
+
+  <circle cx="32" cy="32" r="27" fill="none" stroke="#2b2c66" stroke-width="3"/>
+</svg>

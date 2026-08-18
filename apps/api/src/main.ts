@@ -49,7 +49,7 @@ async function bootstrap() {
 
   const port = Number(config.get('API_PORT') ?? 4000);
   await app.listen(port);
-  Logger.log(`DRep DAO API listening on http://localhost:${port}`, 'Bootstrap');
+  Logger.log(`DRep Council API listening on http://localhost:${port}`, 'Bootstrap');
 }
 
 void bootstrap();

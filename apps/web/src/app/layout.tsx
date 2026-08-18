@@ -5,7 +5,7 @@ import { PrefsProvider } from '@/lib/prefs-context';
 import { LanguageThemeSwitcher } from '@/components/language-theme-switcher';
 
 export const metadata: Metadata = {
-  title: 'DRep DAO',
+  title: 'DRep Council',
   description: 'Cardano governance DAO platform',
   // Browser-tab icon: a ballot card with a cast vote (checkmark), in the DAO green. Kept to a few
   // thick strokes so it stays legible at the 16px a tab actually renders.

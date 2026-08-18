@@ -161,7 +161,7 @@ export function HomeShell() {
     <div className="flex flex-col gap-6 px-6 py-6 lg:flex-row">
       {/* Left: title + menu only. */}
       <aside className="lg:w-56 lg:shrink-0">
-        <h1 className="mb-4 text-xl font-bold tracking-tight">DRep DAO</h1>
+        <h1 className="mb-4 text-xl font-bold tracking-tight">{brand.name}</h1>
         <nav className="space-y-1">
           {nav.map((n) => {
             // §20 — mirror the in-area to-do count next to "My area" so users

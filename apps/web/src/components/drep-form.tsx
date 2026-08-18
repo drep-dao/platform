@@ -47,6 +47,13 @@ export function DrepForm({ mode }: { mode: 'join' | 'profile' }) {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [savedSig, setSavedSig] = useState<string | null>(null);
+  // §14 — open admission (or no board seated): a complete profile joins immediately, with no
+  // board vote. Drives the join button label + the success message ("Welcome on board").
+  const [freePeriod, setFreePeriod] = useState(false);
+  useEffect(() => {
+    if (mode !== 'join') return;
+    drepApi.entryEligibility().then((e) => setFreePeriod(!!e.freePeriod)).catch(() => setFreePeriod(false));
+  }, [mode]);
 
   const isBoard = profile?.roles.includes('BOARD') ?? false;
 
@@ -144,6 +151,9 @@ export function DrepForm({ mode }: { mode: 'join' | 'profile' }) {
       else await drepApi.update(input);
       setSaved(true);
       setSavedSig(formSig); // re-pin baseline → the button disables again until the next change
+      // Open-admission join → the user is already a member; let the "Welcome on board" message
+      // land before refresh() flips this view into the member profile.
+      if (mode === 'join' && freePeriod) await new Promise((r) => setTimeout(r, 1600));
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : t('Failed'));
@@ -307,7 +317,11 @@ export function DrepForm({ mode }: { mode: 'join' | 'profile' }) {
       {error ? <div className="text-sm text-red-600">{error}</div> : null}
       {saved && !dirty ? (
         <div className="text-sm text-emerald-600">
-          {mode === 'join' ? t('Request submitted — awaiting board review.') : t('Profile saved.')}
+          {mode === 'join'
+            ? freePeriod
+              ? t('🎉 Welcome on board! You’re now a DAO member and can submit and vote on internal proposals.')
+              : t('Request submitted — awaiting board review.')
+            : t('Profile saved.')}
         </div>
       ) : null}
 
@@ -316,7 +330,7 @@ export function DrepForm({ mode }: { mode: 'join' | 'profile' }) {
         disabled={busy || !drepId || !!photoError || !dirty}
         className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
       >
-        {busy ? t('Saving…') : mode === 'join' ? t('Submit request to join') : t('Save profile')}
+        {busy ? t('Saving…') : mode === 'join' ? (freePeriod ? t('Join the DAO') : t('Submit request to join')) : t('Save profile')}
       </button>
     </form>
   );

@@ -44,7 +44,7 @@ export function DaoOverview() {
   const t = useT();
   const { setParams } = useUrlNav();
   // Linear submenu: the members table (default) vs the experts list.
-  const [sub, setSub] = useState<'members' | 'experts'>('members');
+  const [sub, setSub] = useState<'members' | 'experts' | 'merit'>('members');
   const [members, setMembers] = useState<DaoMember[] | null>(null);
   const [experts, setExperts] = useState<DaoExpert[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -90,7 +90,7 @@ export function DaoOverview() {
 
       {/* Linear submenu: DAO members | Experts. */}
       <div className="flex gap-1 border-b border-neutral-200 dark:border-neutral-800">
-        {([['members', t('DAO members')], ['experts', t('Experts')]] as const).map(([k, l]) => (
+        {([['members', t('DAO members')], ['experts', t('Experts')], ['merit', t('Merit points')]] as const).map(([k, l]) => (
           <button
             key={k}
             onClick={() => setSub(k)}
@@ -105,6 +105,8 @@ export function DaoOverview() {
 
       {sub === 'experts' ? (
         <ExpertsSection experts={experts} onOpen={(id) => setParams({ view: 'experts', expert: id })} />
+      ) : sub === 'merit' ? (
+        <MeritSystemTable />
       ) : (
       <div className="space-y-3">
         <p className="text-sm text-neutral-500">
@@ -244,8 +246,6 @@ export function DaoOverview() {
         </p>
       ) : null}
 
-      {/* §13 — what earns / costs merit points, per DAO members and board. */}
-      <MeritSystemTable />
       </div>
       )}
     </div>

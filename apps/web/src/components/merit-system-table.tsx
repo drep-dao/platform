@@ -3,6 +3,17 @@
 import { MERIT_DELTAS, type MeritReason } from '@drep-dao/shared';
 
 import { useT } from '@/lib/prefs-context';
+import { brand } from '@/lib/brand';
+
+// Merit reasons tied to FUNDING proposals (rounds, filtering, Debate & Vote, quick polls,
+// milestones, reward distribution). They only apply to the funding edition; the governance
+// (DRep Council) edition has no funding, so these rows are hidden there.
+const FUNDING_ONLY = new Set<MeritReason>([
+  'FILTER_COMPLETE', 'DV_VOTE', 'QUICK_POLL_VOTE', 'MILESTONE_CHECK',
+  'MISSED_FILTER', 'MISSED_DV', 'MISSED_QUICK_POLL', 'MISSED_MILESTONE',
+  'BOARD_PAYOUT_SIGNED', 'BOARD_ROUND_CONFIGURE', 'BOARD_ROUND_START', 'BOARD_ROUND_END',
+  'BOARD_REWARD_DISTRIBUTE', 'BOARD_REWARD_LATE', 'BOARD_PAYOUT_LATE',
+]);
 
 /**
  * §13 — human-readable explanation of the merit-based system, shown at the
@@ -48,7 +59,7 @@ const fmt = (n: number) => `${n > 0 ? '+' : '−'}${Math.abs(n)}`;
 
 function Group({ title, note, gains, losses }: { title: string; note: string; gains: Row[]; losses: Row[] }) {
   const t = useT();
-  const renderRows = (rows: Row[], header: string) => (
+  const renderRows = (rows: Row[], header: string) => rows.length === 0 ? null : (
     <>
       <tr className="border-t border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900">
         <td colSpan={2} className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-neutral-500">{header}</td>
@@ -90,6 +101,8 @@ function Group({ title, note, gains, losses }: { title: string; note: string; ga
 
 export function MeritSystemTable() {
   const t = useT();
+  // Governance edition (DRep Council) has no funding proposals → drop funding-only rows.
+  const keep = (rows: Row[]) => (brand.kind === 'governance' ? rows.filter((r) => !FUNDING_ONLY.has(r.reason)) : rows);
   return (
     <section className="space-y-3 pt-2">
       <div>
@@ -102,14 +115,14 @@ export function MeritSystemTable() {
         <Group
           title="All DAO members"
           note="Applies to every admitted DRep, including board members."
-          gains={MEMBER_GAINS}
-          losses={MEMBER_LOSSES}
+          gains={keep(MEMBER_GAINS)}
+          losses={keep(MEMBER_LOSSES)}
         />
         <Group
           title="Board members"
-          note="Board duties, on top of the DAO-member operations on the left. Rows marked “whole board” apply to every active board seat collectively."
-          gains={BOARD_GAINS}
-          losses={BOARD_LOSSES}
+          note="Board duties, on top of the DAO-member operations on the left."
+          gains={keep(BOARD_GAINS)}
+          losses={keep(BOARD_LOSSES)}
         />
       </div>
     </section>

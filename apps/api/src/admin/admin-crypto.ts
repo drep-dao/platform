@@ -21,7 +21,7 @@ export function generateRecoveryCodes(count = 10): string[] {
   return codes;
 }
 
-const TOTP_PARAMS = { issuer: 'DRep DAO', digits: 6, period: 30 } as const;
+const TOTP_PARAMS = { issuer: 'DRep Council', digits: 6, period: 30 } as const;
 
 /** New TOTP secret + provisioning URI (for the authenticator QR). */
 export function newTotpSecret(username: string): { base32: string; uri: string } {

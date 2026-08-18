@@ -185,7 +185,7 @@ export class DvService {
     const str = (v: unknown) => (typeof v === 'string' ? v : '');
     const submitter = p.submitterUser?.displayName ?? p.submitterDrep?.drepIdOnchain ?? 'unknown';
     const lines: string[] = [];
-    lines.push('DRep DAO — frozen proposal content (v1)');
+    lines.push('DRep Council — frozen proposal content (v1)');
     lines.push(`Proposal: ${p.publicId ?? '(unassigned)'}`);
     if (p.round) lines.push(`Round: ${p.round.number}`);
     lines.push(`Title: ${p.title}`);

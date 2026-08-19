@@ -1905,6 +1905,8 @@ export interface InternalProposalDetail extends InternalProposalSummary {
   voters: InternalProposalVoter[]; // who voted how + their rationales
   anchorTxHash: string | null;
   anchorHash: string | null;
+  /** §27 — set for RULE_APPROVAL proposals: the targeted rule document + frozen content hash. */
+  rule?: { documentId: string; title: string; documentStatus: string; deleteRequested: boolean; contentHash: string | null } | null;
   /** Minimum rationale words required per choice (0 = not required). Internal proposals only. */
   rationaleMinWords: { YES: number; NO: number; ABSTAIN: number };
   /** The viewer's current (live) rationale, shown read-only in the locked vote card. */
@@ -1933,6 +1935,9 @@ export interface CreateInternalInput {
   // the server (BOTH / BALANCED / IMPORTANT).
   isBoardElection?: boolean;
   candidates?: string[];
+  /** §27 RULE_APPROVAL: the published rule document to vote on; ruleDeleteRequested → a delete vote. */
+  ruleDocumentId?: string;
+  ruleDeleteRequested?: boolean;
   /** When submitting from a saved draft, the draft to remove once the live proposal is created. */
   draftId?: string;
 }
@@ -1962,6 +1967,63 @@ export const internalProposalsApi = {
       `/internal-proposals/${id}/install-board`,
       { method: 'POST' },
     ),
+};
+
+// ── §27 Rule Documents ──────────────────────────────────────────────────────
+export interface RuleDocVote {
+  proposalId: string;
+  publicId: string | null;
+  status: string; // ACTIVE (voting) | APPROVED | REJECTED
+  deleteVote: boolean;
+  votingEndAt: string | null;
+  eligible: number;
+  voted: number;
+  ratioPct: number;
+  thresholdPct: number;
+  approved: boolean;
+  contentHash: string | null;
+  anchorTxHash: string | null;
+}
+export interface RuleDocSummary {
+  id: string;
+  title: string;
+  status: string; // PRIVATE | DRAFT | ACTIVE | DELETED
+  ownerName: string;
+  publishedAt: string | null;
+  updatedAt: string;
+  lastVote: RuleDocVote | null;
+  editable?: boolean; // present in `mine`
+}
+export interface RuleDocComment {
+  id: string;
+  authorName: string;
+  isMine: boolean;
+  contentMd: string;
+  createdAt: string;
+}
+export interface RuleDocDetail extends RuleDocSummary {
+  contentMd: string;
+  contentHash: string; // sha256(content), computed live — verify against this
+  isOwner: boolean;
+  editable: boolean;
+  canPropose: boolean;
+  canComment: boolean;
+  comments: RuleDocComment[];
+}
+export const ruleDocumentsApi = {
+  list: (filter?: string) => request<RuleDocSummary[]>(`/rule-documents${filter ? `?filter=${filter}` : ''}`),
+  mine: () => request<RuleDocSummary[]>('/rule-documents/mine'),
+  get: (id: string) => request<RuleDocDetail>(`/rule-documents/${id}`),
+  create: (input: { title: string; contentMd: string }) =>
+    request<RuleDocDetail>('/rule-documents', { method: 'POST', body: JSON.stringify(input) }),
+  update: (id: string, input: { title?: string; contentMd?: string }) =>
+    request<RuleDocDetail>(`/rule-documents/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
+  publish: (id: string) => request<RuleDocDetail>(`/rule-documents/${id}/publish`, { method: 'POST' }),
+  remove: (id: string) => request<{ ok: boolean }>(`/rule-documents/${id}`, { method: 'DELETE' }),
+  comment: (id: string, contentMd: string) =>
+    request<RuleDocDetail>(`/rule-documents/${id}/comments`, { method: 'POST', body: JSON.stringify({ contentMd }) }),
+  deleteComment: (commentId: string) =>
+    request<{ ok: boolean }>(`/rule-documents/comments/${commentId}`, { method: 'DELETE' }),
 };
 
 // §13 — merit points + avoid-period ("vacancy") signalling.

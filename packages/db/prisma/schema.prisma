@@ -51,6 +51,8 @@ model AppUser {
   hotWalletSweeps        HotWalletSweep[]
   multisigCommitments    MultisigCommitment[]
   treasuryBucketsCreated TreasuryBucket[]
+  ruleDocuments          RuleDocument[]           @relation("RuleDocOwner")
+  ruleDocumentComments   RuleDocumentComment[]
 
   @@map("app_user")
 }
@@ -493,6 +495,13 @@ model Proposal {
   spendingDestAddress    String?   @map("spending_dest_address")
   spendingActionId       String?   @map("spending_action_id") @db.Uuid // the prepared multisig action (idempotence + UI link)
 
+  // §27 — "Approval of a rule document": a RULE_APPROVAL internal proposal targets one rule
+  // document. ruleDeleteRequested flips the vote from "approve" to "delete". ruleDocContentHash
+  // is sha256(content) frozen the moment the vote opened, anchored on-chain for verification.
+  ruleDocumentId      String?  @map("rule_document_id") @db.Uuid
+  ruleDeleteRequested Boolean  @default(false) @map("rule_delete_requested")
+  ruleDocContentHash  String?  @map("rule_doc_content_hash")
+
   // common
   votingType           String // ONE_PERSON_ONE_VOTE or BALANCED
   approvalThresholdPct Decimal?  @map("approval_threshold_pct") @db.Decimal(5, 2)
@@ -533,10 +542,50 @@ model Proposal {
   feeAdjustments FeeAdjustment[]
   budgetChangeRequests BudgetChangeRequest[]
   stopFundings   StopFundingProposal[]
+  ruleDocument   RuleDocument?      @relation("RuleDocProposals", fields: [ruleDocumentId], references: [id])
 
   @@index([roundId, status])
   @@index([type, status])
   @@map("proposal")
+}
+
+// §27 — Rule Documents: a DRep authors a document of rules. It starts PRIVATE (owner-only), is
+// published to DRAFT (public — other DReps give feedback, the owner keeps editing), and any DRep
+// can open a RULE_APPROVAL internal vote. Submitting that vote FREEZES + anchors the content hash
+// and locks the document. Approved → ACTIVE (obligatory to follow); rejected → DRAFT; an approved
+// delete vote → DELETED.
+model RuleDocument {
+  id          String    @id @default(uuid()) @db.Uuid
+  title       String
+  contentMd   String    @map("content_md")
+  status      String    @default("PRIVATE") // PRIVATE | DRAFT | ACTIVE | DELETED
+  ownerUserId String    @map("owner_user_id") @db.Uuid
+  owner       AppUser   @relation("RuleDocOwner", fields: [ownerUserId], references: [id])
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  proposals Proposal[]            @relation("RuleDocProposals")
+  comments  RuleDocumentComment[]
+
+  @@index([status])
+  @@map("rule_document")
+}
+
+// §27 — on-platform feedback on a rule document while it is being iterated (DRAFT). Flat thread.
+model RuleDocumentComment {
+  id           String    @id @default(uuid()) @db.Uuid
+  documentId   String    @map("document_id") @db.Uuid
+  authorUserId String    @map("author_user_id") @db.Uuid
+  contentMd    String    @map("content_md")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  document RuleDocument @relation(fields: [documentId], references: [id])
+  author   AppUser      @relation(fields: [authorUserId], references: [id])
+
+  @@index([documentId])
+  @@map("rule_document_comment")
 }
 
 // §12 — a submission-fee settlement created when an ACTIVE proposal's budget changes:

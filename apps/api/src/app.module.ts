@@ -20,6 +20,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { JobsModule } from './jobs/jobs.module';
 import { RequestsModule } from './requests/requests.module';
 import { DeployModule } from './deploy/deploy.module';
+import { RuleDocumentsModule } from './rule-documents/rule-documents.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { DeployModule } from './deploy/deploy.module';
     RequestsModule,
     PreferencesModule,
     DeployModule,
+    RuleDocumentsModule,
   ],
 })
 export class AppModule {}

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { card } from '@/lib/ui';
+import { MyRuleDocuments } from './rule-documents';
 import { useAuth } from '@/lib/auth-context';
 import { useT } from '@/lib/prefs-context';
 import { useUrlNav } from '@/lib/use-url-nav';
@@ -39,6 +40,7 @@ import { NavIcon } from './nav-icons';
 const TAB_ICON: Record<string, string> = {
   profile: 'circle-user',
   internal: 'clipboard',
+  rules: 'file-text',
   treasury: 'landmark',
   sign: 'pen',
   rewards: 'gift',
@@ -104,6 +106,11 @@ export function MemberArea() {
       />
     ),
   });
+
+  // §27 — a DRep's own rule documents: draft privately, publish, edit until an approval vote opens.
+  if (isMember || isDrep) {
+    tabs.push({ key: 'rules', label: 'My Rule documents', node: <MyRuleDocuments /> });
+  }
 
   if (isMember || isDrep || expertApproved) {
     // §10 — internal proposals (Council governance): submit + browse + vote. Same component as

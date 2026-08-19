@@ -13,7 +13,7 @@ import {
   MinLength,
 } from 'class-validator';
 
-const INTERNAL_TYPES = ['INSTRUCTIVE', 'INFORMATIVE', 'POLL', 'SPENDING'];
+const INTERNAL_TYPES = ['INSTRUCTIVE', 'INFORMATIVE', 'POLL', 'SPENDING', 'RULE_APPROVAL'];
 const SCOPES = ['DREPS_ONLY', 'BOARD_ONLY', 'BOTH'];
 const THRESHOLDS = ['DEFAULT', 'IMPORTANT'];
 const VOTING_TYPES = ['ONE_PERSON_ONE_VOTE', 'BALANCED', 'ONCHAIN'];
@@ -55,6 +55,11 @@ export class CreateInternalProposalDto {
   // deliveryDate. The submit method forces scope=BOTH / type=BALANCED / threshold=IMPORTANT.
   @IsOptional() @IsBoolean() isBoardElection?: boolean;
   @IsOptional() @IsArray() @IsString({ each: true }) candidates?: string[];
+
+  // §27 RULE_APPROVAL only: the published rule document this vote approves (or deletes). Required
+  // when the type is RULE_APPROVAL; `ruleDeleteRequested` turns the vote into a delete vote.
+  @IsOptional() @IsString() ruleDocumentId?: string;
+  @IsOptional() @IsBoolean() ruleDeleteRequested?: boolean;
 
   // When submitting from a saved draft, the draft row to remove once the live proposal is created.
   @IsOptional() @IsString() draftId?: string;

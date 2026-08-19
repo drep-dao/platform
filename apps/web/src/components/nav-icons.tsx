@@ -14,7 +14,7 @@ const PATHS: Record<string, React.ReactNode> = {
       <circle cx="12" cy="7" r="4" />
     </>
   ),
-  // dashboard tiles — DAO Member overview
+  // dashboard tiles — Council Member overview
   dashboard: (
     <>
       <rect width="7" height="9" x="3" y="3" rx="1" />
@@ -23,7 +23,7 @@ const PATHS: Record<string, React.ReactNode> = {
       <rect width="7" height="5" x="3" y="16" rx="1" />
     </>
   ),
-  // two people — DAO members
+  // two people — Council members
   users: (
     <>
       <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />

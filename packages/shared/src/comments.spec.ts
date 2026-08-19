@@ -8,7 +8,7 @@ describe('commentAuthorTone (§20 — comment colour by author class)', () => {
 
   it('DReps and board members are grey', () => {
     expect(commentAuthorTone('Board member')).toBe('grey');
-    expect(commentAuthorTone('DAO member')).toBe('grey'); // admitted DRep
+    expect(commentAuthorTone('Council member')).toBe('grey'); // admitted DRep
   });
 
   it('no recognised class is neutral', () => {

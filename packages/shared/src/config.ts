@@ -5,7 +5,7 @@
  */
 export const PLATFORM_CONFIG_DEFAULTS = {
   // Â§14 â open membership (default). Any registered DRep with a complete profile joins the
-  // DAO immediately, with no board admission vote â so DReps can freely join, submit internal
+  // Council immediately, with no board admission vote â so DReps can freely join, submit internal
   // proposals and vote, including the proposal that elects the first board. The board can turn
   // this off later to require the 3-of-5 admission vote. While NO board is seated admission is
   // always open regardless of this flag (there would be nobody to run the vote).
@@ -22,7 +22,7 @@ export const PLATFORM_CONFIG_DEFAULTS = {
   // Â§11.5 â after a milestone POA is REJECTED this many times, the platform automatically
   // opens a stop-funding proposal for the board to vote on (0 = never auto-propose).
   MILESTONE_MAX_REJECTIONS: 3,
-  // Â§14.1 â DAO-entry gate, layer 1: a registered DRep may request to join only if it
+  // Â§14.1 â Council-entry gate, layer 1: a registered DRep may request to join only if it
   // meets the on-chain minimums. Two independent, separately-toggled groups (both OFF
   // by default so testnet entry is open; enable on mainnet).
   ENTRY_REQUIRE_VOTING_POWER: false, // switch for the voting-power/delegator group
@@ -66,8 +66,8 @@ export const PLATFORM_CONFIG_META: Record<PlatformConfigKey, string> = {
   MILESTONE_MAX_REJECTIONS:
     'After a milestone POA is rejected this many times, the platform automatically opens a stop-funding proposal for the board (0 = disabled).',
   DREP_OPEN_ADMISSION:
-    'Open membership. ENABLED (default): any registered DRep who completes the profile joins the DAO straight away and can vote â no board admission vote is held. DISABLED: each applicant is put on hold as PENDING and joins only once the board approves them (ADMISSION_APPROVAL_VOTES yes-votes). Note that while no board is seated, admission stays open whatever this is set to, since there would be nobody to run the vote.',
-  ADMISSION_APPROVAL_VOTES: 'Board YES votes needed to admit a new DAO member (3-of-5).',
+    'Open membership. ENABLED (default): any registered DRep who completes the profile joins the Council straight away and can vote â no board admission vote is held. DISABLED: each applicant is put on hold as PENDING and joins only once the board approves them (ADMISSION_APPROVAL_VOTES yes-votes). Note that while no board is seated, admission stays open whatever this is set to, since there would be nobody to run the vote.',
+  ADMISSION_APPROVAL_VOTES: 'Board YES votes needed to admit a new Council member (3-of-5).',
   INTERNAL_DEFAULT_THRESHOLD_PCT: 'Approval threshold (%) for ordinary internal proposals.',
   INTERNAL_IMPORTANT_THRESHOLD_PCT: 'Approval threshold (%) for internal proposals flagged as important.',
   MIN_LEN_OF_WORDS_IN_RATIONALE_FOR_VOTE_YES:
@@ -77,12 +77,12 @@ export const PLATFORM_CONFIG_META: Record<PlatformConfigKey, string> = {
   MIN_LEN_OF_WORDS_IN_RATIONALE_FOR_VOTE_ABSTAIN:
     'Internal proposals only: minimum words required in the rationale when a voter abstains. 0 = no rationale required.',
   ENTRY_REQUIRE_VOTING_POWER:
-    'Gate DAO entry on the DRep\'s on-chain voting power/delegators below. Turn OFF on testnet (entry stays open); ON for mainnet.',
+    'Gate Council entry on the DRep\'s on-chain voting power/delegators below. Turn OFF on testnet (entry stays open); ON for mainnet.',
   MIN_OWN_VOTING_POWER_ADA: "Entry: minimum OWN voting power (ADA the DRep self-delegated). Meeting this alone qualifies.",
   MIN_DELEGATORS: 'Entry (alternative to own power): minimum number of delegators, each â¥ the minimum stake below.',
   MIN_DELEGATOR_STAKE_ADA: 'Entry: a delegator only counts toward MIN_DELEGATORS if they delegated at least this much (ADA).',
   ENTRY_REQUIRE_ACTIVITY:
-    'Gate DAO entry on the DRep\'s past on-chain voting activity below. Turn OFF on testnet; ON for mainnet.',
+    'Gate Council entry on the DRep\'s past on-chain voting activity below. Turn OFF on testnet; ON for mainnet.',
   MINIMUM_VOTES_CASTED: "Entry/activity window: how many of the DRep's most recent governance votes are considered.",
   MINIMUM_DREP_ACTIVITY: 'Entry: % of that window the DRep must have voted on (e.g. 50% of 50 = 25 votes).',
   ONLY_VOTES_WITH_RATIONALE: 'Entry: when ON, only votes carrying an on-chain rationale count toward the activity check.',

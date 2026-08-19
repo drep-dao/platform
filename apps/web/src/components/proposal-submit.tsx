@@ -692,7 +692,7 @@ export function ProposalSubmit() {
           <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-900 dark:bg-blue-950/30">
             <label className="block">
               <span className="text-xs font-medium text-blue-900 dark:text-blue-200">{tr('Payout / refund address (Cardano)')}</span>
-              <input className={`${field} mt-0.5 w-full font-mono text-xs`} placeholder={tr('addr_test1… — where the DAO sends refunds and the funded budget')} value={payoutAddress} onChange={(e) => setPayoutAddress(e.target.value)} />
+              <input className={`${field} mt-0.5 w-full font-mono text-xs`} placeholder={tr('addr_test1… — where the Council sends refunds and the funded budget')} value={payoutAddress} onChange={(e) => setPayoutAddress(e.target.value)} />
             </label>
             {/* §3 — live validity + own-wallet check. A foreign address is allowed, just flagged. */}
             {payoutAddress.trim() && addrCheck ? (
@@ -913,7 +913,7 @@ export function ProposalSubmit() {
           <p className="text-xs text-neutral-500">
             {myTab === 'FUNDING'
               ? tr('Drafts are private. Open one to read/edit it; submit a draft when you’re ready (pay the fee + paste the tx).')
-              : tr('Your DAO-governance internal proposals. Open one in the Internal proposals tab.')}
+              : tr('Your Council-governance internal proposals. Open one in the Internal proposals tab.')}
           </p>
           <ul className="mt-1 space-y-1 text-sm">
             {myTab === 'FUNDING'
@@ -1435,7 +1435,7 @@ export function RevenueSharingBlock({
             value={text}
             onChange={onTextChange}
             title={t('Conditions')}
-            subtitle={t('What will the team do, and by when? Example: send 10% of token supply to the DAO Treasury within 14 days of approval.')}
+            subtitle={t('What will the team do, and by when? Example: send 10% of token supply to the Council Treasury within 14 days of approval.')}
             placeholder={t('Describe the action and any verification details (tx hash, on-chain address, etc.)')}
             minRows={3}
           />

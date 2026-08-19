@@ -16,9 +16,9 @@ export function MyDrepStatus() {
   const t = useT();
   const LABEL_TEXT: Record<string, string> = {
     PENDING_ADMISSION: t('Membership request under board review'),
-    ADMITTED: t('You are a DAO member ✅'),
+    ADMITTED: t('You are a Council member ✅'),
     REJECTED: t('Membership request rejected'),
-    REMOVED: t('DAO membership removed'),
+    REMOVED: t('Council membership removed'),
   };
   const { txUrl } = useExplorer();
   const [drep, setDrep] = useState<MyDrep | null>(null);
@@ -33,7 +33,7 @@ export function MyDrepStatus() {
 
   return (
     <div className="space-y-2 text-sm">
-      <h3 className="text-base font-semibold">{t('DAO membership')}</h3>
+      <h3 className="text-base font-semibold">{t('Council membership')}</h3>
       <div className={label.cls}>{label.text}</div>
       <div className="font-mono text-xs text-neutral-500 break-all">{drep.drepIdOnchain}</div>
       {drep.anchorTxHash ? (

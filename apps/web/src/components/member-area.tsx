@@ -106,7 +106,7 @@ export function MemberArea() {
   });
 
   if (isMember || isDrep || expertApproved) {
-    // §10 — internal proposals (DAO governance): submit + browse + vote. Same component as
+    // §10 — internal proposals (Council governance): submit + browse + vote. Same component as
     // the left-nav "Internal proposals" view; the tab adds a notification badge for items
     // awaiting THIS DRep's vote.
     tabs.push({
@@ -133,13 +133,13 @@ export function MemberArea() {
 }
 
 /**
- * "Voting & reviews" tab for DReps / DAO members / experts — filtering juries, D&V,
+ * "Voting & reviews" tab for DReps / Council members / experts — filtering juries, D&V,
  * milestone reviews. Mirrors the Actions/Applications pattern with a "Show history"
  * switch that also reveals decided assignments (passed → APPROVED/REJECTED rounds).
  */
 /**
- * §2 — the Profile tab. A DAO member's own profile and the submitter profile are SEPARATE
- * sub-profiles: the DAO member profile is the default; once a submitter application exists,
+ * §2 — the Profile tab. A Council member's own profile and the submitter profile are SEPARATE
+ * sub-profiles: the Council member profile is the default; once a submitter application exists,
  * a sub-item switches to it. A member without one sees an "Apply to become a submitter"
  * button instead. Non-members (viewer / expert / submitter-only) see their single profile.
  */
@@ -186,7 +186,7 @@ function ProfileTab({ isMember, isBoard, daoPending, expertApproved, expertPendi
   ) : null;
 
   if (!isMember) {
-    // DAO admission pending → just the status.
+    // Council admission pending → just the status.
     if (daoPending) {
       return (
         <div className="space-y-6">
@@ -237,7 +237,7 @@ function ProfileTab({ isMember, isBoard, daoPending, expertApproved, expertPendi
       {/* Sub-profiles: only shown once a submitter profile exists (or is being created). */}
       {showSubmitterSub ? (
         <div className="flex gap-1 border-b border-neutral-200 dark:border-neutral-800">
-          {([['dao', isBoard ? 'Board member profile' : 'DAO member profile'], ['submitter', 'Submitter profile']] as const).map(([k, l]) => (
+          {([['dao', isBoard ? 'Board member profile' : 'Council member profile'], ['submitter', 'Submitter profile']] as const).map(([k, l]) => (
             <button key={k} onClick={() => setSub(k)} className={`-mb-px border-b-2 px-3 py-1.5 text-sm font-medium ${sub === k ? 'border-emerald-500 text-emerald-700 dark:text-emerald-400' : 'border-transparent text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'}`}>
               {t(l)}
             </button>
@@ -255,10 +255,10 @@ function ProfileTab({ isMember, isBoard, daoPending, expertApproved, expertPendi
           <section className={card}>
             <h3 className="text-base font-semibold">{t('Your DRep profile')}</h3>
             <p className="mb-3 text-sm text-neutral-500">
-              {isBoard ? t('As a board member you are a DAO member.') : t('You are a DAO member.')} {t('Keep your details up to date.')}
+              {isBoard ? t('As a board member you are a Council member.') : t('You are a Council member.')} {t('Keep your details up to date.')}
             </p>
             <DrepForm mode="profile" />
-            {/* §14 — any DAO member can voluntarily leave; a board member also steps down. */}
+            {/* §14 — any Council member can voluntarily leave; a board member also steps down. */}
             <LeaveDao isBoard={isBoard} />
           </section>
           {/* §2.1 — separate submitter role: apply from here; the sub-profile appears once applied. */}
@@ -515,7 +515,7 @@ function ApplyOptions({ registeredDRep, onExpertChange, onSubmitterChange, showS
       <h3 className="text-base font-semibold">{t('How do you want to participate?')}</h3>
       <div className="grid gap-3 sm:grid-cols-2">
         <button onClick={() => setMode('dao')} className="rounded-lg border border-neutral-200 p-3 text-left hover:border-emerald-400 dark:border-neutral-700">
-          <div className="font-medium">{t('Join as a DAO member')}</div>
+          <div className="font-medium">{t('Join as a Council member')}</div>
           <div className="text-xs text-neutral-500">{t('For registered on-chain DReps. Board votes 3-of-5 to admit. You then vote on proposals.')}</div>
         </button>
         <button onClick={() => setMode('expert')} className="rounded-lg border border-neutral-200 p-3 text-left hover:border-emerald-400 dark:border-neutral-700">
@@ -534,7 +534,7 @@ function ApplyOptions({ registeredDRep, onExpertChange, onSubmitterChange, showS
 }
 
 /**
- * §14.1/§14.3 — the "request to join the DAO" body. A registered on-chain DRep gets the
+ * §14.1/§14.3 — the "request to join the Council" body. A registered on-chain DRep gets the
  * application form, but only once they meet the configured entry gates (voting power /
  * delegators / activity); if a gate is enabled and unmet, the specific shortfalls are shown
  * in place of the form. An unregistered wallet is told to register its DRep key first.
@@ -551,7 +551,7 @@ function DaoJoinBody({ registeredDRep }: { registeredDRep: boolean }) {
   if (!registeredDRep) {
     return (
       <p className="text-sm text-neutral-500">
-        {t('To join as a DAO member your wallet must be a registered on-chain DRep. Register your DRep key (e.g. Eternl → Governance → Register as a DRep), then sign in again. Meanwhile you can apply as an Expert.')}
+        {t('To join as a Council member your wallet must be a registered on-chain DRep. Register your DRep key (e.g. Eternl → Governance → Register as a DRep), then sign in again. Meanwhile you can apply as an Expert.')}
       </p>
     );
   }
@@ -561,9 +561,9 @@ function DaoJoinBody({ registeredDRep }: { registeredDRep: boolean }) {
   if (blocked) {
     return (
       <div className="space-y-2">
-        <h3 className="text-base font-semibold">{t('Request to join the DAO')}</h3>
+        <h3 className="text-base font-semibold">{t('Request to join the Council')}</h3>
         <p className="text-sm text-neutral-500">
-          {t('The DAO currently enforces minimum entry requirements. You can apply once you meet them:')}
+          {t('The Council currently enforces minimum entry requirements. You can apply once you meet them:')}
         </p>
         <EntryRequirementsNotice requirements={elig!.requirements} />
       </div>
@@ -571,7 +571,7 @@ function DaoJoinBody({ registeredDRep }: { registeredDRep: boolean }) {
   }
   return (
     <>
-      <h3 className="text-base font-semibold">{t('Request to join the DAO')}</h3>
+      <h3 className="text-base font-semibold">{t('Request to join the Council')}</h3>
       <DrepForm mode="join" />
     </>
   );

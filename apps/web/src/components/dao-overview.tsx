@@ -39,7 +39,7 @@ function Avatar({ name, image }: { name: string; image: string | null }) {
   );
 }
 
-/** §4 — all DAO members with balanced voting power: log10(stake) × (1 + merit/200). */
+/** §4 — all Council members with balanced voting power: log10(stake) × (1 + merit/200). */
 export function DaoOverview() {
   const t = useT();
   const { setParams } = useUrlNav();
@@ -83,7 +83,7 @@ export function DaoOverview() {
     <div className="space-y-3">
       <div>
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-lg font-semibold">{t('DAO Member overview')}</h2>
+          <h2 className="text-lg font-semibold">{t('Council Member overview')}</h2>
           {members ? (
             <span className="rounded bg-neutral-100 px-2 py-0.5 text-xs text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
               <strong>{members.filter((m) => m.isBoard).length}</strong> {t('board')} · <strong>{members.length}</strong> {t('members total')}
@@ -92,9 +92,9 @@ export function DaoOverview() {
         </div>
       </div>
 
-      {/* Linear submenu: DAO members | Experts. */}
+      {/* Linear submenu: Council members | Experts. */}
       <div className="flex gap-1 border-b border-neutral-200 dark:border-neutral-800">
-        {(([['members', t('DAO members')], ['experts', t('Experts')], ...(meritEnabled ? [['merit', t('Merit points')]] : [])] as const) as ['members' | 'experts' | 'merit', string][]).map(([k, l]) => (
+        {(([['members', t('Council members')], ['experts', t('Experts')], ...(meritEnabled ? [['merit', t('Merit points')]] : [])] as const) as ['members' | 'experts' | 'merit', string][]).map(([k, l]) => (
           <button
             key={k}
             onClick={() => setSub(k)}
@@ -126,7 +126,7 @@ export function DaoOverview() {
       {!members ? (
         <p className="text-sm text-neutral-500">{t('Loading…')}</p>
       ) : members.length === 0 ? (
-        <p className="text-sm text-neutral-500">{t('No DAO members yet.')}</p>
+        <p className="text-sm text-neutral-500">{t('No Council members yet.')}</p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-neutral-200 dark:border-neutral-800">
           <table className="w-full text-sm">
@@ -161,7 +161,7 @@ export function DaoOverview() {
                       <Avatar name={m.displayName} image={m.image} />
                       <span className="font-medium">{m.displayName}</span>
                       {/* §14 — inline role flag. Blue BOARD for seated members, green MEMBER for
-                          the rest of the DAO (every row in this table is at least a DAO member,
+                          the rest of the Council (every row in this table is at least a Council member,
                           so each gets one of the two flags). */}
                       {m.isBoard ? (
                         <span
@@ -172,7 +172,7 @@ export function DaoOverview() {
                         </span>
                       ) : (
                         <span
-                          title={t('Admitted DAO member')}
+                          title={t('Admitted Council member')}
                           className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
                         >
                           {t('MEMBER')}
@@ -218,7 +218,7 @@ export function DaoOverview() {
                 </tr>
               ))}
             </tbody>
-            {/* §4 — column-aligned aggregate row: total on-chain voting power, total DAO
+            {/* §4 — column-aligned aggregate row: total on-chain voting power, total Council
                 voting power (base), and total adjusted voting power across all members. */}
             <tfoot className="border-t-2 border-neutral-300 bg-neutral-50 text-xs dark:border-neutral-700 dark:bg-neutral-900">
               <tr>
@@ -227,7 +227,7 @@ export function DaoOverview() {
                   {(sorted ?? []).reduce((s, m) => s + m.votingPowerAda, 0).toLocaleString()}
                 </td>
                 <td className="px-3 py-2" />
-                <td className="px-3 py-2 text-right font-semibold tabular-nums" title={t('Total DAO voting power (sum of the log₁₀ base power)')}>
+                <td className="px-3 py-2 text-right font-semibold tabular-nums" title={t('Total Council voting power (sum of the log₁₀ base power)')}>
                   {(sorted ?? []).reduce((s, m) => s + m.basePower, 0).toFixed(2)}
                 </td>
                 {meritEnabled ? (
@@ -262,7 +262,7 @@ export function DaoOverview() {
   );
 }
 
-/** §2 — the Experts list on its own sub-tab of the DAO overview: name, photo,
+/** §2 — the Experts list on its own sub-tab of the Council overview: name, photo,
  *  expertise tags, and a link to the full profile in the Experts directory. */
 function ExpertsSection({ experts, onOpen }: { experts: DaoExpert[]; onOpen: (id: string) => void }) {
   const t = useT();
@@ -311,7 +311,7 @@ function ExpertsSection({ experts, onOpen }: { experts: DaoExpert[]; onOpen: (id
 
 /**
  * §4/§10 — aggregate voting-power total shown directly under the members table:
- * the sum of every member's adjusted power (every DAO member — board +
+ * the sum of every member's adjusted power (every Council member — board +
  * non-board — votes on internal proposals when balanced. This ignores the
  * per-proposal voting-style nuances; that's a separate concern.)
  */

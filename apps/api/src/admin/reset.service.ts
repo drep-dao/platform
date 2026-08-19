@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 
 /**
  * §23 — destructive ADMIN reset for testnet rehearsals. Wipes everything that
- * makes up "the DAO's working state" — proposals, votes, rounds, board, the
+ * makes up "the Council's working state" — proposals, votes, rounds, board, the
  * multisig setup — while keeping:
  *   • AdminUser / AdminAuth / AdminAuditLog (you still need to log in as admin),
  *   • PlatformSecret (the anchor hot-wallet seed — rotating that is a separate ceremony),
@@ -82,7 +82,7 @@ export class ResetService {
       const list = tables.map((t) => `"${t}"`).join(', ');
       await tx.$executeRawUnsafe(`TRUNCATE TABLE ${list} RESTART IDENTITY CASCADE`);
     });
-    this.logger.warn('ADMIN RESET — DAO state wiped (proposals, rounds, board, multisig, votes, anchors, rewards).');
+    this.logger.warn('ADMIN RESET — Council state wiped (proposals, rounds, board, multisig, votes, anchors, rewards).');
     return { ok: true, wipedTables: tables.length };
   }
 }

@@ -10,7 +10,7 @@ import { FallbackAvatar } from './fallback-avatar';
 import { ClampedMarkdown } from './clamped-markdown';
 
 /**
- * "DAO members" left-nav view: a directory of every current DAO member as a card grid.
+ * "Council members" left-nav view: a directory of every current Council member as a card grid.
  * Each card is a square photo + name + (Board chip) + DRep ID + bio preview. Clicking
  * the photo opens a full detail page (bio, voting power, merit, admission-vote tally,
  * socials/contact) with a back link to the grid. Board members are shown first.
@@ -51,7 +51,7 @@ export function DaoMembersDirectory() {
         <>
           <header className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h2 className="text-lg font-semibold">{t('DAO members')}</h2>
+              <h2 className="text-lg font-semibold">{t('Council members')}</h2>
               <p className="text-xs text-neutral-500">
                 {t('Board members first, then admitted DReps. Click a photo to open the full profile.')}
               </p>
@@ -173,7 +173,7 @@ function MemberDetail({ drepId, onBack }: { drepId: string; onBack: () => void }
         onClick={onBack}
         className="text-xs font-medium text-emerald-700 hover:underline dark:text-emerald-400"
       >
-        ← {t('Back to DAO members')}
+        ← {t('Back to Council members')}
       </button>
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
       {!d ? (
@@ -243,7 +243,7 @@ function MemberDetail({ drepId, onBack }: { drepId: string; onBack: () => void }
   );
 }
 
-/** §2 (board) — set/clear this DAO member's cross-wallet link to a submitter profile. Board-only. */
+/** §2 (board) — set/clear this Council member's cross-wallet link to a submitter profile. Board-only. */
 function MemberLinkEditor({ d, onSaved }: { d: DaoMemberDetail; onSaved: (d: DaoMemberDetail) => void }) {
   const t = useT();
   const { profile } = useAuth();

@@ -241,7 +241,7 @@ export function ProposalDetail({
               )}
             </CollapsibleView>
             {p.categoryAsk?.conditions ? <DetailBlock label={tr('Category conditions')} md={p.categoryAsk.conditions} /> : null}
-            {/* Payout / refund address — where the DAO sends fee refunds + the budget once funded. */}
+            {/* Payout / refund address — where the Council sends fee refunds + the budget once funded. */}
             <div className="mt-3 rounded-md border border-neutral-300 px-2 py-1.5 dark:border-neutral-700">
               <div className="text-sm font-medium text-neutral-700 dark:text-neutral-300">{tr('Payout / refund address')}</div>
               {p.payoutAddress ? (
@@ -1182,7 +1182,7 @@ function ChangeReviewerPicker({ proposalId, oldDrepId, onDone }: { proposalId: s
           type="button"
           onClick={() => setShowAll((v) => !v)}
           className="rounded border border-neutral-300 px-1.5 py-0.5 text-[11px] text-neutral-700 hover:bg-neutral-100 dark:border-neutral-600 dark:text-neutral-300 dark:hover:bg-neutral-800"
-          title={showAll ? t('Show only DReps already eligible for this round') : t('Show every admitted DRep in the DAO; picking one outside the round auto-adds them to it')}
+          title={showAll ? t('Show only DReps already eligible for this round') : t('Show every admitted DRep in the Council; picking one outside the round auto-adds them to it')}
         >
           {showAll ? t('↩ Show round-eligible only') : t('🌐 Show all admitted DReps')}
         </button>
@@ -3115,7 +3115,7 @@ function MilestoneRow({ m, isMine, canPoa, locked = false, isBoard = false, prop
  * Row tint:
  *   - reply (any author)               → yellow
  *   - Expert                            → violet
- *   - DRep / DAO member / board member  → grey
+ *   - DRep / Council member / board member  → grey
  *   - the viewer's own (no class)       → grey
  *   - everyone else / [deleted]         → neutral
  *
@@ -3210,7 +3210,7 @@ function CommentsSection({ id, title, canPost }: { id: string; title: string; ca
         </div>
       ) : (
         <div className="mt-2 rounded border border-neutral-200 bg-neutral-50 p-2 text-xs text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900/60">
-          {t('Only signed-in DAO members (DReps, board, approved experts) and the proposal\'s team can post — viewers may read.')}
+          {t('Only signed-in Council members (DReps, board, approved experts) and the proposal\'s team can post — viewers may read.')}
         </div>
       )}
       <ul className="mt-3 space-y-2">
@@ -3236,7 +3236,7 @@ function CommentsSection({ id, title, canPost }: { id: string; title: string; ca
 const ROLE_CLS: Record<string, string> = {
   'Board member': 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-200',
   Expert: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200',
-  'DAO member': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200',
+  'Council member': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200',
 };
 function RoleBadge({ role }: { role: string | null }) {
   if (!role) return null;

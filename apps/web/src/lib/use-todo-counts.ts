@@ -78,7 +78,7 @@ export function useTodoCounts(isBoard: boolean, canVote: boolean, enabled = true
       if (canVote) {
         try { next.internal = (await internalProposalsApi.pendingCount()).count; } catch { /* 0 */ }
       }
-      // §15.4 — reward earners (DReps/board/DAO members + approved experts) need a reward payment
+      // §15.4 — reward earners (DReps/board/Council members + approved experts) need a reward payment
       // address; nag on the Profile tab until one is set. We resolve "approved expert" here so every
       // to-do surface agrees (the left-nav + login box don't otherwise know the expert status).
       let isApprovedExpert = false;

@@ -5,7 +5,7 @@ import { drepApi, type EntryEligibility } from '@/lib/api';
 import { useT } from '@/lib/prefs-context';
 
 /**
- * §14.1 — the "Join DAO" button, gated on the configurable on-chain entry
+ * §14.1 — the "Join Council" button, gated on the configurable on-chain entry
  * requirements. When the gate is disabled (testnet default) the button is active;
  * when enabled and unmet, it is disabled with a note listing what's missing.
  */
@@ -32,14 +32,14 @@ export function JoinDaoButton({ onJoin }: { onJoin: () => void }) {
         title={blocked ? t('You do not meet the minimum entry requirements') : undefined}
         className="w-full rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-neutral-400 disabled:opacity-70"
       >
-        {loading ? t('Checking eligibility…') : t('JOIN DAO')}
+        {loading ? t('Checking eligibility…') : t('JOIN COUNCIL')}
       </button>
       {blocked ? <EntryRequirementsNotice requirements={elig!.requirements} /> : null}
       {/* §14 — open membership (or no board seated yet): a complete profile is admitted
           automatically, with no 3-of-5 vote. The board can switch approvals back on later. */}
       {!loading && !blocked && elig?.freePeriod ? (
         <div className="rounded-md border border-emerald-300 bg-emerald-50/60 p-2 text-[11px] text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
-          {t('Open membership — complete your profile and you join the DAO automatically, without board approval. You can then submit and vote on internal proposals.')}
+          {t('Open membership — complete your profile and you join the Council automatically, without board approval. You can then submit and vote on internal proposals.')}
         </div>
       ) : null}
     </div>
@@ -48,7 +48,7 @@ export function JoinDaoButton({ onJoin }: { onJoin: () => void }) {
 
 /**
  * §14.1 — the amber notice listing which entry requirements a registered DRep does
- * not yet meet. Shared by the header JOIN DAO button and the My-area join form (which
+ * not yet meet. Shared by the header JOIN COUNCIL button and the My-area join form (which
  * shows it in place of the application form when the gate is enabled and unmet).
  */
 export function EntryRequirementsNotice({ requirements }: { requirements: EntryEligibility['requirements'] }) {

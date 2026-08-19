@@ -49,7 +49,7 @@ export function TreasuryOverview() {
       <div>
         <h2 className="text-lg font-semibold">{t('Treasury')}</h2>
         <p className="text-sm text-neutral-500">
-          {t("The DAO's 3-of-5 multisig holds the budget; a low-balance hot wallet pays tx fees. Buckets: Main, Request fees, Operations, Rewards.")}
+          {t("The Council's 3-of-5 multisig holds the budget; a low-balance hot wallet pays tx fees. Buckets: Main, Request fees, Operations, Rewards.")}
         </p>
       </div>
 

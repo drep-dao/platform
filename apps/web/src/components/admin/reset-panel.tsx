@@ -5,7 +5,7 @@ import { adminApi } from '@/lib/admin-api';
 import { ConfirmDialog } from '../confirm-dialog';
 
 /**
- * §23 — destructive admin reset. Wipes DAO state (proposals / rounds / board /
+ * §23 — destructive admin reset. Wipes Council state (proposals / rounds / board /
  * multisig / votes / hot-wallet sweeps / etc.) so testnet rehearsals can
  * start from a clean slate. Keeps:
  *   • admin accounts + their audit log (you stay logged in),
@@ -27,7 +27,7 @@ export function ResetPanel({ onReset }: { onReset?: () => void }) {
     setMsg(null); setError(null); setBusy(true);
     try {
       const r = await adminApi.resetDaoState();
-      setMsg(`DAO state wiped (${r.wipedTables} tables truncated). You can now re-upload the founding-board JSON above.`);
+      setMsg(`Council state wiped (${r.wipedTables} tables truncated). You can now re-upload the founding-board JSON above.`);
       // Tell the parent so it can re-mount the Genesis + Wallet panels (they
       // cache their data on mount; without this they'd keep showing the
       // pre-reset board until the user hard-refreshes the page).
@@ -41,7 +41,7 @@ export function ResetPanel({ onReset }: { onReset?: () => void }) {
 
   return (
     <section className="rounded-lg border border-red-700/60 bg-red-950/30 p-4">
-      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-red-300">Danger zone — reset DAO state</h2>
+      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-red-300">Danger zone — reset Council state</h2>
       <p className="text-xs text-slate-300">
         Wipes proposals, rounds, board seats, the multisig config + collected keys, all votes, anchor history,
         rewards, and stop-funding records. <strong>Keeps</strong> admin accounts, the admin audit log, the anchor
@@ -54,14 +54,14 @@ export function ResetPanel({ onReset }: { onReset?: () => void }) {
           onClick={() => setConfirming(true)}
           className="rounded border border-red-600 px-2.5 py-1 text-xs text-red-300 hover:bg-red-950 disabled:opacity-40"
         >
-          {busy ? 'Wiping…' : 'Reset DAO state'}
+          {busy ? 'Wiping…' : 'Reset Council state'}
         </button>
         {msg ? <span className="text-xs text-emerald-400">{msg}</span> : null}
         {error ? <span className="text-xs text-red-400">{error}</span> : null}
       </div>
       <ConfirmDialog
         open={confirming}
-        title="Wipe DAO state?"
+        title="Wipe Council state?"
         tone="danger"
         confirmLabel="Wipe everything"
         message={
@@ -69,7 +69,7 @@ export function ResetPanel({ onReset }: { onReset?: () => void }) {
             This will <strong>permanently delete</strong> every proposal, round, board seat, multisig key, vote,
             anchor record, reward, and stop-funding row. Admin accounts and the anchor wallet stay.
             <br /><br />
-            Use only on testnet, never on a live DAO.
+            Use only on testnet, never on a live Council.
           </>
         }
         onConfirm={doReset}

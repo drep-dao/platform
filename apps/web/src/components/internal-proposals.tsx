@@ -62,7 +62,7 @@ const LIST_PAGE_SIZE = 50;
 export function InternalProposals() {
   const tr = useT();
   const { profile } = useAuth();
-  // §10 — only admitted DReps (DAO members + board) may submit internal proposals. Mirrors the
+  // §10 — only admitted DReps (Council members + board) may submit internal proposals. Mirrors the
   // server-side guard in InternalProposalsService.create/saveDraft (drep.status === ADMITTED);
   // hiding the button keeps viewers / registered-but-unadmitted DReps from hitting a 403.
   const canSubmit = !!profile && (profile.roles.includes('DAO_MEMBER') || profile.roles.includes('BOARD'));
@@ -74,7 +74,7 @@ export function InternalProposals() {
   const [statusTab, setStatusTab] = useState<'' | 'ACTIVE' | 'APPROVED' | 'REJECTED' | 'DRAFT'>('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  // §14 — sub-menu splits the regular DAO-governance proposals from board-member elections.
+  // §14 — sub-menu splits the regular Council-governance proposals from board-member elections.
   const [subTab, setSubTab] = useState<'regular' | 'election'>('regular');
   const [error, setError] = useState<string | null>(null);
   // The opened proposal lives in the URL (?ip=<id>) so clicking the My-area "Internal proposals"
@@ -156,7 +156,7 @@ export function InternalProposals() {
           <p className="text-sm text-neutral-500">
             {isElection
               ? tr('Propose a new 5-member board. Approval + the installation date trigger the platform to replace the board automatically.')
-              : tr('DAO-governance decisions — process changes, parameter changes, polls. Not tied to a round; voting opens immediately.')}
+              : tr('Council-governance decisions — process changes, parameter changes, polls. Not tied to a round; voting opens immediately.')}
           </p>
         </div>
         {canSubmit ? (
@@ -535,10 +535,10 @@ function SubmitInternalForm({ onDone, onCancel, draftId = null, election = false
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1">
             <span className="text-sm font-medium">{t('Actors')} <span className="font-normal text-neutral-400">{t('(optional — who must act if approved)')}</span></span>
-            {/* Pick the DReps expected to act from the DAO member list. */}
+            {/* Pick the DReps expected to act from the Council member list. */}
             <div className="max-h-36 space-y-1 overflow-y-auto rounded-md border border-neutral-300 p-2 dark:border-neutral-700">
               {members.length === 0 ? (
-                <span className="text-xs text-neutral-400">{t('No DAO members to choose from.')}</span>
+                <span className="text-xs text-neutral-400">{t('No Council members to choose from.')}</span>
               ) : (
                 members.map((m) => (
                   <label key={m.drepId} className="flex items-center gap-2 text-sm">
@@ -568,7 +568,7 @@ function SubmitInternalForm({ onDone, onCancel, draftId = null, election = false
             {/* §14 — the 5 candidates who will become the new board on approval + installation date. */}
             <div className="max-h-44 space-y-1 overflow-y-auto rounded-md border border-neutral-300 p-2 dark:border-neutral-700">
               {members.length === 0 ? (
-                <span className="text-xs text-neutral-400">{t('No DAO members to choose from.')}</span>
+                <span className="text-xs text-neutral-400">{t('No Council members to choose from.')}</span>
               ) : (
                 members.map((m) => {
                   const picked = candidates.includes(m.drepId);

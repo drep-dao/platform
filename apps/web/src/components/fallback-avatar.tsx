@@ -10,7 +10,7 @@ import { useState } from 'react';
  * display name. If a file is missing/fails to load we fall back to a clean inline
  * silhouette so nothing renders broken.
  *
- * Used for DAO members, submitters and experts.
+ * Used for Council members, submitters and experts.
  */
 const AVATAR_FILES: string[] = [
   '/avatars/default-profile.png',

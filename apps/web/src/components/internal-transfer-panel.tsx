@@ -7,10 +7,10 @@ import { useTreasuryAutoRefresh } from '@/lib/treasury-refresh';
 import { useT } from '@/lib/prefs-context';
 
 /**
- * §15.5 — internal transfer: move ADA between the DAO's own treasury
+ * §15.5 — internal transfer: move ADA between the Council's own treasury
  * addresses (the primary multisig + its labeled buckets). Both ends are
  * picked from dropdowns — no free-form address, so funds can never leave
- * the DAO through this form. Source ≠ destination is enforced. Follows the
+ * the Council through this form. Source ≠ destination is enforced. Follows the
  * same 3-of-5 signing flow and shows as INTERNAL (yellow) in the history.
  *
  * Self-hides for non-board users and when there are fewer than two treasury
@@ -70,7 +70,7 @@ export function InternalTransferPanel({ onChange }: { onChange?: () => void }) {
     <section className="rounded-lg border border-neutral-200 bg-white p-3 text-sm dark:border-neutral-800 dark:bg-neutral-900">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="font-semibold">{t('Internal transfers')}</div>
-        <div className="text-xs text-neutral-500">{t('moves between the DAO\'s own addresses — funds never leave the treasury')}</div>
+        <div className="text-xs text-neutral-500">{t('moves between the Council\'s own addresses — funds never leave the treasury')}</div>
       </div>
       <p className="mt-0.5 text-xs text-neutral-500">
         {t('Pick a source and a destination treasury address (no manual address entry). The transfer needs 3-of-5 board signatures and shows as')}{' '}

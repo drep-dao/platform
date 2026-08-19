@@ -5,7 +5,7 @@ import { drepApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { useT } from '@/lib/prefs-context';
 
-/** §14 — voluntarily leave the DAO, with a styled confirmation dialog. */
+/** §14 — voluntarily leave the Council, with a styled confirmation dialog. */
 export function LeaveDao({ isBoard = false }: { isBoard?: boolean }) {
   const t = useT();
   const { refresh } = useAuth();
@@ -33,7 +33,7 @@ export function LeaveDao({ isBoard = false }: { isBoard?: boolean }) {
         onClick={() => setOpen(true)}
         className="rounded-md border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950"
       >
-        {isBoard ? t('Step down & leave the DAO') : t('Leave the DAO')}
+        {isBoard ? t('Step down & leave the Council') : t('Leave the Council')}
       </button>
       <p className="mt-1 text-xs text-neutral-500">{t('You can re-apply later. This does not deregister your on-chain DRep.')}</p>
 
@@ -44,10 +44,10 @@ export function LeaveDao({ isBoard = false }: { isBoard?: boolean }) {
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
-              {isBoard ? t('Step down and leave the DAO?') : t('Leave the DAO?')}
+              {isBoard ? t('Step down and leave the Council?') : t('Leave the Council?')}
             </h3>
             <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
-              {t('You will stop being a DAO member: you won’t be drawn for filtering or vote in Debate & Vote.')}
+              {t('You will stop being a Council member: you won’t be drawn for filtering or vote in Debate & Vote.')}
               {isBoard ? t(' As a board member you will also resign your board seat — the board drops below five until an admin seats a replacement.') : ''}
               {' '}{t('Your on-chain DRep registration is unaffected, and you can request to re-join later.')}
             </p>
@@ -65,7 +65,7 @@ export function LeaveDao({ isBoard = false }: { isBoard?: boolean }) {
                 disabled={busy}
                 className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
               >
-                {busy ? t('Leaving…') : t('Yes, leave the DAO')}
+                {busy ? t('Leaving…') : t('Yes, leave the Council')}
               </button>
             </div>
           </div>

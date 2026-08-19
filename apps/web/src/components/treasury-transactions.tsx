@@ -65,7 +65,7 @@ export function TreasuryTransactions() {
         <p className="text-xs text-neutral-500">
           {tr('Every on-chain transaction that touched a treasury address (the multisig + its buckets), newest first.')}{' '}
           <span className="text-emerald-700 dark:text-emerald-400">{tr('Incoming')}</span> {tr('in green,')}{' '}
-          <span className="text-amber-700 dark:text-amber-400">{tr('internal')}</span> {tr('(between DAO wallets, incl. the hot wallet) in yellow,')}{' '}
+          <span className="text-amber-700 dark:text-amber-400">{tr('internal')}</span> {tr('(between Council wallets, incl. the hot wallet) in yellow,')}{' '}
           <span className="text-red-700 dark:text-red-400">{tr('outgoing')}</span> {tr('(funds leaving to an external address) in red.')}
           {isBoard ? ` ${tr('Board members can add context with Edit.')}` : ''}
         </p>
@@ -141,7 +141,7 @@ export function TreasuryTransactions() {
                             : 'text-red-700 dark:text-red-400'
                       }`}
                     >
-                      {/* Internal moves don't change what the DAO holds — no +/− sign. */}
+                      {/* Internal moves don't change what the Council holds — no +/− sign. */}
                       {inbound ? '+' : internal ? '' : '−'}
                       {t.amountAda.toLocaleString(undefined, { maximumFractionDigits: 6 })} ₳
                     </span>

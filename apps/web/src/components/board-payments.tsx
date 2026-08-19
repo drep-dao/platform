@@ -10,7 +10,7 @@ import { useT } from '@/lib/prefs-context';
 /**
  * §12 — board task list for submission-fee settlements created by budget changes:
  * a TOPUP is owed BY the submitter (they pay more fee), a REFUND is owed TO the
- * submitter (the DAO returns fee). A board member records the on-chain tx to settle.
+ * submitter (the Council returns fee). A board member records the on-chain tx to settle.
  * Self-hides when there's nothing outstanding.
  */
 export function BoardPayments({ history = false, query }: { history?: boolean; query?: string }) {
@@ -29,7 +29,7 @@ export function BoardPayments({ history = false, query }: { history?: boolean; q
       <h3 className="text-base font-semibold">{t('Payments to settle')}{history ? t(' (incl. history)') : ''}</h3>
       <p className="text-xs text-neutral-500">
         {t('Budget changes create a submission-fee')} <strong>{t('top-up')}</strong> {t('(the submitter owes more) or a')}
-        <strong> {t('refund')}</strong> {t('(the DAO returns). Pay/collect on-chain, then record the tx to mark it done.')}
+        <strong> {t('refund')}</strong> {t('(the Council returns). Pay/collect on-chain, then record the tx to mark it done.')}
       </p>
       <ul className="space-y-2">
         {items.map((p) => (

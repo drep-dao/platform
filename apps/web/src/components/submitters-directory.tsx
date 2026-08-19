@@ -13,10 +13,10 @@ import { StatusBadge, PROPOSAL_STATUS_CLS } from './round-ui';
 import { ClampedMarkdown } from './clamped-markdown';
 
 /**
- * §2.1 — public directory of APPROVED submitters (mirrors the DAO members overview).
+ * §2.1 — public directory of APPROVED submitters (mirrors the Council members overview).
  * Click a row to open the FULL profile (photo — or a universal B/W placeholder head —
  * description, country, conflict-of-interest, pledge, contact, every link). A submitter
- * who is ALSO a DAO member is flagged prominently: they both submit and vote.
+ * who is ALSO a Council member is flagged prominently: they both submit and vote.
  */
 export function SubmittersDirectory() {
   const t = useT();
@@ -41,7 +41,7 @@ export function SubmittersDirectory() {
       <div>
         <h2 className="text-lg font-semibold">{t('Submitters')}</h2>
         <p className="text-sm text-neutral-500">
-          {t('Approved submitters — accounts allowed to submit funding proposals. Click a row for the full profile. Submitters who are also DAO members (they vote, too) are flagged.')}
+          {t('Approved submitters — accounts allowed to submit funding proposals. Click a row for the full profile. Submitters who are also Council members (they vote, too) are flagged.')}
         </p>
       </div>
       {/* §2.1/§14 — pending applications always need BOARD approval; during the pre-election
@@ -77,7 +77,7 @@ export function SubmittersDirectory() {
                   ) : null}
                   {s.isDaoMember ? (
                     <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-200" title={t('This submitter also votes on funding proposals')}>
-                      {t('⚠ also a DAO member')}{s.daoMemberName ? ` (${s.daoMemberName})` : ''}
+                      {t('⚠ also a Council member')}{s.daoMemberName ? ` (${s.daoMemberName})` : ''}
                     </span>
                   ) : null}
                   {s.noSelfVotePledge ? <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[11px] text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">{t('✓ no self-vote pledge')}</span> : null}
@@ -108,9 +108,9 @@ export function SubmittersDirectory() {
                     </div>
                     <div className="text-xs text-neutral-600 dark:text-neutral-300">
                       <span className="font-medium">{t('Pledge:')}</span> {s.noSelfVotePledge ? t('✓ will not vote for own proposals') : t('no self-vote pledge given (informative)')}
-                      {s.isDaoMember ? <span className="ml-2 font-medium text-amber-700 dark:text-amber-300">{t('⚠ this submitter is also a DAO member and votes on funding')}</span> : null}
+                      {s.isDaoMember ? <span className="ml-2 font-medium text-amber-700 dark:text-amber-300">{t('⚠ this submitter is also a Council member and votes on funding')}</span> : null}
                     </div>
-                    {/* §2 (board) — override this submitter's cross-wallet link to a DAO member. */}
+                    {/* §2 (board) — override this submitter's cross-wallet link to a Council member. */}
                     <SubmitterLinkEditor s={s} onSaved={reload} />
                     <div className="text-xs">
                       <span className="font-medium">{t('Contact:')}</span>{' '}
@@ -258,7 +258,7 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
   );
 }
 
-/** §2 (board) — set/clear this submitter's cross-wallet link to a DAO-member profile. Board-only. */
+/** §2 (board) — set/clear this submitter's cross-wallet link to a Council-member profile. Board-only. */
 function SubmitterLinkEditor({ s, onSaved }: { s: ApprovedSubmitter; onSaved: () => void }) {
   const t = useT();
   const { profile } = useAuth();
@@ -275,7 +275,7 @@ function SubmitterLinkEditor({ s, onSaved }: { s: ApprovedSubmitter; onSaved: ()
   };
   return (
     <div className="mt-1 rounded border border-dashed border-neutral-300 p-2 text-xs dark:border-neutral-700">
-      <div className="font-medium text-neutral-500">{t('Board override: link to a DAO-member profile')}</div>
+      <div className="font-medium text-neutral-500">{t('Board override: link to a Council-member profile')}</div>
       <div className="mt-1 flex flex-wrap items-center gap-2">
         <select value={sel} onChange={(e) => setSel(e.target.value)} disabled={busy} className="rounded border border-neutral-300 px-1.5 py-1 text-xs dark:border-neutral-700 dark:bg-neutral-900">
           <option value="">{t('— none —')}</option>

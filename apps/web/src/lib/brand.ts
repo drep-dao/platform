@@ -1,5 +1,5 @@
 /**
- * Per-deployment branding. This deployment is the DRep Council — a pure governance DAO
+ * Per-deployment branding. This deployment is the DRep Council — a pure governance Council
  * (DReps join, propose and vote; no funding rounds/treasury budgeting). The landing
  * page reads `kind` to show governance figures rather than funding ones.
  */
@@ -9,7 +9,7 @@ export interface Brand {
   icon: string;
   /** <meta name="description"> for the deployment. */
   description: string;
-  /** Which public landing to show: a funding DAO (rounds/treasury) or a pure governance DAO. */
+  /** Which public landing to show: a funding Council (rounds/treasury) or a pure governance Council. */
   kind: 'funding' | 'governance';
 }
 

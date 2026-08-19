@@ -31,13 +31,13 @@ export function ConnectWallet() {
   if (profile) {
     // §2 — combined status: the primary role, then every additional role the
     // account holds, joined with " | " (e.g. "Viewer | Expert | Submitter",
-    // "DAO member | Submitter"). A registered on-chain DRep who hasn't joined the
-    // DAO is a "Registered DRep" (eligible to request membership), distinct from
+    // "Council member | Submitter"). A registered on-chain DRep who hasn't joined the
+    // Council is a "Registered DRep" (eligible to request membership), distinct from
     // a plain ADA-holder Viewer.
     const base = profile.roles.includes('BOARD')
       ? t('Board member')
       : profile.roles.includes('DAO_MEMBER')
-        ? t('DAO member')
+        ? t('Council member')
         : profile.onchainDrep.registered
           ? t('Registered DRep')
           : t('Viewer');
@@ -48,7 +48,7 @@ export function ConnectWallet() {
     ].join(' | ');
     return (
       <div className="space-y-1.5 text-sm">
-        {/* §2 — name on top, role/status beneath. The DAO-member name leads; if
+        {/* §2 — name on top, role/status beneath. The Council-member name leads; if
             the account is also a submitter with a DIFFERENT submitter name, it's
             shown in brackets (no single name is enforced across roles). */}
         <div className="flex items-center gap-2">

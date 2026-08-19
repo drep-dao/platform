@@ -68,7 +68,7 @@ export function ActiveProposals() {
           value={selected ?? ''}
           onChange={(e) => setParams({ round: e.target.value, proposal: null })}
         >
-          {/* §26.2 — every proposal ever processed in the DAO, across all rounds. */}
+          {/* §26.2 — every proposal ever processed in the Council, across all rounds. */}
           <option value="all">{t('All rounds')}</option>
           {ordered.map((r) => (
             <option key={r.id} value={r.id}>

@@ -17,7 +17,7 @@ const inputCls = 'w-full rounded border border-neutral-300 px-2 py-1 text-sm dar
 export function SubmitterApplyForm({ onChange }: { onChange?: () => void }) {
   const t = useT();
   const { profile } = useAuth();
-  // §2 — the submitter profile is INDEPENDENT of the DAO-member / expert profile: it has its
+  // §2 — the submitter profile is INDEPENDENT of the Council-member / expert profile: it has its
   // own name, photo, country, etc. The member's display name is only used to PRE-FILL a brand-new
   // application as a convenience; it stays fully editable so a submitter can use a different name.
   const [mine, setMine] = useState<MySubmitter | null>(null);
@@ -34,7 +34,7 @@ export function SubmitterApplyForm({ onChange }: { onChange?: () => void }) {
   const [email, setEmail] = useState('');
   const [logo, setLogo] = useState('');
   const [country, setCountry] = useState('');
-  // §2 — cross-wallet link to a DAO-member profile (the same entity on a different wallet).
+  // §2 — cross-wallet link to a Council-member profile (the same entity on a different wallet).
   const [linkMember, setLinkMember] = useState(false);
   const [linkedDrepId, setLinkedDrepId] = useState('');
   const [daoMembers, setDaoMembers] = useState<DaoMember[]>([]);
@@ -72,7 +72,7 @@ export function SubmitterApplyForm({ onChange }: { onChange?: () => void }) {
       }
     }).catch(() => setLoaded(true));
   useEffect(() => { load(); }, []);
-  // §2 — DAO members to choose from when declaring "I'm also a DAO member (different wallet)".
+  // §2 — Council members to choose from when declaring "I'm also a Council member (different wallet)".
   useEffect(() => { daoApi.members().then(setDaoMembers).catch(() => setDaoMembers([])); }, []);
 
   const onFile = async (file: File) => {
@@ -118,7 +118,7 @@ export function SubmitterApplyForm({ onChange }: { onChange?: () => void }) {
         logoDataUrl: logo || undefined,
         country,
         agreePersist,
-        // §2 — link to a DAO-member profile (empty string clears it).
+        // §2 — link to a Council-member profile (empty string clears it).
         linkedDrepIdOnchain: linkMember ? linkedDrepId : '',
       });
       await load();
@@ -155,7 +155,7 @@ export function SubmitterApplyForm({ onChange }: { onChange?: () => void }) {
         <label className="block">
           <span className="text-sm font-medium">{t('Display name')} <span className="text-red-500">*</span></span>
           <input value={name} onChange={(e) => setName(e.target.value)} maxLength={120} className={`mt-1 ${inputCls}`} placeholder={t('Your name or project name')} />
-          <p className="mt-1 text-[11px] text-neutral-500">{t('Independent from your DAO-member / expert profile — set whatever name you want shown as a submitter.')}</p>
+          <p className="mt-1 text-[11px] text-neutral-500">{t('Independent from your Council-member / expert profile — set whatever name you want shown as a submitter.')}</p>
         </label>
 
         <MarkdownEditor
@@ -177,20 +177,20 @@ export function SubmitterApplyForm({ onChange }: { onChange?: () => void }) {
           </select>
         </label>
 
-        {/* §2 — declare a DAO-member profile that is the SAME entity (possibly a different wallet). */}
+        {/* §2 — declare a Council-member profile that is the SAME entity (possibly a different wallet). */}
         <div className="rounded border border-neutral-200 p-2 dark:border-neutral-800">
           <label className="flex items-start gap-2 text-sm">
             <input type="checkbox" checked={linkMember} onChange={(e) => setLinkMember(e.target.checked)} className="mt-0.5" />
-            <span>{t('I’m also a')} <strong>DAO member</strong> <span className="text-xs text-neutral-500">{t('(link my DAO-member profile — it may be on a different wallet)')}</span></span>
+            <span>{t('I’m also a')} <strong>Council member</strong> <span className="text-xs text-neutral-500">{t('(link my Council-member profile — it may be on a different wallet)')}</span></span>
           </label>
           {linkMember ? (
             <select value={linkedDrepId} onChange={(e) => setLinkedDrepId(e.target.value)} className={`mt-2 ${inputCls}`}>
-              <option value="">{t('— select your DAO-member profile —')}</option>
+              <option value="">{t('— select your Council-member profile —')}</option>
               {daoMembers.map((m) => <option key={m.drepId} value={m.drepId}>{m.displayName} — {m.drepId.slice(0, 16)}…</option>)}
             </select>
           ) : null}
           {linkedDaoMember ? (
-            <p className="mt-1 text-[11px] text-emerald-600 dark:text-emerald-400">{t('✓ Linked to DAO member')} <strong>{linkedDaoMember.name}</strong>{linkedDaoMember.crossWallet ? ` ${t('(different wallet)')}` : ''}.</p>
+            <p className="mt-1 text-[11px] text-emerald-600 dark:text-emerald-400">{t('✓ Linked to Council member')} <strong>{linkedDaoMember.name}</strong>{linkedDaoMember.crossWallet ? ` ${t('(different wallet)')}` : ''}.</p>
           ) : null}
         </div>
 
@@ -292,7 +292,7 @@ export function SubmitterApplyForm({ onChange }: { onChange?: () => void }) {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm text-neutral-500">{t('Deregister as a submitter. Your profile stays in the platform’s history.')}</p>
             <button onClick={() => { setLeaveError(null); setConfirmLeave(true); }} className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700">
-              {t('Leave DAO')}
+              {t('Leave Council')}
             </button>
           </div>
           {leaveError ? <div className="mt-2 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">⚠ {leaveError}</div> : null}
@@ -302,7 +302,7 @@ export function SubmitterApplyForm({ onChange }: { onChange?: () => void }) {
         open={confirmLeave}
         title={t('Leave as a submitter?')}
         message={t("You will lose the submitter role and won't be able to submit proposals. Your profile is kept in the platform's history (visible under Submitters → show deleted accounts). You can re-apply later. Are you sure?")}
-        confirmLabel={t('Leave DAO')}
+        confirmLabel={t('Leave Council')}
         cancelLabel={t('Stay')}
         tone="danger"
         onCancel={() => setConfirmLeave(false)}

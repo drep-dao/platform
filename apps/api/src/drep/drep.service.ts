@@ -35,7 +35,7 @@ export class DrepService {
   ) {}
 
   /**
-   * §2/§4 — all DAO members (board + admitted DReps) with balanced voting power.
+   * §2/§4 — all Council members (board + admitted DReps) with balanced voting power.
    * VotingPower = log10(stake_ADA) × (1 + merit/200). Stake is the DRep's
    * on-chain voting power (Koios `amount`); merit is the clamped ledger sum.
    */
@@ -199,14 +199,14 @@ export class DrepService {
   }
 
   /**
-   * Per-DRep public profile for the DAO members directory: the list-row fields, plus
+   * Per-DRep public profile for the Council members directory: the list-row fields, plus
    * the bio / socials / contact and a count of admission votes cast (board members
    * only — non-board members never get to vote on join applications).
    */
   async getDaoMemberDetail(drepIdOnchain: string, opts: { includeContact?: boolean } = { includeContact: true }) {
     const list = await this.listDaoMembers();
     const summary = list.find((m) => m.drepId === drepIdOnchain);
-    if (!summary) throw new NotFoundException('not a current DAO member');
+    if (!summary) throw new NotFoundException('not a current Council member');
 
     // Bio/socials/contact + the Drep row id (needed for the admission-vote count).
     // A board member without a Drep row (genesis-seated, never logged in) has no
@@ -216,7 +216,7 @@ export class DrepService {
       select: { id: true, userId: true, bio: true, socials: true, contact: true, subcategoryIds: true, votesOnFundingProposals: true, conflictOfInterest: true, noSelfVotePledge: true, country: true, linkedSubmitterUserId: true },
     });
 
-    // §2 — is this DAO member ALSO a submitter? By the SAME wallet (their own account has an
+    // §2 — is this Council member ALSO a submitter? By the SAME wallet (their own account has an
     // approved submitter profile) OR by an explicit cross-wallet link declared from either side.
     const submitter = drep
       ? await this.prisma.submitterApplication.findFirst({
@@ -302,10 +302,10 @@ export class DrepService {
     };
   }
 
-  /** §2 (board) — override a DAO member's cross-wallet link to a submitter (set or clear). */
+  /** §2 (board) — override a Council member's cross-wallet link to a submitter (set or clear). */
   async setSubmitterLink(drepIdOnchain: string, linkedSubmitterUserId: string | null) {
     const drep = await this.prisma.drep.findUnique({ where: { drepIdOnchain }, select: { id: true } });
-    if (!drep) throw new NotFoundException('DAO member not found');
+    if (!drep) throw new NotFoundException('Council member not found');
     await this.prisma.drep.update({ where: { id: drep.id }, data: { linkedSubmitterUserId: linkedSubmitterUserId?.trim() || null } });
     return this.getDaoMemberDetail(drepIdOnchain);
   }
@@ -528,7 +528,7 @@ export class DrepService {
     return { ok: true };
   }
 
-  /** Approved Experts — listed in the DAO dashboard (§2). */
+  /** Approved Experts — listed in the Council dashboard (§2). */
   async listApprovedExperts() {
     const experts = await this.prisma.expert.findMany({
       where: { approvedByBoard: true, leftAt: null },
@@ -617,7 +617,7 @@ export class DrepService {
     };
   }
 
-  /** §14.2 — a registered on-chain DRep requests to join the DAO (or re-applies
+  /** §14.2 — a registered on-chain DRep requests to join the Council (or re-applies
    * after a previous rejection/removal). The DRep ID is taken from the wallet's
    * verified CIP-95 key, never from client input. */
   async apply(userId: string, dto: DrepApplicationDto) {
@@ -625,7 +625,7 @@ export class DrepService {
     if (!user) throw new NotFoundException('user not found');
     if (!user.drepKeyHash || !user.drepRegistered) {
       throw new ForbiddenException(
-        'only a registered on-chain DRep can join the DAO — register your DRep key on-chain, then sign in again',
+        'only a registered on-chain DRep can join the Council — register your DRep key on-chain, then sign in again',
       );
     }
     const drepIdOnchain = drepIdFromKeyHashHex(user.drepKeyHash);
@@ -642,7 +642,7 @@ export class DrepService {
     const elig = await this.entryEligibility(userId);
     if (!elig.eligible) {
       const why = elig.requirements.filter((r) => !r.met).map((r) => `${r.label}: ${r.detail}`).join('; ');
-      throw new ForbiddenException(`you don't yet meet the DAO entry requirements — ${why}`);
+      throw new ForbiddenException(`you don't yet meet the Council entry requirements — ${why}`);
     }
 
     // Photo is optional: if provided it must be a data URL; empty/absent = none,
@@ -704,8 +704,8 @@ export class DrepService {
           await this.anchor.anchorMembership({
             kind: GovSubject.ADMISSION,
             event: boardSeats === 0
-              ? 'new DAO member admitted (free period — no board elected)'
-              : 'new DAO member admitted (open membership — no board vote required)',
+              ? 'new Council member admitted (free period — no board elected)'
+              : 'new Council member admitted (open membership — no board vote required)',
             name: dto.displayName ?? drepIdOnchain.slice(0, 16),
             walletKind: 'drep_id',
             walletId: drepIdOnchain,
@@ -722,7 +722,7 @@ export class DrepService {
   }
 
   /**
-   * §14 — a DAO member voluntarily leaves (status → REMOVED). A board member who
+   * §14 — a Council member voluntarily leaves (status → REMOVED). A board member who
    * leaves also resigns their board seat, so they truly stop being on the board
    * (an admin re-seats a replacement from genesis). Idempotent-ish; can re-apply.
    */
@@ -732,7 +732,7 @@ export class DrepService {
       include: { user: { select: { drepKeyHash: true } } },
     });
     if (!drep) throw new NotFoundException('no DRep profile');
-    if (drep.status !== DRepStatus.ADMITTED) throw new ConflictException('you are not an active DAO member');
+    if (drep.status !== DRepStatus.ADMITTED) throw new ConflictException('you are not an active Council member');
     const seat = drep.user.drepKeyHash
       ? await this.prisma.boardSeat.findFirst({ where: { removedAt: null, drepKeyHash: drep.user.drepKeyHash } })
       : null;
@@ -971,9 +971,9 @@ export class DrepService {
     }
   }
 
-  // ── §14.4 Removal of a DAO member (3-of-5 board vote) ──────────────────────
+  // ── §14.4 Removal of a Council member (3-of-5 board vote) ──────────────────────
 
-  /** A board member proposes removing a DAO member. */
+  /** A board member proposes removing a Council member. */
   async proposeRemoval(boardUserId: string, targetDrepId: string, reason?: string) {
     const board = await this.requireBoardDrep(boardUserId);
     const target = await this.prisma.drep.findUnique({
@@ -981,7 +981,7 @@ export class DrepService {
       include: { user: { select: { drepKeyHash: true } } },
     });
     if (!target || target.status !== DRepStatus.ADMITTED) {
-      throw new NotFoundException('target is not an active DAO member');
+      throw new NotFoundException('target is not an active Council member');
     }
     if (target.id === board.id) throw new BadRequestException('cannot propose your own removal');
     const targetIsBoard = target.user.drepKeyHash
@@ -1188,7 +1188,7 @@ export class DrepService {
   }
 
   /**
-   * §14.1 — can this registered DRep request DAO entry? Two independently-toggled
+   * §14.1 — can this registered DRep request Council entry? Two independently-toggled
    * gates: voting power/delegators, and past on-chain voting activity. When both
    * switches are OFF (testnet default) entry is open. Returns per-requirement reasons
    * so the UI can enable/disable the Join button and explain any shortfall.
@@ -1197,7 +1197,7 @@ export class DrepService {
     gatingEnabled: boolean;
     eligible: boolean;
     // §14 — true when an eligible DRep with a complete profile is admitted automatically (no
-    // 3-of-5 vote): membership is open, or no board is seated. Drives the note on Join DAO.
+    // 3-of-5 vote): membership is open, or no board is seated. Drives the note on Join Council.
     freePeriod: boolean;
     requirements: { group: 'power' | 'activity'; label: string; met: boolean; detail: string }[];
   }> {

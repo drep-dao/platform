@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { removalApi, type ActiveRemoval, type RemovableMember } from '@/lib/api';
 import { useT } from '@/lib/prefs-context';
 
-/** Board-only (§14.4): propose removing a DAO member + vote 3-of-5 to remove.
+/** Board-only (§14.4): propose removing a Council member + vote 3-of-5 to remove.
  *  `history` also shows resolved removals (removed / kept) as read-only rows. */
 export function RemovalPanel({ history = false }: { history?: boolean }) {
   const t = useT();
@@ -62,7 +62,7 @@ export function RemovalPanel({ history = false }: { history?: boolean }) {
   return (
     <div className="space-y-3">
       <h3 className="text-base font-semibold">
-        {t('Board — remove a DAO member')}{' '}
+        {t('Board — remove a Council member')}{' '}
         <span className="text-sm font-normal text-neutral-500">
           ({removals.filter((r) => r.status === 'PENDING').length} {t('pending')})
         </span>

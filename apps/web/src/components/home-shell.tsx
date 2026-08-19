@@ -30,8 +30,8 @@ type View = 'overview' | 'members' | 'submitters' | 'experts' | 'me' | 'requests
 const NAV: { key: View; label: string; icon: string; boardOnly?: boolean }[] = [
   // §2 — "My area" first: it is the member's home (to-dos, profile, proposals).
   { key: 'me', label: 'My area', icon: 'user' },
-  { key: 'overview', label: 'DAO Member overview', icon: 'dashboard' },
-  { key: 'members', label: 'DAO members', icon: 'users' },
+  { key: 'overview', label: 'Council Member overview', icon: 'dashboard' },
+  { key: 'members', label: 'Council members', icon: 'users' },
   { key: 'submitters', label: 'Submitters', icon: 'send' },
   { key: 'experts', label: 'Experts', icon: 'award' },
   { key: 'requests', label: 'Requests', icon: 'message' },
@@ -98,7 +98,7 @@ export function HomeShell() {
           <div className="mx-auto flex max-w-6xl items-center gap-4 px-5 py-3">
             <button onClick={() => setView('overview')} className="flex items-center gap-2.5 font-semibold tracking-tight">
               <img src={brand.icon} alt="" className="h-7 w-7" />
-              <span className="hidden sm:inline">{brand.name.replace(/ DAO$/, '')}</span>
+              <span className="hidden sm:inline">{brand.name.replace(/ Council$/, '')}</span>
             </button>
             <nav className="ml-2 hidden items-center gap-0.5 md:flex">
               {NAV.filter((n) => PUBLIC_VIEWS.includes(n.key)).map((n) => (
@@ -108,7 +108,7 @@ export function HomeShell() {
                       ? 'bg-neutral-100 font-semibold text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100'
                       : 'text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100'
                   }`}>
-                  {t(n.label === 'DAO Member overview' ? 'Overview' : n.label)}
+                  {t(n.label === 'Council Member overview' ? 'Overview' : n.label)}
                 </button>
               ))}
               <span className="ml-1 inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-[13px] text-neutral-400 opacity-60 dark:text-neutral-500">
@@ -224,7 +224,7 @@ export function HomeShell() {
         ) : null}
       </main>
 
-      {/* Right: login box (+ JOIN DAO). lg:pt-10 clears the fixed top-right language/theme switcher. */}
+      {/* Right: login box (+ JOIN COUNCIL). lg:pt-10 clears the fixed top-right language/theme switcher. */}
       <div className="space-y-2 lg:w-72 lg:shrink-0 lg:pt-10">
         <div className="space-y-2 rounded-lg border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900">
           <ConnectWallet />

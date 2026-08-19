@@ -13,8 +13,8 @@ const field =
   'w-full rounded-md border border-neutral-300 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900';
 
 /**
- * §14.3 DRep form. `join` = a registered DRep requesting DAO membership (board
- * then votes 3-of-5). `profile` = an existing DAO member editing their details.
+ * §14.3 DRep form. `join` = a registered DRep requesting Council membership (board
+ * then votes 3-of-5). `profile` = an existing Council member editing their details.
  */
 export function DrepForm({ mode }: { mode: 'join' | 'profile' }) {
   const t = useT();
@@ -187,8 +187,8 @@ export function DrepForm({ mode }: { mode: 'join' | 'profile' }) {
         onChange={setBio}
         title={t('Bio — motivation / experience')}
         hint={`${t('min 100 words —')} ${bioWords}/100`}
-        subtitle={t('Who you are, your experience, why you participate in the DAO. Supports bold, italics, headers, lists.')}
-        placeholder={t('Who you are, your experience, why you participate in the DAO…')}
+        subtitle={t('Who you are, your experience, why you participate in the Council. Supports bold, italics, headers, lists.')}
+        placeholder={t('Who you are, your experience, why you participate in the Council…')}
         minRows={6}
         required
       />
@@ -319,7 +319,7 @@ export function DrepForm({ mode }: { mode: 'join' | 'profile' }) {
         <div className="text-sm text-emerald-600">
           {mode === 'join'
             ? freePeriod
-              ? t('🎉 Welcome on board! You’re now a DAO member and can submit and vote on internal proposals.')
+              ? t('🎉 Welcome on board! You’re now a Council member and can submit and vote on internal proposals.')
               : t('Request submitted — awaiting board review.')
             : t('Profile saved.')}
         </div>
@@ -330,7 +330,7 @@ export function DrepForm({ mode }: { mode: 'join' | 'profile' }) {
         disabled={busy || !drepId || !!photoError || !dirty}
         className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
       >
-        {busy ? t('Saving…') : mode === 'join' ? (freePeriod ? t('Join the DAO') : t('Submit request to join')) : t('Save profile')}
+        {busy ? t('Saving…') : mode === 'join' ? (freePeriod ? t('Join the Council') : t('Submit request to join')) : t('Save profile')}
       </button>
     </form>
   );

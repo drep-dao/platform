@@ -22,7 +22,7 @@ export function ExpertsDirectory() {
   const { drepUrl } = useExplorer();
   const { get, setParams } = useUrlNav();
   const [rows, setRows] = useState<DaoExpert[] | null>(null);
-  // Deep-link: ?expert=<id> opens that profile (e.g. from the DAO overview's
+  // Deep-link: ?expert=<id> opens that profile (e.g. from the Council overview's
   // "View profile →" link). The chevron toggles it locally + in the URL.
   const openId = get('expert');
   const setOpenId = (id: string | null) => setParams({ expert: id });

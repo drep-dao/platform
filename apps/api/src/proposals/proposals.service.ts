@@ -460,11 +460,11 @@ export class ProposalsService {
    */
   async submit(userId: string, id: string, dto: SubmitProposalDto) {
     const p = await this.ownDraft(userId, id);
-    // §3 — payout / refund address is required to submit (the DAO needs an
+    // §3 — payout / refund address is required to submit (the Council needs an
     // address to send fee refunds + the funded budget to). Drafts can be
     // saved without it; submission can't.
     if (!p.payoutAddress?.trim()) {
-      throw new BadRequestException('a payout / refund address is required to submit (the DAO needs somewhere to send refunds and the funded budget)');
+      throw new BadRequestException('a payout / refund address is required to submit (the Council needs somewhere to send refunds and the funded budget)');
     }
     // §3 — every mandatory text field (proposal + each milestone) must meet
     // the round's word-count minimum. Skipped in test mode (mandatoryWords=0).

@@ -18,7 +18,7 @@ const STAGES = [
   { key: 'DV', label: 'Debate · Vote · Tally' },
   { key: 'FUNDING', label: 'Funding' },
 ];
-// A governance DAO runs a continuous cycle rather than budgeted rounds.
+// A governance Council runs a continuous cycle rather than budgeted rounds.
 const GOV_FLOW = ['Join', 'Propose', 'Vote', 'Enact'];
 
 export function PublicLanding({ onConnect, onExplore }: { onConnect: () => void; onExplore: () => void }) {

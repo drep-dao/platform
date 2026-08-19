@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { drepApi, type MyRemoval } from '@/lib/api';
 import { useT } from '@/lib/prefs-context';
 
-/** §14.4 — warns a DAO member that the board is voting on removing them. */
+/** §14.4 — warns a Council member that the board is voting on removing them. */
 export function RemovalBanner() {
   const t = useT();
   const [r, setR] = useState<MyRemoval | null>(null);
@@ -16,7 +16,7 @@ export function RemovalBanner() {
     <div className="rounded-lg border border-red-300 bg-red-50 p-4 text-sm dark:border-red-900 dark:bg-red-950/40">
       <h3 className="font-semibold text-red-700 dark:text-red-300">⚠ {t('Removal vote in progress')}</h3>
       <p className="mt-1 text-neutral-700 dark:text-neutral-300">
-        {r.proposedByName} {t('proposed removing you from the DAO')} — <strong>{r.yes}/{r.threshold}</strong> {t('YES so far.')}
+        {r.proposedByName} {t('proposed removing you from the Council')} — <strong>{r.yes}/{r.threshold}</strong> {t('YES so far.')}
         {r.reason ? ` ${t('Reason:')} ${r.reason}` : ''} {t('If')} {r.threshold} {t('board members vote YES you lose membership (you can re-apply afterwards).')}
       </p>
       {r.votes.length ? (

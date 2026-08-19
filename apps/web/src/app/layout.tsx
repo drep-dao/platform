@@ -6,8 +6,8 @@ import { LanguageThemeSwitcher } from '@/components/language-theme-switcher';
 
 export const metadata: Metadata = {
   title: 'DRep Council',
-  description: 'Cardano governance DAO platform',
-  // Browser-tab icon: a ballot card with a cast vote (checkmark), in the DAO green. Kept to a few
+  description: 'Cardano governance Council platform',
+  // Browser-tab icon: a ballot card with a cast vote (checkmark), in the Council green. Kept to a few
   // thick strokes so it stays legible at the 16px a tab actually renders.
   // Alternatives live in /public/icons (drep-globe, drep-globe-orbit, drep-globe-network, drep-ballot).
   icons: { icon: '/icons/drep-ballot-check.svg', shortcut: '/icons/drep-ballot-check.svg', apple: '/icons/drep-ballot-check.svg' },

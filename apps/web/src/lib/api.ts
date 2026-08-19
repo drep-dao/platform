@@ -10,12 +10,12 @@ export interface UserProfile {
     displayName: string | null;
     createdAt: string;
   };
-  /** §2 — the submitter profile's own name (may differ from the DAO-member name). */
+  /** §2 — the submitter profile's own name (may differ from the Council-member name). */
   submitterName: string | null;
   roles: string[];
   /** On-chain DRep identity — source of truth for the DREP role (verified at login). */
   onchainDrep: { registered: boolean; drepId: string | null };
-  /** DAO membership (admission) status — separate from on-chain registration. */
+  /** Council membership (admission) status — separate from on-chain registration. */
   daoMembership: { status: string; admittedAt: string | null } | null;
 }
 
@@ -83,7 +83,7 @@ export interface DrepApplicationInput {
   admissionCallOptin?: boolean;
   // §8.2 — board-only self-toggle for "I'll vote on funding proposals".
   votesOnFundingProposals?: boolean;
-  // §2 — cross-wallet link: the submitter account id this DAO member declares as the same
+  // §2 — cross-wallet link: the submitter account id this Council member declares as the same
   // entity (empty string clears the link).
   linkedSubmitterUserId?: string;
 }
@@ -127,7 +127,7 @@ export interface DaoMember {
   basePower: number;
   meritMultiplier: number;
   adjustedPower: number; // log10(votingPowerAda) × (1 + merit/200)
-  since: string | null; // board install date (board) or board-approval date (DAO member)
+  since: string | null; // board install date (board) or board-approval date (Council member)
   meetsEntryRequirements: boolean; // §14.1 — still meets the power/delegator minimum (board always true)
   // §8.2 — only meaningful for board members. Funding-proposal totals subtract
   // board members whose flag is false; non-board are always voters.
@@ -161,7 +161,7 @@ export interface DaoMemberDetail extends DaoMember {
   };
   conflictOfInterest: string;
   noSelfVotePledge: boolean;  country: string;
-  /** §2 — this DAO member is also an approved submitter, + the submitter name if different. */
+  /** §2 — this Council member is also an approved submitter, + the submitter name if different. */
   isSubmitter: boolean;
   submitterName: string | null;
   /** §2 — the linked submitter profile id (for cross-linking) + the board-editable pointer. */
@@ -174,7 +174,7 @@ export const daoApi = {
   member: (drepId: string) => request<DaoMemberDetail>(`/dao/members/${encodeURIComponent(drepId)}`),
   experts: () => request<DaoExpert[]>('/dao/experts'),
   proofs: () => request<OnChainProof[]>('/dao/proofs'),
-  // §2 (board) — override a DAO member's cross-wallet link to a submitter (null clears it).
+  // §2 (board) — override a Council member's cross-wallet link to a submitter (null clears it).
   setMemberLink: (drepId: string, linkedSubmitterUserId: string | null) =>
     request<DaoMemberDetail>(`/dao/members/${encodeURIComponent(drepId)}/link`, { method: 'PATCH', body: JSON.stringify({ linkedSubmitterUserId }) }),
 };
@@ -281,7 +281,7 @@ export interface HotWalletHistoryItem {
 export interface TreasuryTx {
   hash: string;
   time: number; // unix seconds
-  /** INTERNAL = between DAO wallets (multisig/buckets/hot wallet) — nothing left the DAO. */
+  /** INTERNAL = between Council wallets (multisig/buckets/hot wallet) — nothing left the Council. */
   direction: 'IN' | 'OUT' | 'INTERNAL';
   /** Board members who signed the multisig tx (board actions only). */
   signers?: string[];
@@ -732,7 +732,7 @@ export interface SubmitterApplicationInput {
   email: string;
   previousFunding?: string;
   agreePersist?: boolean;
-  // §2 — cross-wallet link to a DAO-member profile (DRep id; empty string clears it).
+  // §2 — cross-wallet link to a Council-member profile (DRep id; empty string clears it).
   linkedDrepIdOnchain?: string;
 }
 export interface SubmitterHistoryItem {
@@ -766,8 +766,8 @@ export interface MySubmitter {
   rejectionReason: string | null;
   leftAt: string | null;
   history: SubmitterHistoryItem[];
-  // §2 — cross-wallet link: the DAO-member DRep id this submitter declared (own selection),
-  // and the resolved linked DAO member (reflects a link set from either side).
+  // §2 — cross-wallet link: the Council-member DRep id this submitter declared (own selection),
+  // and the resolved linked Council member (reflects a link set from either side).
   linkedDrepIdOnchain: string | null;
   linkedDaoMember: { drepIdOnchain: string; name: string; crossWallet: boolean } | null;
 }
@@ -776,12 +776,12 @@ export interface SubmitterApplication extends MySubmitter {
 }
 export interface ApprovedSubmitter {
   id: string;
-  /** §2 — the submitter's account id (the value a DAO member selects to link to this profile). */
+  /** §2 — the submitter's account id (the value a Council member selects to link to this profile). */
   userId: string;
   displayName: string;
-  /** §2 — when this submitter is also a DAO member with a different name, that name. */
+  /** §2 — when this submitter is also a Council member with a different name, that name. */
   daoMemberName: string | null;
-  /** §2 — the linked DAO member's on-chain DRep id, for cross-linking to their profile. */
+  /** §2 — the linked Council member's on-chain DRep id, for cross-linking to their profile. */
   daoMemberDrepId: string | null;
   description: string;
   country: string;
@@ -845,7 +845,7 @@ export const boardSubmittersApi = {
   approve: (id: string) => request<{ ok: boolean }>(`/admin/submitters/${id}/approve`, { method: 'POST' }),
   reject: (id: string, reason: string) =>
     request<{ ok: boolean }>(`/admin/submitters/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
-  // §2 (board) — override a submitter's cross-wallet link to a DAO member (null clears it).
+  // §2 (board) — override a submitter's cross-wallet link to a Council member (null clears it).
   setLink: (id: string, linkedDrepIdOnchain: string | null) =>
     request<MySubmitter>(`/admin/submitters/${id}/link`, { method: 'PATCH', body: JSON.stringify({ linkedDrepIdOnchain }) }),
 };
@@ -2095,7 +2095,7 @@ export const boardDeadlinesApi = {
     request<ProposalDetail>(`/admin/proposals/${proposalId}/extend-pledge-grace`, { method: 'POST', body: JSON.stringify({ days }) }),
 };
 
-// ── §R — submitter Requests (DRep DAO governance edition) ──────────────────────
+// ── §R — submitter Requests (DRep Council governance edition) ──────────────────────
 
 export interface RequestTypeView {
   id: string;

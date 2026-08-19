@@ -13,7 +13,7 @@ function svcWith(drepFindFirst: ReturnType<typeof vi.fn>) {
 }
 
 describe('SubmitterService — cross-wallet link resolution (§2)', () => {
-  it('resolves an explicit forward link (submitter declared a DAO member) as cross-wallet', async () => {
+  it('resolves an explicit forward link (submitter declared a Council member) as cross-wallet', async () => {
     const findFirst = vi.fn().mockResolvedValueOnce({
       drepIdOnchain: 'drep1member', userId: 'u-member', user: { displayName: 'Alice' },
     });

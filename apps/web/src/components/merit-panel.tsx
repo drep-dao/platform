@@ -16,7 +16,7 @@ const REASON_LABEL: Record<string, string> = {
   BOARD_ROUND_END: 'Board: ended a round',
   BOARD_ROUND_CONFIGURE: 'Board: configured a round',
   BOARD_REWARD_DISTRIBUTE: 'Board: distributed rewards',
-  BOARD_LEDGER_MONTHLY: 'Board: kept the DAO ledger',
+  BOARD_LEDGER_MONTHLY: 'Board: kept the Council ledger',
   BOARD_PAYOUT_SIGNED: 'Board: paid a milestone in time',
   MISSED_DV: 'Missed a Debate & Vote ballot',
   MISSED_FILTER: 'Missed a filtering review',

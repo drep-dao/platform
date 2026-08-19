@@ -8,7 +8,7 @@ describe('canCommentOnProposal (§20 — who can post a comment)', () => {
     expect(canCommentOnProposal(['VIEWER', 'EXPERT'], false)).toBe(true);
   });
 
-  it('lets board / DReps / DAO members post', () => {
+  it('lets board / DReps / Council members post', () => {
     expect(canCommentOnProposal(['BOARD'], false)).toBe(true);
     expect(canCommentOnProposal(['DREP'], false)).toBe(true);
     expect(canCommentOnProposal(['DAO_MEMBER'], false)).toBe(true);

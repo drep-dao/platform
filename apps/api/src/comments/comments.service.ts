@@ -32,7 +32,7 @@ export class CommentsService {
       orderBy: { createdAt: 'asc' },
       include: { author: authorSelect },
     });
-    // §7/§20 — show each author's role (board / expert / DAO member) beside the name.
+    // §7/§20 — show each author's role (board / expert / Council member) beside the name.
     const boardHashes = new Set(
       (await this.prisma.boardSeat.findMany({ where: { removedAt: null }, select: { drepKeyHash: true } })).map((s) => s.drepKeyHash),
     );
@@ -52,7 +52,7 @@ export class CommentsService {
     const roleOf = (a: (typeof rows)[number]['author']): string | null => {
       if (a.drepKeyHash && boardHashes.has(a.drepKeyHash)) return 'Board member';
       if (a.experts?.some((e) => e.approvedByBoard)) return 'Expert';
-      if (a.drep?.status === 'ADMITTED') return 'DAO member';
+      if (a.drep?.status === 'ADMITTED') return 'Council member';
       return null;
     };
     const view = (c: (typeof rows)[number]) => ({

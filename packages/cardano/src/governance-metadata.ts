@@ -1,6 +1,6 @@
 /**
  * On-chain governance events as transaction metadata (label 80808081), inspired
- * by WingRiders' open-source on-chain DAO governance (MIT) — the "votes are
+ * by WingRiders' open-source on-chain Council governance (MIT) — the "votes are
  * tx metadata, anyone can re-tally" pattern — adapted to our model: DRep IDs,
  * an explicit **voting style**, and our subjects (admission / filtering /
  * milestone / debate-&-vote / removal / internal).
@@ -86,8 +86,8 @@ export type GovEvent = GovApplicationEvent | GovVoteEvent | GovResultEvent;
 
 /** Human-readable titles so the on-chain JSON is understandable on its own. */
 export const SUBJECT_TITLE: Record<GovSubject, string> = {
-  admission: 'Admission of new DAO member',
-  removal: 'Removal of a DAO member',
+  admission: 'Admission of new Council member',
+  removal: 'Removal of a Council member',
   filtering: 'Proposal filtering review',
   milestone: 'Milestone review',
   dv: 'Debate & Vote (funding)',

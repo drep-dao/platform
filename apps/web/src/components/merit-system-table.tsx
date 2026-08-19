@@ -17,7 +17,7 @@ const FUNDING_ONLY = new Set<MeritReason>([
 
 /**
  * §13 — human-readable explanation of the merit-based system, shown at the
- * bottom of the DAO Member overview. Point values come straight from the
+ * bottom of the Council Member overview. Point values come straight from the
  * shared MERIT_DELTAS table (the same one the backend awards from), so this
  * table can never drift from what the platform actually does.
  */
@@ -114,14 +114,14 @@ export function MeritSystemTable() {
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
         <Group
-          title="All DAO members"
+          title="All Council members"
           note="Applies to every admitted DRep, including board members."
           gains={keep(MEMBER_GAINS)}
           losses={keep(MEMBER_LOSSES)}
         />
         <Group
           title="Board members"
-          note="Board duties, on top of the DAO-member operations on the left."
+          note="Board duties, on top of the Council-member operations on the left."
           gains={keep(BOARD_GAINS)}
           losses={keep(BOARD_LOSSES)}
         />

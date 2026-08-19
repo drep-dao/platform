@@ -12,8 +12,19 @@ import { MERIT_DELTAS, type MeritReason, clampMerit, PLATFORM_CONFIG_DEFAULTS } 
 export class MeritService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Record one delta for a DRep. Returns false if it was already recorded. */
+  // §13 master switch, cached ~60s. When merit is disabled, no deltas are recorded at all.
+  private enabledCache: { v: boolean; exp: number } | null = null;
+  async meritEnabled(): Promise<boolean> {
+    if (this.enabledCache && this.enabledCache.exp > Date.now()) return this.enabledCache.v;
+    const row = await this.prisma.platformConfig.findUnique({ where: { key: 'MERIT_ENABLED' } });
+    const v = row ? row.value === true : (PLATFORM_CONFIG_DEFAULTS.MERIT_ENABLED as boolean);
+    this.enabledCache = { v, exp: Date.now() + 60_000 };
+    return v;
+  }
+
+  /** Record one delta for a DRep. Returns false if it was already recorded (or merit is off). */
   async award(drepId: string, reason: MeritReason, referenceId?: string | null): Promise<boolean> {
+    if (!(await this.meritEnabled())) return false; // §13 off → merit is neither earned nor lost
     const ref = referenceId ?? null;
     const existing = await this.prisma.meritLedger.findFirst({
       where: { drepId, reasonCode: reason, referenceId: ref },

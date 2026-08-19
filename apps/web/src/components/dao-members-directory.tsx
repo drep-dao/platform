@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { daoApi, submitterApi, type DaoMember, type DaoMemberDetail, type ApprovedSubmitter } from '@/lib/api';
+import { daoApi, submitterApi, configApi, type DaoMember, type DaoMemberDetail, type ApprovedSubmitter } from '@/lib/api';
 import { useT } from '@/lib/prefs-context';
 import { useAuth } from '@/lib/auth-context';
 import { CopyButton } from './copy-button';
@@ -157,6 +157,8 @@ function MemberDetail({ drepId, onBack }: { drepId: string; onBack: () => void }
   const { drepUrl } = useExplorer();
   const [d, setD] = useState<DaoMemberDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [meritEnabled, setMeritEnabled] = useState(false);
+  useEffect(() => { configApi.get().then((c) => setMeritEnabled(!!c.meritEnabled)).catch(() => undefined); }, []);
 
   useEffect(() => {
     setD(null);
@@ -211,7 +213,7 @@ function MemberDetail({ drepId, onBack }: { drepId: string; onBack: () => void }
             </div>
           </div>
           <div className="space-y-4">
-            <Stats d={d} />
+            <Stats d={d} meritEnabled={meritEnabled} />
             <Activity d={d} />
             <div>
               <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{t('Bio')}</div>
@@ -270,14 +272,14 @@ function MemberLinkEditor({ d, onSaved }: { d: DaoMemberDetail; onSaved: (d: Dao
   );
 }
 
-function Stats({ d }: { d: DaoMemberDetail }) {
+function Stats({ d, meritEnabled }: { d: DaoMemberDetail; meritEnabled: boolean }) {
   const t = useT();
   return (
     <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm md:grid-cols-3 lg:grid-cols-4">
       <Stat label={t('Voting power')} value={`${d.votingPowerAda.toLocaleString()} ₳`} />
       <Stat label={t('Delegators')} value={d.delegators.toLocaleString()} />
-      <Stat label={t('Merit')} value={d.merit.toLocaleString()} />
-      <Stat label={t('Adjusted power')} value={d.adjustedPower.toFixed(2)} />
+      {meritEnabled ? <Stat label={t('Merit')} value={d.merit.toLocaleString()} /> : null}
+      {meritEnabled ? <Stat label={t('Adjusted power')} value={d.adjustedPower.toFixed(2)} /> : null}
       <Stat label={t('Member since')} value={d.since ? new Date(d.since).toLocaleDateString() : '—'} />
       {/* §8.2 — board-only opt-in flag (non-board always vote, so hidden for them). It's a
           flag, not an activity count, so it sits with the headline stats. */}

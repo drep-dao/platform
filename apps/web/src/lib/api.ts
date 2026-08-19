@@ -1409,6 +1409,7 @@ export interface VotingResults {
 export interface PublicConfig {
   network: string;
   explorer: string;
+  meritEnabled: boolean;
   submissionFeeAddress: string | null;
   pledgeAddress: string | null;
   anchorMetadataLabel: number;

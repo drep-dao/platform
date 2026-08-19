@@ -98,6 +98,7 @@ export class DrepService {
     const minDelegs = numCfg('MIN_DELEGATORS');
     const minStakeLovelace = BigInt(Math.round(numCfg('MIN_DELEGATOR_STAKE_ADA'))) * 1_000_000n;
     const meritMax = numCfg('MERIT_POINT_MAX'); // §13 merit cap (runtime-configurable)
+    const meritEnabled = boolCfg('MERIT_ENABLED'); // §13 master switch (off → merit ignored)
     const activityWindow = numCfg('MINIMUM_VOTES_CASTED');
     const activityNeed = Math.ceil((activityWindow * numCfg('MINIMUM_DREP_ACTIVITY')) / 100);
     const onlyWithRationale = boolCfg('ONLY_VOTES_WITH_RATIONALE');
@@ -117,11 +118,11 @@ export class DrepService {
 
     const members = await Promise.all(
       rows.map(async (r) => {
-        const merit = r.drepRowId ? await this.currentMerit(r.drepRowId, meritMax) : 0;
+        const merit = meritEnabled && r.drepRowId ? await this.currentMerit(r.drepRowId, meritMax) : 0;
         const power = vp.get(r.drepId) ?? { votingPowerLovelace: 0n, delegators: 0, ownVotingPowerLovelace: 0n, qualifyingDelegators: 0 };
         const m = meta.get(r.drepId);
         const base = basePower(power.votingPowerLovelace);
-        const mult = meritMultiplier(merit, meritMax);
+        const mult = meritEnabled ? meritMultiplier(merit, meritMax) : 1;
         // §14.1 — does the member still meet the ENABLED entry gates? A shortfall is shown
         // but the member remains a full voting member.
         // - Power gate: board is exempt (seated via genesis, not the delegation threshold).

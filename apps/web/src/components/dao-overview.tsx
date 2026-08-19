@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { SUBCAT_LABEL } from '@/lib/ui';
-import { daoApi, type DaoMember, type DaoExpert } from '@/lib/api';
+import { daoApi, configApi, type DaoMember, type DaoExpert } from '@/lib/api';
 import { useT } from '@/lib/prefs-context';
 import { fmtDate } from './round-ui';
 import { MeritSystemTable } from './merit-system-table';
@@ -48,6 +48,9 @@ export function DaoOverview() {
   const [members, setMembers] = useState<DaoMember[] | null>(null);
   const [experts, setExperts] = useState<DaoExpert[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // §13 — merit is off by default; when off, the Merit points tab + Merit/×Mult/Adjusted
+  // columns are hidden and the effective voting weight is just the log₁₀ base power.
+  const [meritEnabled, setMeritEnabled] = useState(false);
   // Default: highest adjusted power first (matches the prior server order).
   const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'adjustedPower', dir: 'desc' });
 
@@ -57,6 +60,7 @@ export function DaoOverview() {
       .then(setMembers)
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'));
     daoApi.experts().then(setExperts).catch(() => undefined);
+    configApi.get().then((c) => setMeritEnabled(!!c.meritEnabled)).catch(() => undefined);
   }, []);
 
   const sorted = useMemo(() => {
@@ -90,7 +94,7 @@ export function DaoOverview() {
 
       {/* Linear submenu: DAO members | Experts. */}
       <div className="flex gap-1 border-b border-neutral-200 dark:border-neutral-800">
-        {([['members', t('DAO members')], ['experts', t('Experts')], ['merit', t('Merit points')]] as const).map(([k, l]) => (
+        {(([['members', t('DAO members')], ['experts', t('Experts')], ...(meritEnabled ? [['merit', t('Merit points')]] : [])] as const) as ['members' | 'experts' | 'merit', string][]).map(([k, l]) => (
           <button
             key={k}
             onClick={() => setSub(k)}
@@ -105,12 +109,14 @@ export function DaoOverview() {
 
       {sub === 'experts' ? (
         <ExpertsSection experts={experts} onOpen={(id) => setParams({ view: 'experts', expert: id })} />
-      ) : sub === 'merit' ? (
+      ) : sub === 'merit' && meritEnabled ? (
         <MeritSystemTable />
       ) : (
       <div className="space-y-3">
         <p className="text-sm text-neutral-500">
-          {t('Adjusted power (§4) = log₁₀(on-chain DRep voting power in ADA) × (1 + merit/200). Voting power is ADA delegated to the DRep (CIP-1694 vote delegation — not stake-pool delegation).')}
+          {meritEnabled
+            ? t('Adjusted power (§4) = log₁₀(on-chain DRep voting power in ADA) × (1 + merit/200). Voting power is ADA delegated to the DRep (CIP-1694 vote delegation — not stake-pool delegation).')
+            : t('Voting weight = log₁₀(on-chain DRep voting power in ADA). Voting power is ADA delegated to the DRep (CIP-1694 vote delegation — not stake-pool delegation).')}
         </p>
         {members && members.length > 1 ? (
           <p className="mt-1 text-xs text-neutral-400">{t('Tip: click any column header to sort (click again to reverse).')}</p>
@@ -126,7 +132,7 @@ export function DaoOverview() {
           <table className="w-full text-sm">
             <thead className="bg-neutral-50 text-left text-xs uppercase tracking-wide text-neutral-500 dark:bg-neutral-900">
               <tr>
-                {COLUMNS.map((c) => {
+                {COLUMNS.filter((c) => meritEnabled || !['merit', 'meritMultiplier', 'adjustedPower'].includes(c.key)).map((c) => {
                   const active = sort.key === c.key;
                   return (
                     <th key={c.key} className={`px-3 py-2 ${c.right ? 'text-right' : ''}`}>
@@ -194,17 +200,21 @@ export function DaoOverview() {
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">{m.votingPowerAda.toLocaleString()}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{m.delegators}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{m.basePower.toFixed(2)}</td>
-                  <td
-                    className={`px-3 py-2 text-right tabular-nums ${
-                      m.merit > 0 ? 'text-emerald-600' : m.merit < 0 ? 'text-red-600' : ''
-                    }`}
-                  >
-                    {m.merit > 0 ? '+' : ''}
-                    {m.merit}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums">{m.meritMultiplier.toFixed(2)}</td>
-                  <td className="px-3 py-2 text-right font-semibold tabular-nums">{m.adjustedPower.toFixed(2)}</td>
+                  <td className="px-3 py-2 text-right font-semibold tabular-nums">{m.basePower.toFixed(2)}</td>
+                  {meritEnabled ? (
+                    <>
+                      <td
+                        className={`px-3 py-2 text-right tabular-nums ${
+                          m.merit > 0 ? 'text-emerald-600' : m.merit < 0 ? 'text-red-600' : ''
+                        }`}
+                      >
+                        {m.merit > 0 ? '+' : ''}
+                        {m.merit}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">{m.meritMultiplier.toFixed(2)}</td>
+                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{m.adjustedPower.toFixed(2)}</td>
+                    </>
+                  ) : null}
                 </tr>
               ))}
             </tbody>
@@ -220,11 +230,15 @@ export function DaoOverview() {
                 <td className="px-3 py-2 text-right font-semibold tabular-nums" title={t('Total DAO voting power (sum of the log₁₀ base power)')}>
                   {(sorted ?? []).reduce((s, m) => s + m.basePower, 0).toFixed(2)}
                 </td>
-                <td className="px-3 py-2" />
-                <td className="px-3 py-2" />
-                <td className="px-3 py-2 text-right font-semibold tabular-nums" title={t('Total adjusted voting power across all members')}>
-                  {(sorted ?? []).reduce((s, m) => s + m.adjustedPower, 0).toFixed(2)}
-                </td>
+                {meritEnabled ? (
+                  <>
+                    <td className="px-3 py-2" />
+                    <td className="px-3 py-2" />
+                    <td className="px-3 py-2 text-right font-semibold tabular-nums" title={t('Total adjusted voting power across all members')}>
+                      {(sorted ?? []).reduce((s, m) => s + m.adjustedPower, 0).toFixed(2)}
+                    </td>
+                  </>
+                ) : null}
               </tr>
             </tfoot>
           </table>

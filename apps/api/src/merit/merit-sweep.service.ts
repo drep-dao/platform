@@ -34,6 +34,7 @@ export class MeritSweepService implements OnModuleInit, OnModuleDestroy {
 
   async run(): Promise<void> {
     try {
+      if (!(await this.merit.meritEnabled())) return; // §13 merit disabled → nothing to sweep
       await this.missedFilter();
       await this.missedDv();
       await this.missedInternal();

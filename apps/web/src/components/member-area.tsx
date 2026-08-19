@@ -6,7 +6,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useT } from '@/lib/prefs-context';
 import { useUrlNav } from '@/lib/use-url-nav';
 import { useTodoCounts } from '@/lib/use-todo-counts';
-import { expertApi, drepApi, submitterApi, type MyExpert, type MySubmitter, type EntryEligibility, type ReviewMode } from '@/lib/api';
+import { expertApi, drepApi, submitterApi, configApi, type MyExpert, type MySubmitter, type EntryEligibility, type ReviewMode } from '@/lib/api';
 import { DrepForm } from './drep-form';
 import { EntryRequirementsNotice } from './join-dao-button';
 import { MyDrepStatus } from './my-drep-status';
@@ -158,6 +158,8 @@ function ProfileTab({ isMember, isBoard, daoPending, expertApproved, expertPendi
 }) {
   const t = useT();
   // 'dao' = the member/expert primary profile (default); 'submitter' = the submitter sub-profile.
+  const [meritEnabled, setMeritEnabled] = useState(false);
+  useEffect(() => { configApi.get().then((c) => setMeritEnabled(!!c.meritEnabled)).catch(() => undefined); }, []);
   const [sub, setSub] = useState<'dao' | 'submitter'>('dao');
   // Clicking "Apply to become a submitter" opens the submitter sub-profile with the form.
   const [applying, setApplying] = useState(false);
@@ -271,8 +273,8 @@ function ProfileTab({ isMember, isBoard, daoPending, expertApproved, expertPendi
           ) : null}
           {/* §15.4 — payment address for rewards. Amber-nags when empty. */}
           <RewardAddressPanel />
-          {/* §13 — merit points + ledger + avoid-period (vacancy) signalling. */}
-          <section className={card}><MeritPanel /></section>
+          {/* §13 — merit points + ledger + avoid-period (vacancy) signalling. Hidden when merit is off. */}
+          {meritEnabled ? <section className={card}><MeritPanel /></section> : null}
           <section className={card}><PreferencesPanel /></section>
         </div>
       )}

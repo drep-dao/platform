@@ -35,6 +35,8 @@ export const PLATFORM_CONFIG_DEFAULTS = {
   ONLY_VOTES_WITH_RATIONALE: false, // count only votes that carry an on-chain rationale
   AVOID_PERIOD_MAX_DAYS_PER_YEAR: 42,
   MERIT_POINT_MAX: 200,
+  MERIT_ENABLED: false, // §13 — master switch. Off (default): merit is neither earned nor
+  // applied to voting power, and the whole merit UI is hidden. Turn on to use the merit system.
   BOARD_REWARD_DEADLINE_DAYS: 30,
   // NOTE: the yearly board reward budget (BOARD_YEARLY_REWARD_ADA) is intentionally
   // NOT listed here â it has a single editing place in Rewards â Board rewards,
@@ -86,6 +88,7 @@ export const PLATFORM_CONFIG_META: Record<PlatformConfigKey, string> = {
   ONLY_VOTES_WITH_RATIONALE: 'Entry: when ON, only votes carrying an on-chain rationale count toward the activity check.',
   AVOID_PERIOD_MAX_DAYS_PER_YEAR: 'Maximum days per year a DRep may mark themselves unavailable.',
   MERIT_POINT_MAX: "Cap on a DRep's merit score (also bounds the voting-power multiplier).",
+  MERIT_ENABLED: 'Use the merit-point system. When off, merit is neither earned nor applied to voting power, and the merit UI (Merit points tab, Merit/×Mult columns, profile merit) is hidden.',
   BOARD_REWARD_DEADLINE_DAYS: 'Days the board has to distribute rewards after a round before a penalty applies.',
   ANCHOR_SCHEDULE_CRON: 'Cron schedule for the daily on-chain anchoring job (informational).',
   CARDANO_EXPLORER: 'Block explorer for on-chain links: cardanoscan, cexplorer, or adastat.',

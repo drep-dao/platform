@@ -103,11 +103,13 @@ export class DrepService {
     const activityNeed = Math.ceil((activityWindow * numCfg('MINIMUM_DREP_ACTIVITY')) / 100);
     const onlyWithRationale = boolCfg('ONLY_VOTES_WITH_RATIONALE');
 
-    // §4 — on-chain DRep VOTING power (CIP-1694 vote delegation), live: total power +
-    // delegator count, plus own power + qualifying delegators for the eligibility flag.
+    // §4 — on-chain DRep VOTING power (CIP-1694 vote delegation): total power + delegator
+    // count come from a single drep_info call. Own power + qualifying-delegator counts need a
+    // per-delegator scan (slow for DReps with thousands of delegators), so they're only
+    // requested when the power gate is actually enabled — otherwise they aren't used at all.
     const vp = await this.cardano.drepEntryMetricsBatch(
-      rows.map((r) => ({ drepId: r.drepId, ownStakeAddress: r.stakeAddress })),
-      minStakeLovelace,
+      rows.map((r) => ({ drepId: r.drepId, ownStakeAddress: requirePower ? r.stakeAddress : undefined })),
+      requirePower ? minStakeLovelace : 0n,
     );
     // §14.1 activity gate — only query when enabled (1 + N Koios calls); off by default.
     const activity = requireActivity

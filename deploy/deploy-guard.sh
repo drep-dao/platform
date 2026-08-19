@@ -22,6 +22,7 @@ FLAG="$INSTANCE/MAINTENANCE"
 case "$INSTANCE" in
   *drepdao-main) API_SVC=drepdao-main-api; WEB_SVC=drepdao-main-web; WEB_PORT=3400 ;;
   *drepdao-gov)  API_SVC=drepdao-gov-api;  WEB_SVC=drepdao-gov-web;  WEB_PORT=3200 ;;
+  *drep-dao)     API_SVC=drepdao-api;      WEB_SVC=drepdao-web;      WEB_PORT=3000 ;;  # Innovation & Growth (preprod)
   *) echo "unknown instance: $INSTANCE"; exit 2 ;;
 esac
 

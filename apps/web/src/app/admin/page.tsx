@@ -9,6 +9,7 @@ import { AdminConfigPanel } from '@/components/admin/admin-config-panel';
 import { AdminsPanel } from '@/components/admin/admins-panel';
 import { WalletPanel } from '@/components/admin/wallet-panel';
 import { ResetPanel } from '@/components/admin/reset-panel';
+import { MaintenancePanel } from '@/components/admin/maintenance-panel';
 import { fmtDateTime } from '@/components/round-ui';
 
 export default function AdminDashboard() {
@@ -73,6 +74,8 @@ export default function AdminDashboard() {
           <p className="text-sm text-slate-500">…</p>
         )}
       </section>
+
+      <MaintenancePanel />
 
       <AdminGenesis key={`genesis-${resetGen}`} onBoardChange={refreshOverview} />
 

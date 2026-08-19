@@ -3,9 +3,12 @@
 # "Short maintenance mode" page, build + restart + smoke-test, then let users back in.
 # Rebuild the changed source FIRST (rsync from your machine), then run this.
 #
-#   deploy-guard.sh <instance-dir> [scope]
+#   deploy-guard.sh <instance-dir> [scope] [mode]
 #     instance-dir : /opt/drepdao-main (mainnet)  |  /opt/drepdao-gov (preprod)
 #     scope        : full (default) | api | web
+#     mode         : safe (default) — wait until nobody is mid-action (no active writes);
+#                    strict — wait until nobody is connected at all (even an idle open,
+#                    polling tab blocks). Passive read-polling never blocks in safe mode.
 #
 # Smoke test fails  -> maintenance stays ON so users never meet a broken build; fix & rerun,
 #                      or `rm <instance>/MAINTENANCE` to force the platform back open.
@@ -13,6 +16,7 @@ set -uo pipefail
 
 INSTANCE="${1:-/opt/drepdao-main}"
 SCOPE="${2:-full}"
+MODE="${3:-safe}"
 FLAG="$INSTANCE/MAINTENANCE"
 
 case "$INSTANCE" in
@@ -31,21 +35,30 @@ jval(){ python3 -c "import sys,json;print(json.load(sys.stdin).get('$1'))" 2>/de
 
 # ── 1. wait for a quiet moment ───────────────────────────────────────────────
 WINDOW=45; NEED_QUIET=2; MAX_WAIT=1200; quiet=0; waited=0
-log "checking whether anyone is using the platform (idle window ${WINDOW}s)…"
+log "checking platform activity (mode=$MODE, window ${WINDOW}s)…"
 while :; do
   R=$(curl -s -m5 -H "x-deploy-token: $DEPLOY_TOKEN" \
         "http://127.0.0.1:$API_PORT/internal/deploy/readiness?windowSec=$WINDOW" || echo '{}')
-  IDLE=$(printf '%s' "$R" | jval idle)
   CLIENTS=$(printf '%s' "$R" | jval activeClients)
-  if [ "$IDLE" = "True" ]; then
-    quiet=$((quiet+1)); log "quiet ($quiet/$NEED_QUIET)…"
+  WRITERS=$(printf '%s' "$R" | jval activeWriters)
+  if [ "$MODE" = "strict" ]; then
+    [ "$CLIENTS" = "0" ] && clear=1 || clear=0
+    busy="in use — ${CLIENTS:-?} connected client(s)"
+  else
+    # safe: only someone actively CHANGING something (a write in the window) blocks;
+    # an idle tab that just background-polls does not.
+    [ "$WRITERS" = "0" ] && clear=1 || clear=0
+    busy="someone is actively making changes — ${WRITERS:-?} writer(s) (${CLIENTS:-0} client(s) connected)"
+  fi
+  if [ "$clear" = "1" ]; then
+    quiet=$((quiet+1)); log "quiet — no active changes (${CLIENTS:-0} client(s) connected) ($quiet/$NEED_QUIET)…"
     [ "$quiet" -ge "$NEED_QUIET" ] && break
   else
-    quiet=0; log "in use — ${CLIENTS:-?} active client(s); waiting…"
+    quiet=0; log "$busy; waiting…"
   fi
   sleep 10; waited=$((waited+10))
   if [ "$waited" -ge "$MAX_WAIT" ]; then
-    log "still in use after ${MAX_WAIT}s — aborting, nothing deployed."; exit 3
+    log "still busy after ${MAX_WAIT}s — aborting, nothing deployed."; exit 3
   fi
 done
 

@@ -12,6 +12,7 @@ import { SysadminWalletController } from './sysadmin-wallet.controller';
 import { ResetController } from './reset.controller';
 import { ResetService } from './reset.service';
 import { SysadminConfigController } from './sysadmin-config.controller';
+import { SysadminMaintenanceController } from './sysadmin-maintenance.controller';
 import { GovernanceModule } from '../governance/governance.module';
 
 @Module({
@@ -24,6 +25,7 @@ import { GovernanceModule } from '../governance/governance.module';
     SysadminWalletController,
     ResetController,
     SysadminConfigController,
+    SysadminMaintenanceController,
   ],
   providers: [AdminAuthService, AdminAuditService, AdminService, GenesisService, AdminGuard, ResetService],
   exports: [AdminAuthService],

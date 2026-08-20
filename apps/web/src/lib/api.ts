@@ -2011,6 +2011,7 @@ export interface RuleDocSummary {
   ownerName: string;
   publishedAt: string | null;
   updatedAt: string;
+  approvedAt: string | null; // when it was approved into effect (ACTIVE docs); null otherwise
   lastVote: RuleDocVote | null;
   editable?: boolean; // present in `mine`
   deletable?: boolean; // present in `mine` — owner may delete before it is put to a vote

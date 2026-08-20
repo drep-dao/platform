@@ -249,6 +249,7 @@ function RuleDocDetailView({ id, onBack, onStartVote }: { id: string; onBack: ()
           </div>
         </div>
         <div className="mb-4 text-xs text-neutral-500">By {doc.ownerName}{doc.publishedAt ? ` · published ${new Date(doc.publishedAt).toLocaleDateString()}` : ''}
+          {doc.status === 'ACTIVE' && doc.approvedAt ? ` · approved ${new Date(doc.approvedAt).toLocaleDateString()}` : ''}
           {doc.status === 'ACTIVE' ? ' · obligatory to follow' : doc.status === 'DRAFT' ? ' · draft — not yet obligatory' : ''}</div>
 
         <div className="prose max-w-none dark:prose-invert"><Markdown>{doc.contentMd}</Markdown></div>
@@ -331,7 +332,10 @@ export function RuleDocuments() {
                   <StatusBadge status={d.status} />
                 </div>
               </div>
-              <div className="mt-1 text-xs text-neutral-500">By {d.ownerName}</div>
+              <div className="mt-1 text-xs text-neutral-500">
+                By {d.ownerName}
+                {d.status === 'ACTIVE' && d.approvedAt ? ` · approved ${new Date(d.approvedAt).toLocaleDateString()}` : ''}
+              </div>
               {d.lastVote ? (
                 <div className="mt-1 text-xs text-neutral-500">
                   Last vote {d.lastVote.publicId}: {d.lastVote.status === 'ACTIVE' ? 'in progress' : d.lastVote.approved ? 'approved' : 'rejected'} · {d.lastVote.voted}/{d.lastVote.eligible} voted · {d.lastVote.ratioPct}%

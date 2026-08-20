@@ -54,6 +54,18 @@ export class RuleDocumentsService {
     return p ? this.internal.ruleVoteScore(p.id) : null;
   }
 
+  /** When the document was approved into effect: the finalize time of the latest approved
+   *  (non-delete) approval vote. null if it was never approved. */
+  private async approvedAt(documentId: string): Promise<string | null> {
+    const p = await this.prisma.proposal.findFirst({
+      where: { ruleDocumentId: documentId, internalType: 'RULE_APPROVAL', ruleDeleteRequested: false, status: 'APPROVED' },
+      orderBy: { resultFinalizedAt: 'desc' },
+      select: { resultFinalizedAt: true, votingEndAt: true },
+    });
+    const d = p?.resultFinalizedAt ?? p?.votingEndAt;
+    return d ? d.toISOString() : null;
+  }
+
   private summary(doc: { id: string; title: string; status: string; publishedAt: Date | null; updatedAt: Date; owner: { displayName: string | null } }) {
     return {
       id: doc.id,
@@ -75,7 +87,7 @@ export class RuleDocumentsService {
       orderBy: [{ status: 'asc' }, { updatedAt: 'desc' }],
       include: { owner: { select: { displayName: true } } },
     });
-    return Promise.all(docs.map(async (d) => ({ ...this.summary(d), lastVote: await this.lastVote(d.id) })));
+    return Promise.all(docs.map(async (d) => ({ ...this.summary(d), lastVote: await this.lastVote(d.id), approvedAt: await this.approvedAt(d.id) })));
   }
 
   /** The caller's own documents (every status, including PRIVATE) with an `editable` flag. */
@@ -91,6 +103,7 @@ export class RuleDocumentsService {
         editable: d.status === 'PRIVATE' || (d.status === 'DRAFT' && !(await this.hasLiveVote(d.id))),
         deletable: d.status === 'PRIVATE' || (d.status === 'DRAFT' && !(await this.hasAnyVote(d.id))),
         lastVote: await this.lastVote(d.id),
+        approvedAt: await this.approvedAt(d.id),
       })),
     );
   }
@@ -132,6 +145,7 @@ export class RuleDocumentsService {
       canComment: isDrep && doc.status !== 'PRIVATE' && doc.status !== 'DELETED',
       comments,
       lastVote,
+      approvedAt: await this.approvedAt(doc.id),
     };
   }
 

@@ -214,6 +214,7 @@ function MemberDetail({ drepId, onBack }: { drepId: string; onBack: () => void }
           </div>
           <div className="space-y-4">
             <Stats d={d} meritEnabled={meritEnabled} />
+            <Activity d={d} />
             <div>
               <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{t('Bio')}</div>
               <ClampedMarkdown className="mt-1 text-sm text-neutral-800 dark:text-neutral-200" empty={t('No bio provided.')} maxLines={15}>
@@ -289,6 +290,20 @@ function Stats({ d, meritEnabled }: { d: DaoMemberDetail; meritEnabled: boolean 
 
 /** §13 — all of the member's governance participation, grouped side by side. Totals across
  *  every round for the lifetime of the profile. */
+// The Council has no funding rounds, so only internal-proposal voting activity applies here
+// (filtering / funding / milestone reviews + admission votes are funding-edition only).
+function Activity({ d }: { d: DaoMemberDetail }) {
+  const t = useT();
+  return (
+    <div>
+      <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">{t('Activity')}</div>
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm md:grid-cols-3">
+        <Stat label={t('Internal proposal votes')} value={`${d.votingActivity.internal.total} (${d.votingActivity.internal.yes} ${t('YES')} · ${d.votingActivity.internal.no} ${t('NO')} · ${t('Abstain')} ${d.votingActivity.internal.abstain})`} />
+      </dl>
+    </div>
+  );
+}
+
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>

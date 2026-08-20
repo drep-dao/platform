@@ -214,7 +214,6 @@ function MemberDetail({ drepId, onBack }: { drepId: string; onBack: () => void }
           </div>
           <div className="space-y-4">
             <Stats d={d} meritEnabled={meritEnabled} />
-            <Activity d={d} />
             <div>
               <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{t('Bio')}</div>
               <ClampedMarkdown className="mt-1 text-sm text-neutral-800 dark:text-neutral-200" empty={t('No bio provided.')} maxLines={15}>
@@ -290,25 +289,6 @@ function Stats({ d, meritEnabled }: { d: DaoMemberDetail; meritEnabled: boolean 
 
 /** §13 — all of the member's governance participation, grouped side by side. Totals across
  *  every round for the lifetime of the profile. */
-function Activity({ d }: { d: DaoMemberDetail }) {
-  const t = useT();
-  return (
-    <div>
-      <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">{t('Activity')}</div>
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm md:grid-cols-3 lg:grid-cols-5">
-        <Stat
-          label={t('Admission votes cast')}
-          value={d.isBoard ? `${d.admissionVotesCast.total} (${d.admissionVotesCast.yes} ${t('YES')} · ${d.admissionVotesCast.no} ${t('NO')})` : t('— (non-board)')}
-        />
-        <Stat label={t('Filtering reviews')} value={`${d.votingActivity.filtering.total} (${d.votingActivity.filtering.yes} ${t('YES')} · ${d.votingActivity.filtering.no} ${t('NO')})`} />
-        <Stat label={t('Funding votes')} value={`${d.votingActivity.funding.total} (${d.votingActivity.funding.yes} ${t('YES')} · ${d.votingActivity.funding.no} ${t('NO')} · ${t('Abstain')} ${d.votingActivity.funding.abstain})`} />
-        <Stat label={t('Milestone reviews')} value={`${d.votingActivity.milestone.total} (${d.votingActivity.milestone.yes} ${t('YES')} · ${d.votingActivity.milestone.no} ${t('NO')})`} />
-        <Stat label={t('Internal proposal votes')} value={`${d.votingActivity.internal.total} (${d.votingActivity.internal.yes} ${t('YES')} · ${d.votingActivity.internal.no} ${t('NO')} · ${t('Abstain')} ${d.votingActivity.internal.abstain})`} />
-      </dl>
-    </div>
-  );
-}
-
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>

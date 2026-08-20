@@ -10,6 +10,9 @@ export const PLATFORM_CONFIG_DEFAULTS = {
   // this off later to require the 3-of-5 admission vote. While NO board is seated admission is
   // always open regardless of this flag (there would be nobody to run the vote).
   DREP_OPEN_ADMISSION: true,
+  // §2 — contact details on the DRep profile. Off (default): optional. On: the field is required.
+  REQUIRE_TELEGRAM: false,
+  REQUIRE_EMAIL: false,
   ADMISSION_APPROVAL_VOTES: 3, // Â§14.2 board YES votes needed to admit a DRep (3-of-5)
   INTERNAL_DEFAULT_THRESHOLD_PCT: 67,
   INTERNAL_IMPORTANT_THRESHOLD_PCT: 75,
@@ -67,6 +70,8 @@ export const PLATFORM_CONFIG_META: Record<PlatformConfigKey, string> = {
     'After a milestone POA is rejected this many times, the platform automatically opens a stop-funding proposal for the board (0 = disabled).',
   DREP_OPEN_ADMISSION:
     'Open membership. ENABLED (default): any registered DRep who completes the profile joins the Council straight away and can vote â no board admission vote is held. DISABLED: each applicant is put on hold as PENDING and joins only once the board approves them (ADMISSION_APPROVAL_VOTES yes-votes). Note that while no board is seated, admission stays open whatever this is set to, since there would be nobody to run the vote.',
+  REQUIRE_TELEGRAM: 'Require a Telegram handle on the DRep profile. Off (default): optional.',
+  REQUIRE_EMAIL: 'Require an email address on the DRep profile. Off (default): optional.',
   ADMISSION_APPROVAL_VOTES: 'Board YES votes needed to admit a new Council member (3-of-5).',
   INTERNAL_DEFAULT_THRESHOLD_PCT: 'Approval threshold (%) for ordinary internal proposals.',
   INTERNAL_IMPORTANT_THRESHOLD_PCT: 'Approval threshold (%) for internal proposals flagged as important.',

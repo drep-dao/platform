@@ -657,7 +657,7 @@ export class DrepService {
     if (!(dto.country ?? '').trim()) throw new ConflictException('please select a country');
     // §14.3 — Telegram + a valid email are mandatory contact details (the board must be able
     // to reach every member). Required on every new registration.
-    this.assertContact(dto.contact);
+    await this.assertContact(dto.contact);
 
     if (dto.displayName !== undefined) {
       await this.prisma.appUser.update({ where: { id: userId }, data: { displayName: dto.displayName } });
@@ -746,11 +746,23 @@ export class DrepService {
   }
 
   /** §14.3 — Telegram + a valid email are mandatory member contact details. */
-  private assertContact(contact: Record<string, unknown> | undefined) {
+  private async cfgBool(key: string, def: boolean): Promise<boolean> {
+    const row = await this.prisma.platformConfig.findUnique({ where: { key } });
+    return typeof row?.value === 'boolean' ? row.value : def;
+  }
+
+  // §2 — Telegram + email are OPTIONAL by default; a sysadmin can require either via
+  // REQUIRE_TELEGRAM / REQUIRE_EMAIL. A supplied email must still be well-formed.
+  private async assertContact(contact: Record<string, unknown> | undefined) {
     const telegram = String(contact?.telegram ?? '').trim();
     const email = String(contact?.email ?? '').trim();
-    if (!telegram) throw new ConflictException('a Telegram handle is required');
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new ConflictException('a valid email is required');
+    const [reqTelegram, reqEmail] = await Promise.all([
+      this.cfgBool('REQUIRE_TELEGRAM', PLATFORM_CONFIG_DEFAULTS.REQUIRE_TELEGRAM as boolean),
+      this.cfgBool('REQUIRE_EMAIL', PLATFORM_CONFIG_DEFAULTS.REQUIRE_EMAIL as boolean),
+    ]);
+    if (reqTelegram && !telegram) throw new ConflictException('a Telegram handle is required');
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new ConflictException('a valid email is required');
+    if (reqEmail && !email) throw new ConflictException('an email address is required');
   }
 
   async updateMine(userId: string, dto: UpdateDrepDto) {
@@ -763,7 +775,7 @@ export class DrepService {
     if (dto.country !== undefined && !dto.country.trim()) throw new ConflictException('please select a country');
     // §14.3 — Telegram + a valid email are mandatory. The profile form always sends `contact`,
     // so a save can't strip them; partial updates that don't touch contact are left alone.
-    if (dto.contact !== undefined) this.assertContact(dto.contact);
+    if (dto.contact !== undefined) await this.assertContact(dto.contact);
 
     if (dto.displayName !== undefined) {
       await this.prisma.appUser.update({ where: { id: userId }, data: { displayName: dto.displayName } });

@@ -23,7 +23,7 @@ export class PublicConfigController {
   @Get()
   async get() {
     const rows = await this.prisma.platformConfig.findMany({
-      where: { key: { in: ['CARDANO_EXPLORER', 'INTERNAL_DEFAULT_THRESHOLD_PCT', 'INTERNAL_IMPORTANT_THRESHOLD_PCT', 'MERIT_ENABLED'] } },
+      where: { key: { in: ['CARDANO_EXPLORER', 'INTERNAL_DEFAULT_THRESHOLD_PCT', 'INTERNAL_IMPORTANT_THRESHOLD_PCT', 'MERIT_ENABLED', 'REQUIRE_TELEGRAM', 'REQUIRE_EMAIL'] } },
     });
     const val = (k: string) => rows.find((r) => r.key === k)?.value;
     const num = (k: string) =>
@@ -52,6 +52,8 @@ export class PublicConfigController {
       network: this.config.get<string>('CARDANO_NETWORK') ?? 'Preprod',
       explorer: String(val('CARDANO_EXPLORER') ?? PLATFORM_CONFIG_DEFAULTS.CARDANO_EXPLORER),
       meritEnabled: val('MERIT_ENABLED') === true ? true : (PLATFORM_CONFIG_DEFAULTS.MERIT_ENABLED as boolean),
+      requireTelegram: val('REQUIRE_TELEGRAM') === true ? true : (PLATFORM_CONFIG_DEFAULTS.REQUIRE_TELEGRAM as boolean),
+      requireEmail: val('REQUIRE_EMAIL') === true ? true : (PLATFORM_CONFIG_DEFAULTS.REQUIRE_EMAIL as boolean),
       submissionFeeAddress: submissionFeeAddress
         ?? this.config.get<string>('SUBMISSION_FEE_ADDRESS')
         ?? this.config.get<string>('TREASURY_ADDRESS')

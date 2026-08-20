@@ -1410,6 +1410,9 @@ export interface PublicConfig {
   network: string;
   explorer: string;
   meritEnabled: boolean;
+  /** §2 — whether these contact fields are required on the DRep profile (default false). */
+  requireTelegram: boolean;
+  requireEmail: boolean;
   submissionFeeAddress: string | null;
   pledgeAddress: string | null;
   anchorMetadataLabel: number;

@@ -8,6 +8,7 @@ import { COUNTRIES } from '@/lib/countries';
 import { drepApi, submitterApi, type DrepApplicationInput, type ApprovedSubmitter } from '@/lib/api';
 import { MarkdownEditor } from './markdown';
 import { PhotoUpload } from './photo-upload';
+import { useExplorer } from '@/lib/explorer';
 
 const field =
   'w-full rounded-md border border-neutral-300 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900';
@@ -30,6 +31,10 @@ export function DrepForm({ mode }: { mode: 'join' | 'profile' }) {
   const [github, setGithub] = useState('');
   const [telegram, setTelegram] = useState('');
   const [email, setEmail] = useState('');
+  // §2 — contact fields are optional by default; a sysadmin can make either required.
+  const { cfg } = useExplorer();
+  const requireTelegram = cfg?.requireTelegram ?? false;
+  const requireEmail = cfg?.requireEmail ?? false;
   const [subs, setSubs] = useState<string[]>([]);
   const [kyc, setKyc] = useState(false);
   const [calls, setCalls] = useState(false);
@@ -114,9 +119,11 @@ export function DrepForm({ mode }: { mode: 'join' | 'profile' }) {
     // §14.3 — the bio is mandatory: at least 100 words (also enforced server-side).
     if (bioWords < 100) { setError(`${t('The bio must be at least 100 words (currently')} ${bioWords}).`); return; }
     if (!country) { setError(t('Please select a country.')); return; }
-    // §14.3 — Telegram + a valid email are mandatory contact details.
-    if (!telegram.trim()) { setError(t('A Telegram handle is required.')); return; }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setError(t('A valid email is required.')); return; }
+    // §2 — contact details are optional by default; a sysadmin can require either. A supplied
+    // email must still be well-formed.
+    if (requireTelegram && !telegram.trim()) { setError(t('A Telegram handle is required.')); return; }
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setError(t('Please enter a valid email address.')); return; }
+    if (requireEmail && !email.trim()) { setError(t('An email address is required.')); return; }
     setBusy(true);
     const input: DrepApplicationInput = {
       displayName: displayName.trim() || undefined,
@@ -267,11 +274,11 @@ export function DrepForm({ mode }: { mode: 'join' | 'profile' }) {
 
       <div className="grid grid-cols-2 gap-3">
         <label className="block space-y-1">
-          <span className="text-xs font-medium">Telegram <span className="text-red-500">*</span></span>
+          <span className="text-xs font-medium">Telegram {requireTelegram ? <span className="text-red-500">*</span> : null}</span>
           <input className={field} value={telegram} onChange={(e) => setTelegram(e.target.value)} placeholder="@handle" />
         </label>
         <label className="block space-y-1">
-          <span className="text-xs font-medium">{t('Email')} <span className="text-red-500">*</span></span>
+          <span className="text-xs font-medium">{t('Email')} {requireEmail ? <span className="text-red-500">*</span> : null}</span>
           <input type="email" className={field} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.org" />
         </label>
       </div>

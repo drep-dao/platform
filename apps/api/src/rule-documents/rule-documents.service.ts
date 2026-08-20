@@ -130,7 +130,7 @@ export class RuleDocumentsService {
   }
 
   async create(userId: string, dto: { title: string; contentMd: string }) {
-    if (!(await this.admittedDrep(userId))) throw new ForbiddenException('only admitted DReps can author rule documents');
+    if (!(await this.admittedDrep(userId))) throw new ForbiddenException('you must be a Council member to author rule documents — join the Council first (it is free)');
     const doc = await this.prisma.ruleDocument.create({
       data: { title: dto.title.trim(), contentMd: dto.contentMd, ownerUserId: userId, status: 'PRIVATE' },
     });
@@ -172,7 +172,7 @@ export class RuleDocumentsService {
   }
 
   async addComment(userId: string, id: string, dto: { contentMd: string }) {
-    if (!(await this.admittedDrep(userId))) throw new ForbiddenException('only admitted DReps can comment');
+    if (!(await this.admittedDrep(userId))) throw new ForbiddenException('you must be a Council member to comment — join the Council first (it is free)');
     const doc = await this.prisma.ruleDocument.findUnique({ where: { id }, select: { status: true } });
     if (!doc) throw new NotFoundException('rule document not found');
     if (doc.status === 'PRIVATE' || doc.status === 'DELETED') throw new BadRequestException('this document is not open for feedback');

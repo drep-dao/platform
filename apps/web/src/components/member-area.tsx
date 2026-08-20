@@ -108,7 +108,9 @@ export function MemberArea() {
   });
 
   // §27 — a DRep's own rule documents: draft privately, publish, edit until an approval vote opens.
-  if (isMember || isDrep) {
+  // Authoring is for members on the platform (admitted DReps + board), same gate as internal
+  // proposals — a registered DRep who hasn't joined yet won't see it (they join first; it's free).
+  if (isMember || isBoard) {
     tabs.push({ key: 'rules', label: 'My Rule documents', node: <MyRuleDocuments /> });
   }
 

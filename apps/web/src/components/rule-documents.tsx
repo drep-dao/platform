@@ -346,7 +346,7 @@ export function MyRuleDocuments() {
         <h3 className="text-sm font-semibold">My rule documents</h3>
         <button onClick={() => setEditing('new')} className="rounded bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700">+ New document</button>
       </div>
-      <p className="mb-3 text-xs text-neutral-500">Draft a rule document privately, publish it for other DReps to review and give feedback, keep editing until you (or another DRep) open an approval vote — which freezes the content and anchors its hash.</p>
+      <p className="mb-3 text-xs text-neutral-500">Draft a rule document privately, publish it for other DReps to review and give feedback, keep editing until you (or another DRep) open an approval vote — which freezes the content and anchors its hash. Only Council members can author — if you&rsquo;re a registered DRep, join the Council first (it&rsquo;s free).</p>
       {docs === null ? (
         <p className="text-sm text-neutral-500">Loading…</p>
       ) : docs.length === 0 ? (

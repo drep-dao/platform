@@ -141,6 +141,8 @@ export function HomeShell() {
             <TreasuryOverview />
           ) : pubView === 'proofs' ? (
             <OnChainProofs />
+          ) : pubView === 'rules' ? (
+            <RuleDocuments />
           ) : (
             <PublicLanding onConnect={() => setWalletOpen(true)} onExplore={() => setView('members')} />
           )}

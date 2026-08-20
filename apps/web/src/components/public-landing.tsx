@@ -19,7 +19,7 @@ const STAGES = [
   { key: 'FUNDING', label: 'Funding' },
 ];
 // A governance Council runs a continuous cycle rather than budgeted rounds.
-const GOV_FLOW = ['Join', 'Propose', 'Vote', 'Enact'];
+const GOV_FLOW = ['Join', 'Propose', 'Vote', 'Act'];
 
 export function PublicLanding({ onConnect, onExplore }: { onConnect: () => void; onExplore: () => void }) {
   const { t } = usePrefs();

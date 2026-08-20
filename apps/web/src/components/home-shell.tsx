@@ -27,12 +27,15 @@ import { WalletStatusBanner } from './wallet-status-banner';
 import { useTodoCounts, todoTotal } from '@/lib/use-todo-counts';
 import { HealthBadge } from '@/app/health-badge';
 
-type View = 'overview' | 'members' | 'submitters' | 'experts' | 'me' | 'requests' | 'internal' | 'rules' | 'proofs' | 'treasury' | 'setup';
-const NAV: { key: View; label: string; icon: string; boardOnly?: boolean }[] = [
+type View = 'overview' | 'members' | 'votingpower' | 'submitters' | 'experts' | 'me' | 'requests' | 'internal' | 'rules' | 'proofs' | 'treasury' | 'setup';
+const NAV: { key: View; label: string; icon: string; boardOnly?: boolean; publicOnly?: boolean }[] = [
   // §2 — "My area" first: it is the member's home (to-dos, profile, proposals).
   { key: 'me', label: 'My area', icon: 'user' },
   { key: 'overview', label: 'Council Member overview', icon: 'dashboard' },
   { key: 'members', label: 'Council members', icon: 'users' },
+  // Public-only: the voting-power table (DaoOverview) lives under "Council Member
+  // overview" for members, but logged-out visitors reach it via "Voting power".
+  { key: 'votingpower', label: 'Voting power', icon: 'dashboard', publicOnly: true },
   { key: 'submitters', label: 'Submitters', icon: 'send' },
   { key: 'experts', label: 'Experts', icon: 'award' },
   { key: 'requests', label: 'Requests', icon: 'message' },
@@ -44,7 +47,7 @@ const NAV: { key: View; label: string; icon: string; boardOnly?: boolean }[] = [
 ];
 // Views a logged-out visitor may browse read-only. Governance edition: internal
 // proposals & requests need login, so the public surface is overview/members/proofs/treasury.
-const PUBLIC_VIEWS: View[] = ['overview', 'members', 'proofs', 'treasury', 'rules'];
+const PUBLIC_VIEWS: View[] = ['overview', 'members', 'votingpower', 'proofs', 'treasury', 'rules'];
 
 export function HomeShell() {
   const { profile, loading } = useAuth();
@@ -143,6 +146,8 @@ export function HomeShell() {
             <OnChainProofs />
           ) : pubView === 'rules' ? (
             <RuleDocuments />
+          ) : pubView === 'votingpower' ? (
+            <DaoOverview />
           ) : (
             <PublicLanding onConnect={() => setWalletOpen(true)} onExplore={() => setView('members')} />
           )}
@@ -154,7 +159,7 @@ export function HomeShell() {
     );
   }
 
-  const nav = NAV.filter((n) => !n.boardOnly || isBoard);
+  const nav = NAV.filter((n) => !n.publicOnly && (!n.boardOnly || isBoard));
   const canJoin =
     profile.onchainDrep.registered &&
     !isBoard &&

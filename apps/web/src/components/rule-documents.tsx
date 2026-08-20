@@ -159,6 +159,7 @@ function Feedback({ doc, reload }: { doc: RuleDocDetail; reload: () => void }) {
   const [busy, setBusy] = useState(false);
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
+  const [open, setOpen] = useState(false); // feedback hidden by default
 
   const post = async (contentMd: string, parentId?: string) => {
     if (!contentMd.trim()) return;
@@ -174,7 +175,13 @@ function Feedback({ doc, reload }: { doc: RuleDocDetail; reload: () => void }) {
 
   return (
     <div className="mt-6">
-      <h3 className="mb-2 text-sm font-semibold">Feedback ({count})</h3>
+      <button onClick={() => setOpen((o) => !o)} className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-neutral-700 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-neutral-100">
+        <span className={`inline-block transition-transform ${open ? 'rotate-90' : ''}`}>›</span>
+        Feedback ({count})
+        <span className="text-xs font-normal text-neutral-400">{open ? 'Hide' : 'Show'}</span>
+      </button>
+      {!open ? null : (
+      <>
       <div className="space-y-3">
         {doc.comments.map((c) => (
           <div key={c.id}>
@@ -203,6 +210,8 @@ function Feedback({ doc, reload }: { doc: RuleDocDetail; reload: () => void }) {
           <button disabled={busy || !text.trim()} onClick={() => post(text)} className="mt-1 rounded bg-emerald-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-40">{busy ? 'Posting…' : 'Post feedback'}</button>
         </div>
       ) : null}
+      </>
+      )}
     </div>
   );
 }

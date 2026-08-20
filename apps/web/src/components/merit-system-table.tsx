@@ -30,6 +30,7 @@ const MEMBER_GAINS: Row[] = [
   { reason: 'QUICK_POLL_VOTE', what: 'Voted in a quick poll' },
   { reason: 'MILESTONE_CHECK', what: 'Completed an assigned milestone review' },
   { reason: 'INTERNAL_SUBMIT', what: 'Submitted an internal proposal' },
+  { reason: 'RULE_DOC_SUBMIT', what: 'Submitted a new rule document' },
 ];
 const MEMBER_LOSSES: Row[] = [
   { reason: 'MISSED_INTERNAL', what: 'Missed an internal-proposal vote' },

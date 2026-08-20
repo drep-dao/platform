@@ -1996,6 +1996,7 @@ export interface RuleDocSummary {
   updatedAt: string;
   lastVote: RuleDocVote | null;
   editable?: boolean; // present in `mine`
+  deletable?: boolean; // present in `mine` — owner may delete before it is put to a vote
 }
 export interface RuleDocComment {
   id: string;

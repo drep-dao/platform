@@ -78,7 +78,9 @@ export class UsersService {
     try {
       const drepId = drepIdFromKeyHashHex(drepKeyHash);
       const statuses = await this.cardano.verifyDReps([drepId]);
-      return statuses.get(drepId)?.registered ?? false;
+      const registered = statuses.get(drepId)?.registered ?? false;
+      this.logger.log(`on-chain DRep check: keyHash=${drepKeyHash} drepId=${drepId} → registered=${registered}`);
+      return registered;
     } catch (e) {
       this.logger.warn(`on-chain DRep check failed for ${drepKeyHash}: ${e instanceof Error ? e.message : e}`);
       return undefined;

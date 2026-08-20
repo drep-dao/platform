@@ -368,7 +368,7 @@ export function MyRuleDocuments() {
                 ) : null}
                 {d.editable ? <button onClick={() => setEditing(d.id)} className="rounded border border-neutral-300 px-2 py-0.5 dark:border-neutral-600">Edit</button> : null}
                 {d.status === 'PRIVATE' ? <button onClick={() => publish(d.id)} className="rounded border border-emerald-600 px-2 py-0.5 text-emerald-700 dark:text-emerald-300">Publish (→ draft)</button> : null}
-                {d.status === 'PRIVATE' ? <button onClick={() => remove(d.id)} className="rounded border border-red-500 px-2 py-0.5 text-red-600">Discard</button> : null}
+                {d.deletable ? <button onClick={() => remove(d.id)} className="rounded border border-red-500 px-2 py-0.5 text-red-600">{d.status === 'PRIVATE' ? 'Discard' : 'Delete'}</button> : null}
               </div>
             </div>
           ))}

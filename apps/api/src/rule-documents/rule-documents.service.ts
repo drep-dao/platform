@@ -33,6 +33,15 @@ export class RuleDocumentsService {
     return !!p;
   }
 
+  /** Has this document ever been put to a vote? (once so, it can only be removed by a delete vote). */
+  private async hasAnyVote(documentId: string): Promise<boolean> {
+    const p = await this.prisma.proposal.findFirst({
+      where: { ruleDocumentId: documentId, internalType: 'RULE_APPROVAL' },
+      select: { id: true },
+    });
+    return !!p;
+  }
+
   /** The latest rule-approval vote's compact score, or null if the document was never voted. */
   private async lastVote(documentId: string) {
     const p = await this.prisma.proposal.findFirst({
@@ -78,6 +87,7 @@ export class RuleDocumentsService {
       docs.map(async (d) => ({
         ...this.summary(d),
         editable: d.status === 'PRIVATE' || (d.status === 'DRAFT' && !(await this.hasLiveVote(d.id))),
+        deletable: d.status === 'PRIVATE' || (d.status === 'DRAFT' && !(await this.hasAnyVote(d.id))),
         lastVote: await this.lastVote(d.id),
       })),
     );
@@ -163,11 +173,21 @@ export class RuleDocumentsService {
     return this.getOne(id, userId);
   }
 
-  /** Discard an unpublished (PRIVATE) draft. Published documents are removed only by a delete vote. */
+  /** The owner may delete their document any time BEFORE it is put to a vote (PRIVATE, or a DRAFT
+   *  that has never had an approval vote). Once voted, an ACTIVE/DELETED — or a DRAFT that was
+   *  already voted — can only be removed by a delete vote. */
   async remove(userId: string, id: string) {
     const doc = await this.ownEditable(id, userId);
-    if (doc.status !== 'PRIVATE') throw new BadRequestException('a published document can only be removed by a delete vote');
-    await this.prisma.ruleDocument.delete({ where: { id } });
+    if (doc.status !== 'PRIVATE' && doc.status !== 'DRAFT') {
+      throw new BadRequestException('an active document can only be removed by a delete vote');
+    }
+    if (await this.hasAnyVote(id)) {
+      throw new BadRequestException('this document has been put to a vote — remove it with a delete vote');
+    }
+    await this.prisma.$transaction([
+      this.prisma.ruleDocumentComment.deleteMany({ where: { documentId: id } }),
+      this.prisma.ruleDocument.delete({ where: { id } }),
+    ]);
     return { ok: true };
   }
 

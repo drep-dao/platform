@@ -179,7 +179,15 @@ const DREP_KEYHASH_HEADER = 0x22;
 
 /** 28-byte DRep key hash from a CIP-95 DRep public key (hex). */
 export function drepKeyHashFromPubKeyHex(pubKeyHex: string): string {
-  return toHex(blake2b(fromHex(pubKeyHex), undefined, 28));
+  let hex = pubKeyHex.trim().toLowerCase();
+  // Wallets differ in what CIP-95 getPubDRepKey() returns. Normalize to the raw 32-byte Ed25519
+  // public key before hashing, or the derived DRep key hash won't match the on-chain registration:
+  //  - a CBOR byte-string wrapper (0x58 <len> …) → unwrap it;
+  //  - an extended key (32-byte pubkey + 32-byte chain code) → keep only the public key.
+  if ((hex.length === 68 || hex.length === 132) && hex.startsWith('58')) hex = hex.slice(4);
+  let bytes = fromHex(hex);
+  if (bytes.length === 64) bytes = bytes.subarray(0, 32);
+  return toHex(blake2b(bytes, undefined, 28));
 }
 
 /**

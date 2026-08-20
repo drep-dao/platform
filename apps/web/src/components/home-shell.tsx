@@ -61,7 +61,7 @@ export function HomeShell() {
   const [viewNonce, setViewNonce] = useState(0);
   const setView = (v: View) => {
     if (v === view) setViewNonce((n) => n + 1); // same item → reset to its overview
-    setParams({ view: v, tab: null, round: null, proposal: null, ip: null, expert: null });
+    setParams({ view: v, tab: null, round: null, proposal: null, ip: null, expert: null, doc: null });
   };
 
   // Reset sub-navigation whenever the signed-in user changes (login / logout / switch wallet) so

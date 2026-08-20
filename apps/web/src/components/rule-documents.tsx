@@ -26,7 +26,7 @@ function slugify(s: string) {
 
 const STATUS_STYLE: Record<string, string> = {
   ACTIVE: 'bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-700',
-  DRAFT: 'bg-neutral-100 dark:bg-neutral-800/60 border-neutral-200 dark:border-neutral-700',
+  DRAFT: 'bg-sky-50 dark:bg-sky-950/30 border-sky-200 dark:border-sky-900',
   DELETED: 'bg-neutral-100 dark:bg-neutral-800/40 border-neutral-200 dark:border-neutral-800 opacity-60',
   PRIVATE: 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900',
 };

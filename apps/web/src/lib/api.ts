@@ -1425,6 +1425,22 @@ export interface PublicConfig {
 export const configApi = { get: () => request<PublicConfig>('/config') };
 
 // §2 — public, unauthenticated snapshot for the logged-out landing page.
+export interface ActiveVote {
+  id: string;
+  publicId: string | null;
+  title: string;
+  internalType: string | null;
+  votingEndAt: string | null;
+  kind: 'THRESHOLD' | 'POLL';
+  yesPower?: number;
+  noPower?: number;
+  totalPower?: number;
+  thresholdPct?: number;
+  ratioPct?: number;
+  eligible?: number;
+  voted?: number;
+  passing?: boolean;
+}
 export interface PublicOverview {
   network: string;
   admissionOpen: boolean;
@@ -1433,6 +1449,7 @@ export interface PublicOverview {
   board: { seats: number; elected: boolean };
   proposals: { approved: number; inReview: number; rejected: number; total: number };
   internalProposals: { active: number; passed: number; total: number };
+  activeVotes: ActiveVote[];
   activeRound: {
     number: number;
     name: string;

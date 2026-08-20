@@ -900,6 +900,33 @@ export class InternalProposalsService {
     };
   }
 
+  // §governance — active internal votes for the public landing dashboard (board-only PRIVATE ones
+  // excluded). Each carries the voting-end date + a threshold tally for the mini result chart.
+  async activeVoteSummaries() {
+    const active = await this.prisma.proposal.findMany({
+      where: { type: ProposalType.INTERNAL, status: ProposalStatus.ACTIVE, isPrivate: false },
+      orderBy: { votingEndAt: 'asc' },
+      select: { id: true, publicId: true, title: true, internalType: true, votingEndAt: true },
+    });
+    const out: {
+      id: string; publicId: string | null; title: string; internalType: string | null;
+      votingEndAt: string | null; kind: 'THRESHOLD' | 'POLL';
+      yesPower?: number; noPower?: number; totalPower?: number; thresholdPct?: number;
+      ratioPct?: number; eligible?: number; voted?: number; passing?: boolean;
+    }[] = [];
+    for (const p of active) {
+      const t = await this.tally(p.id);
+      const base = { id: p.id, publicId: p.publicId, title: p.title, internalType: p.internalType, votingEndAt: p.votingEndAt ? p.votingEndAt.toISOString() : null };
+      if (t.kind !== 'THRESHOLD') { out.push({ ...base, kind: 'POLL' }); continue; }
+      out.push({
+        ...base, kind: 'THRESHOLD',
+        yesPower: round2(t.yesPower), noPower: round2(t.totalPower - t.yesPower - t.abstainPower), totalPower: round2(t.totalPower),
+        thresholdPct: t.thresholdPct, ratioPct: t.ratioPct, eligible: t.eligible, voted: t.cast, passing: t.approved,
+      });
+    }
+    return out;
+  }
+
   // §27 — apply a finalized rule-approval vote to the document. Approval votes act on a DRAFT
   // (approved → ACTIVE, obligatory; rejected → stays DRAFT); a delete vote removes it when approved
   // and leaves it untouched when rejected.

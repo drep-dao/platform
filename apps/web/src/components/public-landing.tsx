@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { publicApi, type PublicOverview } from '@/lib/api';
+import { publicApi, type PublicOverview, type ActiveVote } from '@/lib/api';
 import { usePrefs } from '@/lib/prefs-context';
 import { brand } from '@/lib/brand';
 
@@ -151,6 +151,16 @@ export function PublicLanding({ onConnect, onExplore }: { onConnect: () => void;
         </div>
       ) : null}
 
+      {/* ---- Votes in progress: live internal votes with end date + a result chart ---- */}
+      {governance && data && data.activeVotes.length > 0 ? (
+        <div className="rounded-2xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
+          <h3 className="mb-3 text-sm font-semibold text-neutral-800 dark:text-neutral-200">{t('Votes in progress')}</h3>
+          <div className="space-y-3">
+            {data.activeVotes.map((v) => <VoteBar key={v.id} v={v} t={t} />)}
+          </div>
+        </div>
+      ) : null}
+
       {/* ---- Transparency footer note ---- */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-1 text-[12.5px] text-neutral-500 dark:text-neutral-400">
         <span className="inline-flex items-center gap-1.5">
@@ -161,6 +171,44 @@ export function PublicLanding({ onConnect, onExplore }: { onConnect: () => void;
         {data?.admissionOpen ? <span>{t('Open admission — any registered DRep can join & vote')}</span> : null}
         {failed ? <span className="text-amber-600 dark:text-amber-500">{t('Some live figures are temporarily unavailable.')}</span> : null}
       </div>
+    </div>
+  );
+}
+
+// A live vote: title, a YES/NO result bar with the threshold marker (like the proposal result
+// chart), pass/fail state, and the voting-end date (red when ≤ 1 day remains).
+function VoteBar({ v, t }: { v: ActiveVote; t: (s: string) => string }) {
+  const end = v.votingEndAt ? new Date(v.votingEndAt) : null;
+  const soon = end ? end.getTime() - Date.now() <= 24 * 3600_000 : false;
+  const yesPct = Math.min(100, Math.max(0, v.ratioPct ?? 0));
+  const thr = v.thresholdPct ?? 67;
+  return (
+    <div className="rounded-lg border border-neutral-200 p-3 dark:border-neutral-800">
+      <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+        <div className="text-sm">
+          {v.publicId ? <span className="font-mono text-xs text-neutral-500">{v.publicId} </span> : null}
+          <span className="font-medium text-neutral-800 dark:text-neutral-200">{v.title}</span>
+        </div>
+        {v.kind === 'THRESHOLD' ? (
+          <span className={`text-xs font-semibold ${v.passing ? 'text-emerald-600' : 'text-red-600'}`}>{v.passing ? t('passing') : t('failing')}</span>
+        ) : <span className="text-xs text-neutral-500">{t('poll')}</span>}
+      </div>
+      {v.kind === 'THRESHOLD' ? (
+        <>
+          <div className="mb-1 text-xs text-neutral-500">
+            {t('YES')} {v.ratioPct}% · {v.voted}/{v.eligible} {t('voted')} · {t('threshold')} {thr}%
+          </div>
+          <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-red-300 dark:bg-red-900/50">
+            <div className="h-full rounded-full bg-emerald-500" style={{ width: `${yesPct}%` }} />
+            <div className="absolute top-[-2px] h-[calc(100%+4px)] w-px bg-neutral-800 dark:bg-neutral-200" style={{ left: `${thr}%` }} />
+          </div>
+        </>
+      ) : null}
+      {end ? (
+        <div className={`mt-1.5 text-xs ${soon ? 'font-semibold text-red-600 dark:text-red-400' : 'text-neutral-500'}`}>
+          {t('ends')} {end.toLocaleString()}
+        </div>
+      ) : null}
     </div>
   );
 }

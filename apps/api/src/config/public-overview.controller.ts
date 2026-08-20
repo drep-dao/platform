@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { RoundsService } from '../rounds/rounds.service';
 import { TreasuryService } from '../treasury/treasury.service';
+import { InternalProposalsService } from '../internal-proposals/internal-proposals.service';
 
 /**
  * Public, unauthenticated snapshot for the logged-out landing page. Only aggregate,
@@ -21,6 +22,7 @@ export class PublicOverviewController {
     private readonly prisma: PrismaService,
     private readonly rounds: RoundsService,
     private readonly treasury: TreasuryService,
+    private readonly internal: InternalProposalsService,
   ) {}
 
   @Get('overview')
@@ -53,6 +55,8 @@ export class PublicOverviewController {
     const internalActive = iCount('ACTIVE') + iCount('PENDING');
     const internalPassed = iCount('APPROVED') + iCount('COMPLETE');
     const internalTotal = internalGroups.reduce((sum, g) => sum + g._count._all, 0);
+    // §governance — the live votes themselves (end date + tally) for the landing dashboard.
+    const activeVotes = await this.internal.activeVoteSummaries().catch(() => []);
 
     // Treasury balance is on-chain (public), but best-effort — a chain hiccup must not 500 the landing.
     let treasuryBalanceAda: number | null = null;
@@ -77,6 +81,7 @@ export class PublicOverviewController {
       board: { seats: boardSeats, elected: boardSeats > 0 },
       proposals: { approved, inReview, rejected, total: approved + inReview + rejected },
       internalProposals: { active: internalActive, passed: internalPassed, total: internalTotal },
+      activeVotes,
       activeRound: r
         ? {
             number: r.number,

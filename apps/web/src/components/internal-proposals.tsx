@@ -545,6 +545,9 @@ function SubmitInternalForm({ onDone, onCancel, draftId = null, election = false
                   ))}
                 </select>
               </label>
+              {ruleDocs.length === 0 ? (
+                <div className="text-xs text-amber-600">{t('No published documents yet. Create one under “My Rule documents”, publish it (→ draft), then start the vote here.')}</div>
+              ) : null}
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={ruleDeleteRequested} onChange={(e) => setRuleDeleteRequested(e.target.checked)} />
                 {t('Delete the document (vote to remove it instead of approving)')}

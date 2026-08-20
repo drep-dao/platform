@@ -363,6 +363,9 @@ export function MyRuleDocuments() {
                 {d.status !== 'PRIVATE' ? (
                   <button onClick={() => setParams({ view: 'rules', doc: d.id })} className="rounded border border-neutral-300 px-2 py-0.5 dark:border-neutral-600">View</button>
                 ) : null}
+                {d.status === 'DRAFT' || d.status === 'ACTIVE' ? (
+                  <button onClick={() => setParams({ view: 'internal', newRule: d.id })} className="rounded border border-emerald-600 px-2 py-0.5 text-emerald-700 dark:text-emerald-300">Start approval vote</button>
+                ) : null}
                 {d.editable ? <button onClick={() => setEditing(d.id)} className="rounded border border-neutral-300 px-2 py-0.5 dark:border-neutral-600">Edit</button> : null}
                 {d.status === 'PRIVATE' ? <button onClick={() => publish(d.id)} className="rounded border border-emerald-600 px-2 py-0.5 text-emerald-700 dark:text-emerald-300">Publish (→ draft)</button> : null}
                 {d.status === 'PRIVATE' ? <button onClick={() => remove(d.id)} className="rounded border border-red-500 px-2 py-0.5 text-red-600">Discard</button> : null}

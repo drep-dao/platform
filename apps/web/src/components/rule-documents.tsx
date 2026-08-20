@@ -56,6 +56,31 @@ function LastVoteLine({ v, onOpenProposal }: { v: RuleDocVote; onOpenProposal: (
   );
 }
 
+// A pulsing "voting in progress" pill (no emoji) — shown beside the status while a vote is live.
+function VotingPill() {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
+      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
+      VOTE IN PROGRESS
+    </span>
+  );
+}
+
+// Prominent banner on a document whose approval vote is live, with a one-click link to go vote.
+function VoteInProgressBanner({ v, onOpen }: { v: RuleDocVote; onOpen: () => void }) {
+  return (
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
+      <div className="text-sm text-amber-900 dark:text-amber-200">
+        <span className="font-semibold">A vote {v.deleteVote ? 'to DELETE this document' : 'to APPROVE this document'} is in progress.</span>{' '}
+        {v.voted} of {v.eligible} DReps voted · {v.ratioPct}% approval (need {v.thresholdPct}%).
+      </div>
+      <button onClick={onOpen} className="shrink-0 rounded bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700">
+        Open the vote →
+      </button>
+    </div>
+  );
+}
+
 // ── integrity / verification box ──────────────────────────────────────────────
 function IntegrityBox({ doc }: { doc: RuleDocDetail }) {
   const { txUrl } = useExplorer();
@@ -186,14 +211,21 @@ function RuleDocDetailView({ id, onBack, onStartVote }: { id: string; onBack: ()
       <div className={`rounded-lg border p-5 ${STATUS_STYLE[doc.status] ?? STATUS_STYLE.DRAFT}`}>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-xl font-semibold">{doc.title}</h2>
-          <StatusBadge status={doc.status} />
+          <div className="flex items-center gap-2">
+            {doc.lastVote?.status === 'ACTIVE' ? <VotingPill /> : null}
+            <StatusBadge status={doc.status} />
+          </div>
         </div>
         <div className="mb-4 text-xs text-neutral-500">By {doc.ownerName}{doc.publishedAt ? ` · published ${new Date(doc.publishedAt).toLocaleDateString()}` : ''}
           {doc.status === 'ACTIVE' ? ' · obligatory to follow' : doc.status === 'DRAFT' ? ' · draft — not yet obligatory' : ''}</div>
 
         <div className="prose max-w-none dark:prose-invert"><Markdown>{doc.contentMd}</Markdown></div>
 
-        {doc.lastVote ? <div className="mt-4"><LastVoteLine v={doc.lastVote} onOpenProposal={() => setParams({ view: 'internal', ip: doc.lastVote!.proposalId })} /></div> : null}
+        {doc.lastVote?.status === 'ACTIVE' ? (
+          <VoteInProgressBanner v={doc.lastVote} onOpen={() => setParams({ view: 'internal', ip: doc.lastVote!.proposalId })} />
+        ) : doc.lastVote ? (
+          <div className="mt-4"><LastVoteLine v={doc.lastVote} onOpenProposal={() => setParams({ view: 'internal', ip: doc.lastVote!.proposalId })} /></div>
+        ) : null}
 
         <IntegrityBox doc={doc} />
 
@@ -262,7 +294,10 @@ export function RuleDocuments() {
             >
               <div className="flex items-center justify-between gap-2">
                 <span className={`font-medium ${d.status === 'DELETED' ? 'line-through' : ''}`}>{d.title}</span>
-                <StatusBadge status={d.status} />
+                <div className="flex items-center gap-2">
+                  {d.lastVote?.status === 'ACTIVE' ? <VotingPill /> : null}
+                  <StatusBadge status={d.status} />
+                </div>
               </div>
               <div className="mt-1 text-xs text-neutral-500">By {d.ownerName}</div>
               {d.lastVote ? (
@@ -357,13 +392,18 @@ export function MyRuleDocuments() {
             <div key={d.id} className={`rounded-lg border p-3 ${STATUS_STYLE[d.status] ?? STATUS_STYLE.DRAFT}`}>
               <div className="flex items-center justify-between gap-2">
                 <span className={`font-medium ${d.status === 'DELETED' ? 'line-through' : ''}`}>{d.title}</span>
-                <StatusBadge status={d.status} />
+                <div className="flex items-center gap-2">
+                  {d.lastVote?.status === 'ACTIVE' ? <VotingPill /> : null}
+                  <StatusBadge status={d.status} />
+                </div>
               </div>
               <div className="mt-2 flex flex-wrap gap-2 text-xs">
                 {d.status !== 'PRIVATE' ? (
                   <button onClick={() => setParams({ view: 'rules', doc: d.id })} className="rounded border border-neutral-300 px-2 py-0.5 dark:border-neutral-600">View</button>
                 ) : null}
-                {d.status === 'DRAFT' || d.status === 'ACTIVE' ? (
+                {d.lastVote?.status === 'ACTIVE' ? (
+                  <button onClick={() => setParams({ view: 'internal', ip: d.lastVote!.proposalId })} className="rounded border border-amber-500 px-2 py-0.5 text-amber-700 dark:text-amber-300">Open the vote</button>
+                ) : d.status === 'DRAFT' || d.status === 'ACTIVE' ? (
                   <button onClick={() => setParams({ view: 'internal', newRule: d.id })} className="rounded border border-emerald-600 px-2 py-0.5 text-emerald-700 dark:text-emerald-300">Start approval vote</button>
                 ) : null}
                 {d.editable ? <button onClick={() => setEditing(d.id)} className="rounded border border-neutral-300 px-2 py-0.5 dark:border-neutral-600">Edit</button> : null}

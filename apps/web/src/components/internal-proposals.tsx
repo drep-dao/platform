@@ -235,7 +235,11 @@ export function InternalProposals() {
                   {tr(TYPE_LABEL[p.internalType] ?? p.internalType)} · {tr(SCOPE_LABEL[p.votersScope] ?? p.votersScope)} · {tr(VTYPE_LABEL[p.votingType] ?? p.votingType)}
                   {p.tally.kind === 'THRESHOLD' ? ` · ${tr('threshold')} ${p.thresholdPct ?? '?'}%` : ''}
                   {p.submitter ? ` · ${tr('by')} ${p.submitter}` : ''}
-                  {p.status === 'ACTIVE' && p.votingEndAt ? ` · ${tr('ends')} ${fmtDateTime(p.votingEndAt)}` : ''}
+                  {p.status === 'ACTIVE' && p.votingEndAt ? (
+                    <span className={new Date(p.votingEndAt).getTime() - Date.now() <= 24 * 3600_000 ? 'font-semibold text-red-600 dark:text-red-400' : ''}>
+                      {' · '}{tr('ends')} {fmtDateTime(p.votingEndAt)}
+                    </span>
+                  ) : null}
                 </div>
               </button>
             </li>

@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { InternalProposalsService } from '../internal-proposals/internal-proposals.service';
+import { BoardService } from '../auth/board.service';
 
 const sha256hex = (s: string): string => createHash('sha256').update(s, 'utf8').digest('hex');
 const PUBLIC_STATUSES = ['DRAFT', 'ACTIVE', 'DELETED'];
@@ -17,6 +18,7 @@ export class RuleDocumentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly internal: InternalProposalsService,
+    private readonly board: BoardService,
   ) {}
 
   private async admittedDrep(userId: string): Promise<boolean> {
@@ -94,35 +96,29 @@ export class RuleDocumentsService {
   }
 
   async getOne(id: string, userId?: string) {
-    const doc = await this.prisma.ruleDocument.findUnique({
+    const initial = await this.prisma.ruleDocument.findUnique({
       where: { id },
       include: { owner: { select: { displayName: true } } },
     });
-    if (!doc) throw new NotFoundException('rule document not found');
-    const isOwner = !!userId && doc.ownerUserId === userId;
-    if (doc.status === 'PRIVATE' && !isOwner) throw new ForbiddenException('this document is private');
+    if (!initial) throw new NotFoundException('rule document not found');
+    const isOwner = !!userId && initial.ownerUserId === userId;
+    if (initial.status === 'PRIVATE' && !isOwner) throw new ForbiddenException('this document is private');
+
+    // Compute the latest vote FIRST: it auto-finalizes a past-due vote, which may flip the
+    // document's status (DRAFT → ACTIVE, or DELETED). Re-read so we return the up-to-date status
+    // in the same response rather than a stale "still voting" view.
+    const lastVote = await this.lastVote(id);
+    const doc =
+      (await this.prisma.ruleDocument.findUnique({ where: { id }, include: { owner: { select: { displayName: true } } } })) ?? initial;
 
     const isDrep = !!userId && (await this.admittedDrep(userId));
+    const canModerate = !!userId && (await this.board.isBoardMember(userId)); // board can delete any comment
     const live = await this.hasLiveVote(doc.id);
     const editable = isOwner && (doc.status === 'PRIVATE' || (doc.status === 'DRAFT' && !live));
-    const comments =
-      doc.status === 'PRIVATE'
-        ? []
-        : (
-            await this.prisma.ruleDocumentComment.findMany({
-              where: { documentId: doc.id, deletedAt: null },
-              orderBy: { createdAt: 'asc' },
-              include: { author: { select: { displayName: true } } },
-            })
-          ).map((c) => ({
-            id: c.id,
-            authorName: c.author.displayName ?? 'DRep',
-            isMine: c.authorUserId === userId,
-            contentMd: c.contentMd,
-            createdAt: c.createdAt.toISOString(),
-          }));
+    const comments = doc.status === 'PRIVATE' ? [] : await this.loadComments(doc.id, userId);
 
     return {
+      canModerate,
       ...this.summary(doc),
       contentMd: doc.contentMd,
       // sha256 of the raw content (UTF-8), hex — the exact value a user can reproduce from the
@@ -135,7 +131,7 @@ export class RuleDocumentsService {
       canPropose: isDrep && !live && (doc.status === 'DRAFT' || doc.status === 'ACTIVE'),
       canComment: isDrep && doc.status !== 'PRIVATE' && doc.status !== 'DELETED',
       comments,
-      lastVote: await this.lastVote(doc.id),
+      lastVote,
     };
   }
 
@@ -191,23 +187,62 @@ export class RuleDocumentsService {
     return { ok: true };
   }
 
-  async addComment(userId: string, id: string, dto: { contentMd: string }) {
+  // §27 — feedback thread: top-level comments each with one level of replies. Author role (board /
+  // council member) is shown beside the name; deleted comments are kept as tombstones so replies
+  // beneath them still make sense.
+  private async loadComments(documentId: string, userId?: string) {
+    const [rows, boardSeats, admitted] = await Promise.all([
+      this.prisma.ruleDocumentComment.findMany({
+        where: { documentId },
+        orderBy: { createdAt: 'asc' },
+        include: { author: { select: { displayName: true, drepKeyHash: true } } },
+      }),
+      this.prisma.boardSeat.findMany({ where: { removedAt: null }, select: { drepKeyHash: true } }),
+      this.prisma.drep.findMany({ where: { status: 'ADMITTED' }, select: { userId: true } }),
+    ]);
+    const boardHashes = new Set(boardSeats.map((s) => s.drepKeyHash));
+    const admittedIds = new Set(admitted.map((d) => d.userId));
+    type Row = (typeof rows)[number];
+    const role = (r: Row) => (r.author.drepKeyHash && boardHashes.has(r.author.drepKeyHash) ? 'Board member' : admittedIds.has(r.authorUserId) ? 'Council member' : null);
+    const shape = (r: Row) => ({
+      id: r.id,
+      authorName: r.author.displayName ?? 'DRep',
+      authorRole: role(r),
+      isMine: r.authorUserId === userId,
+      contentMd: r.deletedAt ? null : r.contentMd,
+      deleted: !!r.deletedAt,
+      createdAt: r.createdAt.toISOString(),
+    });
+    return rows
+      .filter((r) => !r.parentId)
+      .map((t) => ({ ...shape(t), replies: rows.filter((r) => r.parentId === t.id).map(shape) }))
+      .filter((t) => !t.deleted || t.replies.length > 0); // drop a bare deleted top-level with no replies
+  }
+
+  async addComment(userId: string, id: string, dto: { contentMd: string; parentId?: string }) {
     if (!(await this.admittedDrep(userId))) throw new ForbiddenException('you must be a Council member to comment — join the Council first (it is free)');
     const doc = await this.prisma.ruleDocument.findUnique({ where: { id }, select: { status: true } });
     if (!doc) throw new NotFoundException('rule document not found');
     if (doc.status === 'PRIVATE' || doc.status === 'DELETED') throw new BadRequestException('this document is not open for feedback');
-    await this.prisma.ruleDocumentComment.create({ data: { documentId: id, authorUserId: userId, contentMd: dto.contentMd } });
+    let parentId: string | null = null;
+    if (dto.parentId) {
+      const parent = await this.prisma.ruleDocumentComment.findUnique({ where: { id: dto.parentId }, select: { documentId: true, parentId: true } });
+      if (!parent || parent.documentId !== id) throw new BadRequestException('invalid parent comment');
+      // One level only: a reply to a reply attaches to its top-level comment.
+      parentId = parent.parentId ?? dto.parentId;
+    }
+    await this.prisma.ruleDocumentComment.create({ data: { documentId: id, authorUserId: userId, contentMd: dto.contentMd, parentId } });
     return this.getOne(id, userId);
   }
 
+  // Author may delete their own comment; board members may moderate any. The document owner has no
+  // special power over others' comments.
   async deleteComment(userId: string, commentId: string) {
-    const c = await this.prisma.ruleDocumentComment.findUnique({
-      where: { id: commentId },
-      include: { document: { select: { ownerUserId: true } } },
-    });
+    const c = await this.prisma.ruleDocumentComment.findUnique({ where: { id: commentId } });
     if (!c) throw new NotFoundException('comment not found');
-    if (c.authorUserId !== userId && c.document.ownerUserId !== userId) throw new ForbiddenException('not your comment');
-    await this.prisma.ruleDocumentComment.update({ where: { id: commentId }, data: { deletedAt: new Date() } });
+    const canDelete = c.authorUserId === userId || (await this.board.isBoardMember(userId));
+    if (!canDelete) throw new ForbiddenException('only the comment author or a board member can delete a comment');
+    if (!c.deletedAt) await this.prisma.ruleDocumentComment.update({ where: { id: commentId }, data: { deletedAt: new Date() } });
     return { ok: true };
   }
 }

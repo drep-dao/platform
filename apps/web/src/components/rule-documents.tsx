@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { ruleDocumentsApi, type RuleDocSummary, type RuleDocDetail, type RuleDocVote } from '@/lib/api';
+import { ruleDocumentsApi, type RuleDocSummary, type RuleDocDetail, type RuleDocVote, type RuleDocComment } from '@/lib/api';
 import { useUrlNav } from '@/lib/use-url-nav';
 import { useExplorer } from '@/lib/explorer';
 import { MarkdownEditor, Markdown } from './markdown';
@@ -135,56 +135,72 @@ function IntegrityBox({ doc }: { doc: RuleDocDetail }) {
 }
 
 // ── feedback thread ────────────────────────────────────────────────────────────
+function CommentCard({ c, doc, onDelete, onReply }: { c: RuleDocComment; doc: RuleDocDetail; onDelete: (id: string) => void; onReply?: (id: string) => void }) {
+  return (
+    <div className="rounded-lg border border-neutral-200 p-3 dark:border-neutral-700">
+      <div className="mb-1 flex items-center justify-between gap-2 text-xs text-neutral-500">
+        <span className="flex items-center gap-2">
+          <span className="font-medium text-neutral-700 dark:text-neutral-200">{c.authorName}</span>
+          {c.authorRole ? <span className="rounded-full bg-neutral-200 px-1.5 py-0.5 text-[10px] font-medium text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">{c.authorRole}</span> : null}
+        </span>
+        <span className="flex items-center gap-2">
+          <span>{new Date(c.createdAt).toLocaleString()}</span>
+          {!c.deleted && (c.isMine || doc.canModerate) ? <button onClick={() => onDelete(c.id)} className="text-red-500 hover:underline">delete</button> : null}
+        </span>
+      </div>
+      {c.deleted ? <p className="text-sm italic text-neutral-400">[deleted]</p> : <div className="prose-sm text-sm"><Markdown>{c.contentMd ?? ''}</Markdown></div>}
+      {onReply && !c.deleted ? <button onClick={() => onReply(c.id)} className="mt-1 text-xs text-emerald-700 hover:underline dark:text-emerald-400">Reply</button> : null}
+    </div>
+  );
+}
+
 function Feedback({ doc, reload }: { doc: RuleDocDetail; reload: () => void }) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
-  const post = async () => {
-    if (!text.trim()) return;
+  const [replyTo, setReplyTo] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState('');
+
+  const post = async (contentMd: string, parentId?: string) => {
+    if (!contentMd.trim()) return;
     setBusy(true);
     try {
-      await ruleDocumentsApi.comment(doc.id, text.trim());
-      setText('');
+      await ruleDocumentsApi.comment(doc.id, contentMd.trim(), parentId);
+      if (parentId) { setReplyTo(null); setReplyText(''); } else setText('');
       reload();
-    } finally {
-      setBusy(false);
-    }
+    } finally { setBusy(false); }
   };
-  const del = async (id: string) => {
-    await ruleDocumentsApi.deleteComment(id);
-    reload();
-  };
+  const del = async (id: string) => { await ruleDocumentsApi.deleteComment(id); reload(); };
+  const count = doc.comments.reduce((n, c) => n + 1 + (c.replies?.length ?? 0), 0);
+
   return (
     <div className="mt-6">
-      <h3 className="mb-2 text-sm font-semibold">Feedback ({doc.comments.length})</h3>
+      <h3 className="mb-2 text-sm font-semibold">Feedback ({count})</h3>
       <div className="space-y-3">
         {doc.comments.map((c) => (
-          <div key={c.id} className="rounded-lg border border-neutral-200 p-3 dark:border-neutral-700">
-            <div className="mb-1 flex items-center justify-between text-xs text-neutral-500">
-              <span className="font-medium text-neutral-700 dark:text-neutral-200">{c.authorName}</span>
-              <span>
-                {new Date(c.createdAt).toLocaleString()}
-                {c.isMine || doc.isOwner ? (
-                  <button onClick={() => del(c.id)} className="ml-2 text-red-500 hover:underline">delete</button>
+          <div key={c.id}>
+            <CommentCard c={c} doc={doc} onDelete={del} onReply={doc.canComment ? setReplyTo : undefined} />
+            {(c.replies && c.replies.length > 0) || replyTo === c.id ? (
+              <div className="ml-6 mt-2 space-y-2 border-l-2 border-neutral-200 pl-3 dark:border-neutral-700">
+                {c.replies?.map((r) => <CommentCard key={r.id} c={r} doc={doc} onDelete={del} />)}
+                {replyTo === c.id ? (
+                  <div>
+                    <textarea value={replyText} onChange={(e) => setReplyText(e.target.value)} rows={2} placeholder="Reply…" className="w-full rounded-lg border border-neutral-300 p-2 text-sm dark:border-neutral-600 dark:bg-neutral-900" />
+                    <div className="mt-1 flex gap-2">
+                      <button disabled={busy || !replyText.trim()} onClick={() => post(replyText, c.id)} className="rounded bg-emerald-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-40">{busy ? 'Posting…' : 'Reply'}</button>
+                      <button onClick={() => { setReplyTo(null); setReplyText(''); }} className="rounded border border-neutral-300 px-3 py-1 text-xs dark:border-neutral-600">Cancel</button>
+                    </div>
+                  </div>
                 ) : null}
-              </span>
-            </div>
-            <div className="prose-sm text-sm"><Markdown>{c.contentMd}</Markdown></div>
+              </div>
+            ) : null}
           </div>
         ))}
         {doc.comments.length === 0 ? <p className="text-xs text-neutral-500">No feedback yet.</p> : null}
       </div>
       {doc.canComment ? (
         <div className="mt-3">
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            rows={3}
-            placeholder="Give feedback on this document…"
-            className="w-full rounded-lg border border-neutral-300 p-2 text-sm dark:border-neutral-600 dark:bg-neutral-900"
-          />
-          <button disabled={busy || !text.trim()} onClick={post} className="mt-1 rounded bg-emerald-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-40">
-            {busy ? 'Posting…' : 'Post feedback'}
-          </button>
+          <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} placeholder="Give feedback on this document…" className="w-full rounded-lg border border-neutral-300 p-2 text-sm dark:border-neutral-600 dark:bg-neutral-900" />
+          <button disabled={busy || !text.trim()} onClick={() => post(text)} className="mt-1 rounded bg-emerald-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-40">{busy ? 'Posting…' : 'Post feedback'}</button>
         </div>
       ) : null}
     </div>
@@ -201,6 +217,13 @@ function RuleDocDetailView({ id, onBack, onStartVote }: { id: string; onBack: ()
     ruleDocumentsApi.get(id).then(setDoc).catch((e) => setError(e instanceof Error ? e.message : 'not found'));
   }, [id]);
   useEffect(() => { load(); }, [load]);
+  // While an approval vote is live, refresh so the page reflects the outcome (ACTIVE / DRAFT) and
+  // drops the "in progress" banner the moment the vote ends — no manual reload needed.
+  useEffect(() => {
+    if (doc?.lastVote?.status !== 'ACTIVE') return;
+    const timer = setInterval(load, 15000);
+    return () => clearInterval(timer);
+  }, [doc?.lastVote?.status, load]);
 
   if (error) return <div className="text-sm text-red-500">{error} <button onClick={onBack} className="underline">back</button></div>;
   if (!doc) return <div className="text-sm text-neutral-500">Loading…</div>;

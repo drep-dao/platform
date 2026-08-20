@@ -576,13 +576,16 @@ model RuleDocument {
 model RuleDocumentComment {
   id           String    @id @default(uuid()) @db.Uuid
   documentId   String    @map("document_id") @db.Uuid
+  parentId     String?   @map("parent_id") @db.Uuid // §27 — one level of threaded replies
   authorUserId String    @map("author_user_id") @db.Uuid
   contentMd    String    @map("content_md")
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
 
-  document RuleDocument @relation(fields: [documentId], references: [id])
-  author   AppUser      @relation(fields: [authorUserId], references: [id])
+  document RuleDocument          @relation(fields: [documentId], references: [id])
+  author   AppUser               @relation(fields: [authorUserId], references: [id])
+  parent   RuleDocumentComment?  @relation("RuleCommentParent", fields: [parentId], references: [id])
+  replies  RuleDocumentComment[] @relation("RuleCommentParent")
 
   @@index([documentId])
   @@map("rule_document_comment")

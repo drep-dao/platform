@@ -12,4 +12,5 @@ export class UpdateRuleDocDto {
 
 export class RuleCommentDto {
   @IsString() @MinLength(1) @MaxLength(4000) contentMd!: string;
+  @IsOptional() @IsString() parentId?: string; // §27 — reply to a top-level comment
 }

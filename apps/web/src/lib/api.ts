@@ -2018,9 +2018,12 @@ export interface RuleDocSummary {
 export interface RuleDocComment {
   id: string;
   authorName: string;
+  authorRole: string | null;
   isMine: boolean;
-  contentMd: string;
+  contentMd: string | null; // null when the comment is a tombstone (deleted)
+  deleted: boolean;
   createdAt: string;
+  replies?: RuleDocComment[]; // present on top-level comments (one level of threading)
 }
 export interface RuleDocDetail extends RuleDocSummary {
   contentMd: string;
@@ -2029,6 +2032,7 @@ export interface RuleDocDetail extends RuleDocSummary {
   editable: boolean;
   canPropose: boolean;
   canComment: boolean;
+  canModerate: boolean; // viewer is a board member → may delete any comment
   comments: RuleDocComment[];
 }
 export const ruleDocumentsApi = {
@@ -2041,8 +2045,8 @@ export const ruleDocumentsApi = {
     request<RuleDocDetail>(`/rule-documents/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
   publish: (id: string) => request<RuleDocDetail>(`/rule-documents/${id}/publish`, { method: 'POST' }),
   remove: (id: string) => request<{ ok: boolean }>(`/rule-documents/${id}`, { method: 'DELETE' }),
-  comment: (id: string, contentMd: string) =>
-    request<RuleDocDetail>(`/rule-documents/${id}/comments`, { method: 'POST', body: JSON.stringify({ contentMd }) }),
+  comment: (id: string, contentMd: string, parentId?: string) =>
+    request<RuleDocDetail>(`/rule-documents/${id}/comments`, { method: 'POST', body: JSON.stringify({ contentMd, ...(parentId ? { parentId } : {}) }) }),
   deleteComment: (commentId: string) =>
     request<{ ok: boolean }>(`/rule-documents/comments/${commentId}`, { method: 'DELETE' }),
 };

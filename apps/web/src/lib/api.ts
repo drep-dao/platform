@@ -2228,3 +2228,13 @@ export const requestsApi = {
   deleteType: (id: string) =>
     request<{ ok: boolean }>(`/requests/types/${id}`, { method: 'DELETE' }),
 };
+
+// §5.3 — board-configurable expertise subcategories.
+export interface Subcategory { id: string; label: string; active?: boolean }
+export const subcategoriesApi = {
+  list: () => request<Subcategory[]>('/subcategories'),
+  listAll: () => request<Subcategory[]>('/subcategories/all'),
+  create: (label: string) => request<Subcategory[]>('/subcategories', { method: 'POST', body: JSON.stringify({ label }) }),
+  setActive: (id: string, active: boolean) => request<Subcategory[]>(`/subcategories/${id}`, { method: 'PATCH', body: JSON.stringify({ active }) }),
+  remove: (id: string) => request<Subcategory[]>(`/subcategories/${id}`, { method: 'DELETE' }),
+};

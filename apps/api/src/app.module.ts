@@ -21,6 +21,7 @@ import { JobsModule } from './jobs/jobs.module';
 import { RequestsModule } from './requests/requests.module';
 import { DeployModule } from './deploy/deploy.module';
 import { RuleDocumentsModule } from './rule-documents/rule-documents.module';
+import { SubcategoriesModule } from './subcategories/subcategories.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { RuleDocumentsModule } from './rule-documents/rule-documents.module';
     PreferencesModule,
     DeployModule,
     RuleDocumentsModule,
+    SubcategoriesModule,
   ],
 })
 export class AppModule {}

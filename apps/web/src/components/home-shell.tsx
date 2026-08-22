@@ -100,7 +100,8 @@ export function HomeShell() {
     return (
       <div className="min-h-screen">
         <header className="sticky top-0 z-20 border-b border-neutral-200 bg-white/85 backdrop-blur dark:border-neutral-800 dark:bg-neutral-950/80">
-          <div className="mx-auto flex max-w-6xl items-center gap-4 px-5 py-3">
+          <div className="mx-auto max-w-6xl px-4 sm:px-5">
+            <div className="flex items-center gap-4 py-3">
             <button onClick={() => setView('overview')} className="flex items-center gap-2.5 font-semibold tracking-tight">
               <img src={brand.icon} alt="" className="h-7 w-7" />
               <span className="hidden sm:inline">{brand.name}</span>
@@ -128,16 +129,30 @@ export function HomeShell() {
               {walletOpen ? (
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setWalletOpen(false)} />
-                  <div className="absolute right-0 top-12 z-20 w-80 rounded-xl border border-neutral-200 bg-white p-4 shadow-xl dark:border-neutral-700 dark:bg-neutral-900">
+                  <div className="absolute right-0 top-12 z-20 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-neutral-200 bg-white p-4 shadow-xl dark:border-neutral-700 dark:bg-neutral-900">
                     <ConnectWallet />
                   </div>
                 </>
               ) : null}
             </div>
+            </div>
+            {/* Mobile public nav — a horizontal scroll strip (the desktop nav above is hidden < md). */}
+            <nav className="-mx-1 flex gap-1 overflow-x-auto pb-2 md:hidden">
+              {NAV.filter((n) => PUBLIC_VIEWS.includes(n.key)).map((n) => (
+                <button key={n.key} onClick={() => setView(n.key)}
+                  className={`shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-[13px] ${
+                    pubView === n.key
+                      ? 'bg-neutral-100 font-semibold text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100'
+                      : 'text-neutral-500 dark:text-neutral-400'
+                  }`}>
+                  {t(n.label === 'Council Member overview' ? 'Overview' : n.label)}
+                </button>
+              ))}
+            </nav>
           </div>
         </header>
 
-        <main className="mx-auto max-w-6xl px-5 py-6">
+        <main className="mx-auto max-w-6xl px-4 py-6 sm:px-5">
           {pubView === 'members' ? (
             <DaoMembersDirectory />
           ) : pubView === 'treasury' ? (
@@ -167,11 +182,12 @@ export function HomeShell() {
     profile.daoMembership?.status !== 'PENDING_ADMISSION';
 
   return (
-    <div className="flex flex-col gap-6 px-6 py-6 lg:flex-row">
-      {/* Left: title + menu only. */}
+    <div className="flex flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row">
+      {/* Left: title + menu only. On mobile the menu is a horizontal scroll strip so content
+          isn't pushed below a tall vertical list; on lg it's the usual vertical sidebar. */}
       <aside className="lg:w-56 lg:shrink-0">
-        <h1 className="mb-4 text-xl font-bold tracking-tight">{brand.name}</h1>
-        <nav className="space-y-1">
+        <h1 className="mb-3 text-xl font-bold tracking-tight lg:mb-4">{brand.name}</h1>
+        <nav className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 lg:mx-0 lg:flex-col lg:gap-0 lg:space-y-1 lg:overflow-visible lg:px-0 lg:pb-0">
           {nav.map((n) => {
             // §20 — mirror the in-area to-do count next to "My area" so users
             // see how much is awaiting them without opening the menu.
@@ -180,7 +196,7 @@ export function HomeShell() {
               <button
                 key={n.key}
                 onClick={() => setView(n.key)}
-                className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm ${
+                className={`flex w-auto shrink-0 items-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-left text-sm lg:w-full lg:justify-between lg:gap-0 ${
                   view === n.key
                     ? 'bg-emerald-600 font-medium text-white'
                     : 'text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800'

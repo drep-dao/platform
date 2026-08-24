@@ -16,4 +16,23 @@ export class BoardService {
     const seat = await this.prisma.boardSeat.findFirst({ where: { removedAt: null, drepKeyHash: user.drepKeyHash } });
     return !!seat;
   }
+
+  /** Is any board seat currently filled? (§14 — while none is, admission is "open".) */
+  async isBoardSeated(): Promise<boolean> {
+    const seat = await this.prisma.boardSeat.findFirst({ where: { removedAt: null }, select: { id: true } });
+    return !!seat;
+  }
+
+  /**
+   * Who may review Expert / Submitter applications: normally the board. But those roles ALWAYS
+   * need a human approval (open admission only auto-admits DReps, never experts/submitters), so
+   * while NO board is seated an admitted Council member (DRep) can review them — otherwise the
+   * applications would queue with nobody able to act on them.
+   */
+  async canReviewApplications(userId: string): Promise<boolean> {
+    if (await this.isBoardMember(userId)) return true;
+    if (await this.isBoardSeated()) return false; // a board exists → it handles applications
+    const drep = await this.prisma.drep.findUnique({ where: { userId }, select: { status: true } });
+    return drep?.status === 'ADMITTED';
+  }
 }

@@ -65,6 +65,9 @@ export function MemberArea() {
   }, []);
   useEffect(loadSubmitter, [loadSubmitter]);
   const onSubmitterChange = useCallback(() => { loadSubmitter(); void refresh(); }, [loadSubmitter, refresh]);
+  // §14 — is a board seated? While none is, an admitted Council member reviews Expert/Submitter apps.
+  const [boardSeated, setBoardSeated] = useState<boolean | null>(null);
+  useEffect(() => { submitterApi.pendingCount().then((r) => setBoardSeated(r.boardElected)).catch(() => setBoardSeated(null)); }, []);
 
   const isBoard = !!profile?.roles.includes('BOARD');
   const canVote = !!profile && (profile.roles.includes('DREP') || profile.roles.includes('DAO_MEMBER') || profile.roles.includes('BOARD'));
@@ -138,6 +141,10 @@ export function MemberArea() {
     tabs.push({ key: 'sign', label: 'Actions', badge: todo.actions, node: <ActionsTab /> });
     tabs.push({ key: 'rewards', label: 'Rewards', node: <RewardsTab /> });
     tabs.push({ key: 'apps', label: 'Applications', badge: todo.applications, node: <ApplicationsTab /> });
+  } else if ((isMember || isDrep) && boardSeated === false) {
+    // §14 bootstrap: no board seated → a Council member approves Expert + Submitter applications
+    // (open admission only auto-admits DReps; those two roles always need a human approval).
+    tabs.push({ key: 'apps', label: 'Applications', node: <CouncilApplicationsTab /> });
   }
 
   return <MemberTabs tabs={tabs} />;
@@ -434,6 +441,26 @@ function ApplicationsTab() {
       <section className={card}><ExpertReviewPanel history={showHistory} /></section>
       <SubmitterReviewPanel history={showHistory} />
       <section className={card}><RemovalPanel history={showHistory} /></section>
+    </div>
+  );
+}
+
+/** §14 — while no board is seated, Council members review the applications that still need a human
+ *  approval: Experts and Submitters (DRep admission is automatic under open admission). */
+function CouncilApplicationsTab() {
+  const t = useT();
+  const [showHistory, setShowHistory] = useState(false);
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-neutral-500">{t('No board is seated yet — as a Council member you can review Expert & Submitter applications.')}</p>
+        <label className="flex items-center gap-1.5 text-xs text-neutral-600 dark:text-neutral-400">
+          <input type="checkbox" checked={showHistory} onChange={(e) => setShowHistory(e.target.checked)} />
+          {t('Show history')}
+        </label>
+      </div>
+      <section className={card}><ExpertReviewPanel history={showHistory} /></section>
+      <SubmitterReviewPanel history={showHistory} />
     </div>
   );
 }

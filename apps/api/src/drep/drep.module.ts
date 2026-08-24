@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { BoardGuard } from '../auth/board.guard';
+import { ApplicationReviewGuard } from '../auth/application-review.guard';
 import { DrepService } from './drep.service';
 import { MeDrepController } from './me-drep.controller';
 import { MeExpertController } from './me-expert.controller';
@@ -23,6 +24,6 @@ import { DrepImageController } from './drep-image.controller';
     BoardProofsController,
     DrepImageController,
   ],
-  providers: [DrepService, BoardGuard],
+  providers: [DrepService, BoardGuard, ApplicationReviewGuard],
 })
 export class DrepModule {}

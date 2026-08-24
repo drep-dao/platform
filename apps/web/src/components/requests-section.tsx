@@ -117,6 +117,11 @@ function RequestCard({ r, isBoard, mine, onEdit, onChanged }: { r: RequestView; 
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // The list omits comments/canComment (they're on the detail) — fetch the full request on open.
+  const [detail, setDetail] = useState<RequestView | null>(null);
+  const loadDetail = useCallback(() => { requestsApi.get(r.id).then(setDetail).catch(() => undefined); }, [r.id]);
+  useEffect(() => { if (open) loadDetail(); }, [open, loadDetail]);
+  const d = detail ?? r;
 
   const act = async (fn: () => Promise<unknown>) => {
     setBusy(true); setErr(null);
@@ -164,7 +169,7 @@ function RequestCard({ r, isBoard, mine, onEdit, onChanged }: { r: RequestView; 
           {r.decidedAt && r.status !== 'DRAFT' ? <p className="text-xs text-neutral-500">{r.status === 'DELETED' ? t('Deleted on') : t('Decided on')} {new Date(r.decidedAt).toLocaleDateString()}</p> : null}
 
           {/* §R — DReps discuss a published request. */}
-          {['ACTIVE', 'DONE', 'REJECTED'].includes(r.status) ? <RequestComments r={r} onChanged={onChanged} /> : null}
+          {['ACTIVE', 'DONE', 'REJECTED'].includes(d.status) ? <RequestComments r={d} onChanged={() => { loadDetail(); onChanged(); }} /> : null}
 
           {/* §R — board moves a published request between Active / Done / Rejected. */}
           {isBoard && ['ACTIVE', 'DONE', 'REJECTED'].includes(r.status) ? (

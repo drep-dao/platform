@@ -279,7 +279,7 @@ export class RequestsService {
     if (r.status === 'PENDING_FEE' && !board && !isOwner) {
       throw new ForbiddenException('this request is awaiting its fee');
     }
-    const canComment = !!userId && (await this.admittedDrep(userId)) && !['DRAFT', 'DELETED', 'PENDING_FEE'].includes(r.status);
+    const canComment = await this.canDiscuss(userId, r);
     return { ...this.view(r, board || isOwner, userId), canComment, canModerate: board, comments: await this.loadComments(id, userId) };
   }
 
@@ -337,11 +337,24 @@ export class RequestsService {
     return drep?.status === 'ADMITTED';
   }
 
+  private async approvedExpert(userId: string): Promise<boolean> {
+    const e = await this.prisma.expert.findFirst({ where: { userId, approvedByBoard: true, leftAt: null }, select: { id: true } });
+    return !!e;
+  }
+
+  /** Who may discuss a published request: the author (submitter), Council members, or experts. */
+  private async canDiscuss(userId: string | null | undefined, r: { status: string; submitterUserId: string }): Promise<boolean> {
+    if (!userId) return false;
+    if (['DRAFT', 'DELETED', 'PENDING_FEE'].includes(r.status)) return false;
+    if (r.submitterUserId === userId) return true;
+    return (await this.admittedDrep(userId)) || (await this.approvedExpert(userId));
+  }
+
   async addComment(userId: string, id: string, contentMd: string) {
-    if (!(await this.admittedDrep(userId))) throw new ForbiddenException('only Council members can comment');
-    const r = await this.prisma.request.findUnique({ where: { id }, select: { status: true } });
+    const r = await this.prisma.request.findUnique({ where: { id }, select: { status: true, submitterUserId: true } });
     if (!r) throw new NotFoundException('request not found');
     if (['DRAFT', 'DELETED', 'PENDING_FEE'].includes(r.status)) throw new BadRequestException('this request is not open for comments');
+    if (!(await this.canDiscuss(userId, r))) throw new ForbiddenException('only Council members, registered experts, or the request author can comment');
     const text = (contentMd ?? '').trim();
     if (!text) throw new BadRequestException('a comment is required');
     await this.prisma.requestComment.create({ data: { requestId: id, authorUserId: userId, contentMd: text } });
@@ -358,17 +371,19 @@ export class RequestsService {
   }
 
   private async loadComments(requestId: string, userId?: string | null) {
-    const [rows, boardSeats, admitted] = await Promise.all([
+    const [rows, boardSeats, admitted, experts] = await Promise.all([
       this.prisma.requestComment.findMany({ where: { requestId }, orderBy: { createdAt: 'asc' }, include: { author: { select: { displayName: true, drepKeyHash: true } } } }),
       this.prisma.boardSeat.findMany({ where: { removedAt: null }, select: { drepKeyHash: true } }),
       this.prisma.drep.findMany({ where: { status: 'ADMITTED' }, select: { userId: true } }),
+      this.prisma.expert.findMany({ where: { approvedByBoard: true, leftAt: null }, select: { userId: true } }),
     ]);
     const boardHashes = new Set(boardSeats.map((b) => b.drepKeyHash));
     const admittedIds = new Set(admitted.map((d) => d.userId));
+    const expertIds = new Set(experts.map((e) => e.userId));
     return rows.map((c) => ({
       id: c.id,
       authorName: c.author.displayName ?? 'DRep',
-      authorRole: c.author.drepKeyHash && boardHashes.has(c.author.drepKeyHash) ? 'Board member' : admittedIds.has(c.authorUserId) ? 'Council member' : null,
+      authorRole: c.author.drepKeyHash && boardHashes.has(c.author.drepKeyHash) ? 'Board member' : admittedIds.has(c.authorUserId) ? 'Council member' : expertIds.has(c.authorUserId) ? 'Expert' : null,
       isMine: c.authorUserId === userId,
       contentMd: c.deletedAt ? null : c.contentMd,
       deleted: !!c.deletedAt,

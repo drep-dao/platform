@@ -1,10 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { ruleDocumentsApi, type RuleDocSummary, type RuleDocDetail, type RuleDocVote, type RuleDocComment } from '@/lib/api';
+import { ruleDocumentsApi, type RuleDocSummary, type RuleDocDetail, type RuleDocVote } from '@/lib/api';
+import { useT } from '@/lib/prefs-context';
 import { useUrlNav } from '@/lib/use-url-nav';
 import { useExplorer } from '@/lib/explorer';
 import { MarkdownEditor, Markdown } from './markdown';
+import { DiscussionThread } from './discussion-thread';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 async function sha256Hex(s: string): Promise<string> {
@@ -149,88 +151,23 @@ function IntegrityBox({ doc }: { doc: RuleDocDetail }) {
   );
 }
 
-// ── feedback thread ────────────────────────────────────────────────────────────
-function CommentCard({ c, doc, onDelete, onReply }: { c: RuleDocComment; doc: RuleDocDetail; onDelete: (id: string) => void; onReply?: (id: string) => void }) {
-  return (
-    <div className="rounded-lg border border-neutral-200 p-3 dark:border-neutral-700">
-      <div className="mb-1 flex items-center justify-between gap-2 text-xs text-neutral-500">
-        <span className="flex items-center gap-2">
-          <span className="font-medium text-neutral-700 dark:text-neutral-200">{c.authorName}</span>
-          {c.authorRole ? <span className="rounded-full bg-neutral-200 px-1.5 py-0.5 text-[10px] font-medium text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">{c.authorRole}</span> : null}
-        </span>
-        <span className="flex items-center gap-2">
-          <span>{new Date(c.createdAt).toLocaleString()}</span>
-          {!c.deleted && (c.isMine || doc.canModerate) ? <button onClick={() => onDelete(c.id)} className="text-red-500 hover:underline">delete</button> : null}
-        </span>
-      </div>
-      {c.deleted ? <p className="text-sm italic text-neutral-400">[deleted]</p> : <div className="prose-sm text-sm"><Markdown>{c.contentMd ?? ''}</Markdown></div>}
-      {onReply && !c.deleted ? <button onClick={() => onReply(c.id)} className="mt-1 text-xs text-emerald-700 hover:underline dark:text-emerald-400">Reply</button> : null}
-    </div>
-  );
-}
-
 function Feedback({ doc, reload }: { doc: RuleDocDetail; reload: () => void }) {
-  const [text, setText] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [replyTo, setReplyTo] = useState<string | null>(null);
-  const [replyText, setReplyText] = useState('');
-  const [open, setOpen] = useState(false); // feedback hidden by default
-
-  const post = async (contentMd: string, parentId?: string) => {
-    if (!contentMd.trim()) return;
-    setBusy(true);
-    try {
-      await ruleDocumentsApi.comment(doc.id, contentMd.trim(), parentId);
-      if (parentId) { setReplyTo(null); setReplyText(''); } else setText('');
-      reload();
-    } finally { setBusy(false); }
-  };
-  const del = async (id: string) => { await ruleDocumentsApi.deleteComment(id); reload(); };
-  const count = doc.comments.reduce((n, c) => n + 1 + (c.replies?.length ?? 0), 0);
-
+  const t = useT();
   return (
-    <div className="mt-6">
-      <button onClick={() => setOpen((o) => !o)} className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-neutral-700 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-neutral-100">
-        <span className={`inline-block transition-transform ${open ? 'rotate-90' : ''}`}>›</span>
-        Feedback ({count})
-        <span className="text-xs font-normal text-neutral-400">{open ? 'Hide' : 'Show'}</span>
-      </button>
-      {!open ? null : (
-      <>
-      <div className="space-y-3">
-        {doc.comments.map((c) => (
-          <div key={c.id}>
-            <CommentCard c={c} doc={doc} onDelete={del} onReply={doc.canComment ? setReplyTo : undefined} />
-            {(c.replies && c.replies.length > 0) || replyTo === c.id ? (
-              <div className="ml-6 mt-2 space-y-2 border-l-2 border-neutral-200 pl-3 dark:border-neutral-700">
-                {c.replies?.map((r) => <CommentCard key={r.id} c={r} doc={doc} onDelete={del} />)}
-                {replyTo === c.id ? (
-                  <div>
-                    <textarea value={replyText} onChange={(e) => setReplyText(e.target.value)} rows={2} placeholder="Reply…" className="w-full rounded-lg border border-neutral-300 p-2 text-sm dark:border-neutral-600 dark:bg-neutral-900" />
-                    <div className="mt-1 flex gap-2">
-                      <button disabled={busy || !replyText.trim()} onClick={() => post(replyText, c.id)} className="rounded bg-emerald-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-40">{busy ? 'Posting…' : 'Reply'}</button>
-                      <button onClick={() => { setReplyTo(null); setReplyText(''); }} className="rounded border border-neutral-300 px-3 py-1 text-xs dark:border-neutral-600">Cancel</button>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        ))}
-        {doc.comments.length === 0 ? <p className="text-xs text-neutral-500">No feedback yet.</p> : null}
-      </div>
-      {doc.canComment ? (
-        <div className="mt-3">
-          <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} placeholder="Give feedback on this document…" className="w-full rounded-lg border border-neutral-300 p-2 text-sm dark:border-neutral-600 dark:bg-neutral-900" />
-          <button disabled={busy || !text.trim()} onClick={() => post(text)} className="mt-1 rounded bg-emerald-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-40">{busy ? 'Posting…' : 'Post feedback'}</button>
-        </div>
-      ) : null}
-      </>
-      )}
-    </div>
+    <DiscussionThread
+      comments={doc.comments}
+      canComment={doc.canComment}
+      canModerate={doc.canModerate}
+      onPost={(md, pid) => ruleDocumentsApi.comment(doc.id, md, pid).then(() => reload())}
+      onDelete={(id) => ruleDocumentsApi.deleteComment(id).then(() => reload())}
+      label="Feedback"
+      submitLabel="Post feedback"
+      placeholder={t('Give feedback on this document… (supports **bold**, *italics*, lists, [links](https://…))')}
+      emptyText={t('No feedback yet.')}
+      collapsibleSection
+    />
   );
 }
-
 // ── document detail view (public) ──────────────────────────────────────────────
 function RuleDocDetailView({ id, onBack, onStartVote }: { id: string; onBack: () => void; onStartVote: (docId: string) => void }) {
   const [doc, setDoc] = useState<RuleDocDetail | null>(null);

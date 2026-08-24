@@ -241,7 +241,7 @@ export class RuleDocumentsService {
     const admittedIds = new Set(admitted.map((d) => d.userId));
     type Row = (typeof rows)[number];
     const role = (r: Row) => (r.author.drepKeyHash && boardHashes.has(r.author.drepKeyHash) ? 'Board member' : admittedIds.has(r.authorUserId) ? 'Council member' : null);
-    const shape = (r: Row) => ({
+    const shape = (r: Row): Record<string, unknown> => ({
       id: r.id,
       authorName: r.author.displayName ?? 'DRep',
       authorRole: role(r),
@@ -249,11 +249,12 @@ export class RuleDocumentsService {
       contentMd: r.deletedAt ? null : r.contentMd,
       deleted: !!r.deletedAt,
       createdAt: r.createdAt.toISOString(),
+      replies: rows.filter((x) => x.parentId === r.id).map(shape),
     });
     return rows
       .filter((r) => !r.parentId)
-      .map((t) => ({ ...shape(t), replies: rows.filter((r) => r.parentId === t.id).map(shape) }))
-      .filter((t) => !t.deleted || t.replies.length > 0); // drop a bare deleted top-level with no replies
+      .map(shape)
+      .filter((t) => !(t.deleted as boolean) || (t.replies as unknown[]).length > 0); // drop a bare deleted top-level with no replies
   }
 
   async addComment(userId: string, id: string, dto: { contentMd: string; parentId?: string }) {
@@ -265,8 +266,7 @@ export class RuleDocumentsService {
     if (dto.parentId) {
       const parent = await this.prisma.ruleDocumentComment.findUnique({ where: { id: dto.parentId }, select: { documentId: true, parentId: true } });
       if (!parent || parent.documentId !== id) throw new BadRequestException('invalid parent comment');
-      // One level only: a reply to a reply attaches to its top-level comment.
-      parentId = parent.parentId ?? dto.parentId;
+      parentId = dto.parentId; // arbitrary nesting: a reply can reply to a reply.
     }
     await this.prisma.ruleDocumentComment.create({ data: { documentId: id, authorUserId: userId, contentMd: dto.contentMd, parentId } });
     return this.getOne(id, userId);

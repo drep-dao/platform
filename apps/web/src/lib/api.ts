@@ -2265,6 +2265,7 @@ export interface RequestView {
   id: string;
   title: string;
   description: string;
+  expectedResponseAt: string | null; // §R — submitter's requested response-by time
   status: 'PENDING_FEE' | 'ACTIVE' | 'DONE' | 'REJECTED';
   createdAt: string;
   decidedAt: string | null;
@@ -2282,7 +2283,7 @@ export const requestsApi = {
   feeAddress: () => request<{ address: string | null }>('/requests/fee-address'),
   list: (status?: string) => request<RequestView[]>(`/requests${status ? `?status=${status}` : ''}`),
   get: (id: string) => request<RequestView>(`/requests/${id}`),
-  submit: (body: { title: string; description: string; typeId?: string; feeTxHash?: string }) =>
+  submit: (body: { title: string; description: string; typeId?: string; feeTxHash?: string; expectedResponseAt?: string }) =>
     request<RequestView>('/requests', { method: 'POST', body: JSON.stringify(body) }),
   submitFeeTx: (id: string, txHash: string) =>
     request<RequestView>(`/requests/${id}/fee-tx`, { method: 'POST', body: JSON.stringify({ txHash }) }),

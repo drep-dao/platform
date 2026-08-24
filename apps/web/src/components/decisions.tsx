@@ -464,7 +464,7 @@ export function MyDecisions() {
               </div>
               <div className="mt-2 flex flex-wrap gap-2 text-xs">
                 {d.status !== 'PRIVATE' ? (
-                  <button onClick={() => setParams({ view: 'rules', doc: d.id })} className="rounded border border-neutral-300 px-2 py-0.5 dark:border-neutral-600">View</button>
+                  <button onClick={() => setParams({ view: 'decisions', doc: d.id })} className="rounded border border-neutral-300 px-2 py-0.5 dark:border-neutral-600">View</button>
                 ) : null}
                 {d.lastVote?.status === 'ACTIVE' ? (
                   <button onClick={() => setParams({ view: 'internal', ip: d.lastVote!.proposalId })} className="rounded border border-amber-500 px-2 py-0.5 text-amber-700 dark:text-amber-300">Open the vote</button>

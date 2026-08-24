@@ -99,12 +99,19 @@ export class RequestsService {
 
   // ── submitting ──────────────────────────────────────────────────────────────
 
-  async submit(userId: string, dto: { title: string; description: string; typeId?: string | null; feeTxHash?: string | null }) {
+  async submit(userId: string, dto: { title: string; description: string; typeId?: string | null; feeTxHash?: string | null; expectedResponseAt?: string | null }) {
     await this.assertApprovedSubmitter(userId);
     const title = dto.title?.trim() ?? '';
     const description = dto.description?.trim() ?? '';
     if (title.length < 4) throw new BadRequestException('the title must be at least 4 characters');
     if (!description) throw new BadRequestException('a description is required');
+    let expectedResponseAt: Date | null = null;
+    if (dto.expectedResponseAt) {
+      const d = new Date(dto.expectedResponseAt);
+      if (Number.isNaN(d.getTime())) throw new BadRequestException('invalid expected-response time');
+      if (d.getTime() <= Date.now()) throw new BadRequestException('the expected-response time must be in the future');
+      expectedResponseAt = d;
+    }
 
     let type = null;
     if (dto.typeId) {
@@ -119,6 +126,7 @@ export class RequestsService {
         typeId: type?.id ?? null,
         title,
         description,
+        expectedResponseAt,
         // Paid requests wait for the on-chain fee before DReps see them.
         status: paid ? 'PENDING_FEE' : 'ACTIVE',
         feeTxHash: dto.feeTxHash?.trim() || null,
@@ -208,7 +216,7 @@ export class RequestsService {
 
   private view(
     r: {
-      id: string; title: string; description: string; status: string; createdAt: Date; decidedAt: Date | null;
+      id: string; title: string; description: string; expectedResponseAt: Date | null; status: string; createdAt: Date; decidedAt: Date | null;
       feeTxHash: string | null; feeSeenOnchainAt: Date | null; submitterUserId: string;
       type: { id: string; name: string; priceAda: bigint } | null;
       submitter: { id: string; displayName: string | null };
@@ -219,6 +227,7 @@ export class RequestsService {
       id: r.id,
       title: r.title,
       description: r.description,
+      expectedResponseAt: r.expectedResponseAt ? r.expectedResponseAt.toISOString() : null,
       status: r.status,
       createdAt: r.createdAt,
       decidedAt: r.decidedAt,

@@ -1,10 +1,11 @@
-import { IsBoolean, IsIn, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsISO8601, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
 
 export class CreateRequestDto {
   @IsString() @IsNotEmpty() @MaxLength(200) title!: string;
   @IsString() @IsNotEmpty() @MaxLength(20000) description!: string;
   @IsOptional() @IsUUID() typeId?: string;
   @IsOptional() @IsString() @MaxLength(64) feeTxHash?: string;
+  @IsOptional() @IsISO8601() expectedResponseAt?: string; // §R — requested response-by time (future)
 }
 
 export class SubmitRequestFeeDto {

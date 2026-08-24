@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { requestsApi, type RequestTypeView, type RequestView } from '@/lib/api';
+import { requestsApi, submitterApi, type RequestTypeView, type RequestView } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { useT } from '@/lib/prefs-context';
 import { card } from '@/lib/ui';
@@ -44,7 +44,11 @@ export function RequestsSection() {
   const t = useT();
   const { profile } = useAuth();
   const isBoard = !!profile?.roles.includes('BOARD');
-  const isSubmitter = !!profile?.roles.includes('SUBMITTER'); // §2.1 — approved submitter
+  // §2.1 — approved submitter. Fall back to the application status so the form shows right after
+  // approval even before the session's roles refresh.
+  const [mineApproved, setMineApproved] = useState(false);
+  useEffect(() => { submitterApi.mine().then((m) => setMineApproved(m?.status === 'APPROVED')).catch(() => undefined); }, []);
+  const isSubmitter = !!profile?.roles.includes('SUBMITTER') || mineApproved;
   const [rows, setRows] = useState<RequestView[] | null>(null);
   const [filter, setFilter] = useState<'open' | 'history' | 'all'>('open');
   const [showSubmit, setShowSubmit] = useState(false);
@@ -140,6 +144,7 @@ function RequestCard({ r, isBoard, mine, onChanged }: { r: RequestView; isBoard:
       {open ? (
         <div className="mt-3 space-y-3 border-t border-neutral-200 pt-3 dark:border-neutral-800">
           <p className="whitespace-pre-wrap text-sm text-neutral-700 dark:text-neutral-300">{r.description}</p>
+          {r.expectedResponseAt ? <p className="text-xs text-neutral-500">{t('Response expected by:')} <span className={`font-medium ${new Date(r.expectedResponseAt).getTime() < Date.now() && r.status === 'ACTIVE' ? 'text-red-600 dark:text-red-400' : 'text-neutral-700 dark:text-neutral-300'}`}>{new Date(r.expectedResponseAt).toLocaleString()}</span></p> : null}
           {r.status === 'PENDING_FEE' && mine ? <FeePanel r={r} onChanged={onChanged} /> : null}
           {r.status === 'PENDING_FEE' && !mine && isBoard ? (
             <p className="text-xs text-amber-700 dark:text-amber-400">
@@ -250,6 +255,7 @@ function SubmitRequestForm({ onDone }: { onDone: () => void }) {
   const [typeId, setTypeId] = useState<string>('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [expectedResponseAt, setExpectedResponseAt] = useState(''); // §R datetime-local
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
@@ -261,7 +267,7 @@ function SubmitRequestForm({ onDone }: { onDone: () => void }) {
   const submit = async () => {
     setBusy(true); setErr(null);
     try {
-      await requestsApi.submit({ title: title.trim(), description: description.trim(), typeId: typeId || undefined });
+      await requestsApi.submit({ title: title.trim(), description: description.trim(), typeId: typeId || undefined, expectedResponseAt: expectedResponseAt ? new Date(expectedResponseAt).toISOString() : undefined });
       onDone();
     } catch (e) { setErr((e as Error).message); }
     setBusy(false);
@@ -309,6 +315,16 @@ function SubmitRequestForm({ onDone }: { onDone: () => void }) {
             onChange={(e) => setDescription(e.target.value)}
             rows={5}
             className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+          />
+        </label>
+        <label className="block text-sm">
+          <span className="mb-1 block text-xs font-medium text-neutral-600 dark:text-neutral-400">{t('Expected response by')} <span className="font-normal text-neutral-400">({t('optional')})</span></span>
+          <input
+            type="datetime-local"
+            value={expectedResponseAt}
+            min={new Date().toISOString().slice(0, 16)}
+            onChange={(e) => setExpectedResponseAt(e.target.value)}
+            className="w-full max-w-xs rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900"
           />
         </label>
         <div className="flex items-center gap-2">

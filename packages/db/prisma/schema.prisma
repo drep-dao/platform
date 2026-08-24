@@ -1639,6 +1639,7 @@ model Request {
   typeId           String?   @map("type_id") @db.Uuid // null = free request
   title            String
   description      String
+  expectedResponseAt DateTime? @map("expected_response_at") @db.Timestamptz(6) // §R — submitter's requested response-by time
   status           String    @default("ACTIVE") // PENDING_FEE | ACTIVE | DONE | REJECTED
   feeTxHash        String?   @map("fee_tx_hash")
   feeSeenOnchainAt DateTime? @map("fee_seen_onchain_at") @db.Timestamptz(6)

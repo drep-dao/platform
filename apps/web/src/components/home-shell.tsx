@@ -17,6 +17,7 @@ import { OnChainProofs } from './on-chain-proofs';
 import { TreasuryOverview } from './treasury-overview';
 import { InternalProposals } from './internal-proposals';
 import { RuleDocuments } from './rule-documents';
+import { Decisions } from './decisions';
 import { RequestsSection } from './requests-section';
 import { JoinDaoButton } from './join-dao-button';
 import { NotificationBadge } from './notification-badge';
@@ -27,7 +28,7 @@ import { WalletStatusBanner } from './wallet-status-banner';
 import { useTodoCounts, todoTotal } from '@/lib/use-todo-counts';
 import { HealthBadge } from '@/app/health-badge';
 
-type View = 'overview' | 'members' | 'votingpower' | 'submitters' | 'experts' | 'me' | 'requests' | 'internal' | 'rules' | 'proofs' | 'treasury' | 'setup';
+type View = 'overview' | 'members' | 'votingpower' | 'submitters' | 'experts' | 'me' | 'requests' | 'internal' | 'rules' | 'decisions' | 'proofs' | 'treasury' | 'setup';
 const NAV: { key: View; label: string; icon: string; boardOnly?: boolean; publicOnly?: boolean }[] = [
   // §2 — "My area" first: it is the member's home (to-dos, profile, proposals).
   { key: 'me', label: 'My area', icon: 'user' },
@@ -41,13 +42,14 @@ const NAV: { key: View; label: string; icon: string; boardOnly?: boolean; public
   { key: 'requests', label: 'Requests', icon: 'message' },
   { key: 'internal', label: 'Internal proposals', icon: 'clipboard' },
   { key: 'rules', label: 'Rule Documents', icon: 'file-text' },
+  { key: 'decisions', label: 'Decisions', icon: 'clipboard' },
   { key: 'proofs', label: 'On-chain proofs', icon: 'shield' },
   { key: 'treasury', label: 'Treasury', icon: 'landmark' },
   { key: 'setup', label: 'Platform setup', icon: 'settings', boardOnly: true },
 ];
 // Views a logged-out visitor may browse read-only. Governance edition: internal
 // proposals & requests need login, so the public surface is overview/members/proofs/treasury.
-const PUBLIC_VIEWS: View[] = ['overview', 'members', 'votingpower', 'proofs', 'treasury', 'rules'];
+const PUBLIC_VIEWS: View[] = ['overview', 'members', 'votingpower', 'proofs', 'treasury', 'rules', 'decisions'];
 
 export function HomeShell() {
   const { profile, loading } = useAuth();
@@ -161,6 +163,8 @@ export function HomeShell() {
             <OnChainProofs />
           ) : pubView === 'rules' ? (
             <RuleDocuments />
+          ) : pubView === 'decisions' ? (
+            <Decisions />
           ) : pubView === 'votingpower' ? (
             <DaoOverview />
           ) : (
@@ -239,6 +243,8 @@ export function HomeShell() {
           <InternalProposals />
         ) : view === 'rules' ? (
           <RuleDocuments />
+        ) : view === 'decisions' ? (
+          <Decisions />
         ) : view === 'proofs' ? (
           <OnChainProofs />
         ) : view === 'treasury' ? (

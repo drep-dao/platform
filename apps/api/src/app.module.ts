@@ -22,6 +22,7 @@ import { RequestsModule } from './requests/requests.module';
 import { DeployModule } from './deploy/deploy.module';
 import { RuleDocumentsModule } from './rule-documents/rule-documents.module';
 import { SubcategoriesModule } from './subcategories/subcategories.module';
+import { DecisionsModule } from './decisions/decisions.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { SubcategoriesModule } from './subcategories/subcategories.module';
     DeployModule,
     RuleDocumentsModule,
     SubcategoriesModule,
+    DecisionsModule,
   ],
 })
 export class AppModule {}

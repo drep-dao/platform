@@ -87,6 +87,7 @@ export const InternalType = {
   POLL: 'POLL',
   SPENDING: 'SPENDING', // §10.5 — approved → an OPS multisig action the board signs
   RULE_APPROVAL: 'RULE_APPROVAL', // §27 — approve/delete a rule document; freezes + anchors its content hash
+  DECISION_APPROVAL: 'DECISION_APPROVAL', // §28 — approve/delete a decision; freezes + anchors its content hash
 } as const;
 export type InternalType = (typeof InternalType)[keyof typeof InternalType];
 

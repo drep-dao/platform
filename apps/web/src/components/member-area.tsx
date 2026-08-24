@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { card } from '@/lib/ui';
 import { MyRuleDocuments } from './rule-documents';
+import { MyDecisions } from './decisions';
 import { useAuth } from '@/lib/auth-context';
 import { useT } from '@/lib/prefs-context';
 import { useUrlNav } from '@/lib/use-url-nav';
@@ -112,6 +113,7 @@ export function MemberArea() {
   // proposals — a registered DRep who hasn't joined yet won't see it (they join first; it's free).
   if (isMember || isBoard) {
     tabs.push({ key: 'rules', label: 'My Rule documents', node: <MyRuleDocuments /> });
+    tabs.push({ key: 'decisions', label: 'My Decisions', node: <MyDecisions /> });
   }
 
   if (isMember || isDrep || expertApproved) {

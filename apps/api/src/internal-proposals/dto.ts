@@ -13,7 +13,7 @@ import {
   MinLength,
 } from 'class-validator';
 
-const INTERNAL_TYPES = ['INSTRUCTIVE', 'INFORMATIVE', 'POLL', 'SPENDING', 'RULE_APPROVAL'];
+const INTERNAL_TYPES = ['INSTRUCTIVE', 'INFORMATIVE', 'POLL', 'SPENDING', 'RULE_APPROVAL', 'DECISION_APPROVAL'];
 const SCOPES = ['DREPS_ONLY', 'BOARD_ONLY', 'BOTH'];
 const THRESHOLDS = ['DEFAULT', 'IMPORTANT'];
 const VOTING_TYPES = ['ONE_PERSON_ONE_VOTE', 'BALANCED', 'ONCHAIN'];
@@ -60,6 +60,10 @@ export class CreateInternalProposalDto {
   // when the type is RULE_APPROVAL; `ruleDeleteRequested` turns the vote into a delete vote.
   @IsOptional() @IsString() ruleDocumentId?: string;
   @IsOptional() @IsBoolean() ruleDeleteRequested?: boolean;
+
+  // §28 — decision-approval vote: the decision under vote + whether this is a delete vote.
+  @IsOptional() @IsString() decisionId?: string;
+  @IsOptional() @IsBoolean() decisionDeleteRequested?: boolean;
 
   // When submitting from a saved draft, the draft row to remove once the live proposal is created.
   @IsOptional() @IsString() draftId?: string;

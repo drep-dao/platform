@@ -48,8 +48,8 @@ const NAV: { key: View; label: string; icon: string; boardOnly?: boolean; public
   { key: 'setup', label: 'Platform setup', icon: 'settings', boardOnly: true },
 ];
 // Views a logged-out visitor may browse read-only. Governance edition: internal
-// proposals & requests need login, so the public surface is overview/members/proofs/treasury.
-const PUBLIC_VIEWS: View[] = ['overview', 'members', 'votingpower', 'proofs', 'treasury', 'rules', 'decisions'];
+// internal proposals need login; published Requests are public (read-only) so visitors can browse them.
+const PUBLIC_VIEWS: View[] = ['overview', 'members', 'votingpower', 'requests', 'proofs', 'treasury', 'rules', 'decisions'];
 
 export function HomeShell() {
   const { profile, loading } = useAuth();
@@ -164,6 +164,8 @@ export function HomeShell() {
             <Decisions />
           ) : pubView === 'votingpower' ? (
             <DaoOverview />
+          ) : pubView === 'requests' ? (
+            <RequestsSection />
           ) : (
             <PublicLanding onConnect={() => setWalletOpen(true)} onExplore={() => setView('members')} />
           )}

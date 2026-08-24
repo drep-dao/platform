@@ -192,7 +192,25 @@ function RequestCard({ r, isBoard, mine, onEdit, onChanged }: { r: RequestView; 
 }
 
 /** §R — flat comment thread. Admitted Council members comment; author/board may delete a comment. */
-function RCard({ c, r, depth, onPost, onDelete }: { c: RequestComment; r: RequestView; depth: number; onPost: (contentMd: string, parentId: string) => Promise<void>; onDelete: (id: string) => void }) {
+// Collect ids of every comment (at any depth) that has at least one reply — used by "Collapse all".
+function idsWithReplies(list: RequestComment[], acc: string[] = []): string[] {
+  for (const c of list) {
+    if (c.replies && c.replies.length > 0) { acc.push(c.id); idsWithReplies(c.replies, acc); }
+  }
+  return acc;
+}
+
+function RCard({
+  c, r, depth, onPost, onDelete, collapsed, onToggleCollapse,
+}: {
+  c: RequestComment;
+  r: RequestView;
+  depth: number;
+  onPost: (contentMd: string, parentId: string) => Promise<void>;
+  onDelete: (id: string) => void;
+  collapsed: Set<string>;
+  onToggleCollapse: (id: string) => void;
+}) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
@@ -202,30 +220,42 @@ function RCard({ c, r, depth, onPost, onDelete }: { c: RequestComment; r: Reques
     setBusy(true);
     try { await onPost(text.trim(), c.id); setText(''); setOpen(false); } finally { setBusy(false); }
   };
+  const replyCount = c.replies ? countComments(c.replies) : 0;
+  const isCollapsed = collapsed.has(c.id);
   return (
     <div>
       <div className="rounded border border-neutral-200 p-2 text-sm dark:border-neutral-800">
         <div className="mb-0.5 flex items-center justify-between text-xs text-neutral-500">
-          <span><span className="font-medium text-neutral-700 dark:text-neutral-300">{c.authorName}</span>{c.authorRole ? ` · ${c.authorRole}` : ''}</span>
+          <span><span className="font-semibold text-blue-600 dark:text-blue-400">{c.authorName}</span>{c.authorRole ? ` · ${c.authorRole}` : ''}</span>
           <span className="flex items-center gap-2">
             <span>{new Date(c.createdAt).toLocaleString()}</span>
             {!c.deleted && (c.isMine || r.canModerate) ? <button onClick={() => onDelete(c.id)} className="text-rose-600 hover:underline">{t('Delete')}</button> : null}
           </span>
         </div>
         {c.deleted ? <p className="text-sm italic text-neutral-400">[deleted]</p> : <div className="prose prose-sm max-w-none text-sm dark:prose-invert"><Markdown>{c.contentMd ?? ''}</Markdown></div>}
-        {r.canComment && !c.deleted ? (
-          <button onClick={() => setOpen((v) => !v)} className="mt-1.5 rounded-md border border-emerald-300 px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30">{open ? t('Cancel') : t('Reply')}</button>
-        ) : null}
+        <div className="mt-1.5 flex items-center gap-2">
+          {r.canComment && !c.deleted ? (
+            <button onClick={() => setOpen((v) => !v)} className="rounded-md border border-emerald-300 px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30">{open ? t('Cancel') : t('Reply')}</button>
+          ) : null}
+          {replyCount > 0 ? (
+            <button onClick={() => onToggleCollapse(c.id)} className="rounded-md px-2 py-1 text-xs font-medium text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800">
+              {isCollapsed ? `▸ ${t('Show')} ${replyCount} ${replyCount === 1 ? t('reply') : t('replies')}` : `▾ ${t('Hide')} ${replyCount} ${replyCount === 1 ? t('reply') : t('replies')}`}
+            </button>
+          ) : null}
+        </div>
       </div>
       {open ? (
         <div className="ml-3 mt-1.5">
-          <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} placeholder={t('Reply…')} className="w-full rounded-md border border-neutral-300 p-2 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
-          <button disabled={busy || !text.trim()} onClick={submit} className="mt-1 rounded-md bg-emerald-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-40">{busy ? t('Posting…') : t('Reply')}</button>
+          <MarkdownEditor value={text} onChange={setText} title={t('Reply')} minRows={2} placeholder={t('Write a reply… (supports **bold**, *italics*, lists, [links](https://…))')} />
+          <div className="mt-1 flex gap-2">
+            <button disabled={busy || !text.trim()} onClick={submit} className="rounded-md bg-emerald-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-40">{busy ? t('Posting…') : t('Reply')}</button>
+            <button onClick={() => { setOpen(false); setText(''); }} className="rounded-md border border-neutral-300 px-3 py-1 text-xs dark:border-neutral-600">{t('Cancel')}</button>
+          </div>
         </div>
       ) : null}
-      {c.replies && c.replies.length > 0 ? (
-        <div className={`mt-2 space-y-2 border-l-2 border-neutral-200 pl-3 dark:border-neutral-800 ${depth >= 4 ? '' : ''}`}>
-          {c.replies.map((rep) => <RCard key={rep.id} c={rep} r={r} depth={depth + 1} onPost={onPost} onDelete={onDelete} />)}
+      {c.replies && c.replies.length > 0 && !isCollapsed ? (
+        <div className="mt-2 space-y-2 border-l-2 border-neutral-200 pl-3 dark:border-neutral-800">
+          {c.replies.map((rep) => <RCard key={rep.id} c={rep} r={r} depth={depth + 1} onPost={onPost} onDelete={onDelete} collapsed={collapsed} onToggleCollapse={onToggleCollapse} />)}
         </div>
       ) : null}
     </div>
@@ -240,8 +270,14 @@ function RequestComments({ r, onChanged }: { r: RequestView; onChanged: () => vo
   const t = useT();
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const comments = r.comments ?? [];
   const count = countComments(comments);
+  const parentIds = idsWithReplies(comments);
+  const allCollapsed = parentIds.length > 0 && parentIds.every((id) => collapsed.has(id));
+  const toggleCollapse = (id: string) => setCollapsed((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  const collapseAll = () => setCollapsed(new Set(parentIds));
+  const expandAll = () => setCollapsed(new Set());
   const post = async (contentMd: string, parentId?: string) => {
     if (!contentMd.trim()) return;
     setBusy(true);
@@ -251,16 +287,23 @@ function RequestComments({ r, onChanged }: { r: RequestView; onChanged: () => vo
   const del = async (id: string) => { await requestsApi.deleteComment(id); onChanged(); };
   return (
     <div className="rounded-md border border-neutral-200 p-3 dark:border-neutral-800">
-      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">{t('Discussion')} <span className="text-blue-600 dark:text-blue-400">({count})</span></div>
+      <div className="mb-2 flex items-center justify-between">
+        <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{t('Discussion')} <span className="text-blue-600 dark:text-blue-400">({count})</span></div>
+        {parentIds.length > 0 ? (
+          <button onClick={allCollapsed ? expandAll : collapseAll} className="rounded-md px-2 py-1 text-xs font-medium text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800">
+            {allCollapsed ? `▾ ${t('Expand all replies')}` : `▸ ${t('Collapse all replies')}`}
+          </button>
+        ) : null}
+      </div>
       <div className="space-y-2">
         {comments.length === 0 ? <p className="text-xs text-neutral-400">{t('No comments yet.')}</p> : null}
         {comments.map((c: RequestComment) => (
-          <RCard key={c.id} c={c} r={r} depth={0} onPost={reply} onDelete={del} />
+          <RCard key={c.id} c={c} r={r} depth={0} onPost={reply} onDelete={del} collapsed={collapsed} onToggleCollapse={toggleCollapse} />
         ))}
       </div>
       {r.canComment ? (
-        <div className="mt-2">
-          <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} placeholder={t('Add a comment…')} className="w-full rounded-md border border-neutral-300 p-2 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+        <div className="mt-3">
+          <MarkdownEditor value={text} onChange={setText} title={t('Add a comment')} minRows={3} placeholder={t('Write a comment… (supports **bold**, *italics*, ## headings, lists, [links](https://…))')} />
           <button disabled={busy || !text.trim()} onClick={() => post(text)} className="mt-1 rounded bg-emerald-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-40">{busy ? t('Posting…') : t('Comment')}</button>
         </div>
       ) : null}

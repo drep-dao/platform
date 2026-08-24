@@ -48,7 +48,7 @@ export function RequestsSection({ scope = 'all' }: { scope?: 'all' | 'mine' }) {
   useEffect(() => { submitterApi.mine().then((m) => setMineApproved(m?.status === 'APPROVED')).catch(() => undefined); }, []);
   const isSubmitter = !!profile?.roles.includes('SUBMITTER') || mineApproved;
   const [rows, setRows] = useState<RequestView[] | null>(null);
-  const [filter, setFilter] = useState<'drafts' | 'open' | 'history' | 'all'>('open');
+  const [filter, setFilter] = useState<'drafts' | 'open' | 'history' | 'all'>(scope === 'mine' ? 'all' : 'open');
   const [editId, setEditId] = useState<string | null | 'new'>(null); // null=closed, 'new'=create, id=edit
 
   const reload = useCallback(() => {
@@ -84,7 +84,7 @@ export function RequestsSection({ scope = 'all' }: { scope?: 'all' | 'mine' }) {
         ) : null}
       </div>
 
-      {editId ? <SubmitRequestForm editId={editId === 'new' ? null : editId} onDone={() => { setEditId(null); setFilter('drafts'); reload(); }} /> : null}
+      {editId ? <SubmitRequestForm editId={editId === 'new' ? null : editId} onDone={() => { setEditId(null); setFilter('all'); reload(); }} /> : null}
 
       <div className="inline-flex overflow-hidden rounded-md border border-neutral-300 text-xs dark:border-neutral-700">
         {([['open', 'New'], ['history', 'History'], ['all', 'All'], ...(hasDrafts ? [['drafts', 'Drafts'] as const] : [])] as const).map(([k, label]) => (

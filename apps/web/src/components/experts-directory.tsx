@@ -90,7 +90,7 @@ export function ExpertsDirectory() {
                       {x.subcategoryIds.length ? (
                         <div className="mt-1 flex flex-wrap gap-1">
                           {x.subcategoryIds.map((id) => (
-                            <span key={id} className="rounded-full border border-neutral-300 px-2 py-0.5 text-[11px] text-neutral-600 dark:border-neutral-700 dark:text-neutral-400">
+                            <span key={id} className="rounded-full border border-emerald-300 px-2 py-0.5 text-xs text-emerald-700 dark:border-emerald-800 dark:text-emerald-300">
                               {labelOf(id)}
                             </span>
                           ))}

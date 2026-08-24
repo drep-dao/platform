@@ -350,14 +350,21 @@ export class RequestsService {
     return (await this.admittedDrep(userId)) || (await this.approvedExpert(userId));
   }
 
-  async addComment(userId: string, id: string, contentMd: string) {
+  async addComment(userId: string, id: string, dto: { contentMd: string; parentId?: string }) {
     const r = await this.prisma.request.findUnique({ where: { id }, select: { status: true, submitterUserId: true } });
     if (!r) throw new NotFoundException('request not found');
     if (['DRAFT', 'DELETED', 'PENDING_FEE'].includes(r.status)) throw new BadRequestException('this request is not open for comments');
     if (!(await this.canDiscuss(userId, r))) throw new ForbiddenException('only Council members, registered experts, or the request author can comment');
-    const text = (contentMd ?? '').trim();
+    const text = (dto.contentMd ?? '').trim();
     if (!text) throw new BadRequestException('a comment is required');
-    await this.prisma.requestComment.create({ data: { requestId: id, authorUserId: userId, contentMd: text } });
+    let parentId: string | null = null;
+    if (dto.parentId) {
+      const parent = await this.prisma.requestComment.findUnique({ where: { id: dto.parentId }, select: { requestId: true, parentId: true } });
+      if (!parent || parent.requestId !== id) throw new BadRequestException('invalid parent comment');
+      // One level only: a reply to a reply attaches to its top-level comment.
+      parentId = parent.parentId ?? dto.parentId;
+    }
+    await this.prisma.requestComment.create({ data: { requestId: id, authorUserId: userId, contentMd: text, parentId } });
     return this.get(id, userId);
   }
 
@@ -380,7 +387,8 @@ export class RequestsService {
     const boardHashes = new Set(boardSeats.map((b) => b.drepKeyHash));
     const admittedIds = new Set(admitted.map((d) => d.userId));
     const expertIds = new Set(experts.map((e) => e.userId));
-    return rows.map((c) => ({
+    type Row = (typeof rows)[number];
+    const shape = (c: Row) => ({
       id: c.id,
       authorName: c.author.displayName ?? 'DRep',
       authorRole: c.author.drepKeyHash && boardHashes.has(c.author.drepKeyHash) ? 'Board member' : admittedIds.has(c.authorUserId) ? 'Council member' : expertIds.has(c.authorUserId) ? 'Expert' : null,
@@ -388,6 +396,12 @@ export class RequestsService {
       contentMd: c.deletedAt ? null : c.contentMd,
       deleted: !!c.deletedAt,
       createdAt: c.createdAt.toISOString(),
-    }));
+    });
+    // §R — top-level comments each with one level of replies; a deleted top-level is kept as a
+    // tombstone only while it still has replies underneath (so the thread stays coherent).
+    return rows
+      .filter((c) => !c.parentId)
+      .map((t) => ({ ...shape(t), replies: rows.filter((c) => c.parentId === t.id).map(shape) }))
+      .filter((t) => !t.deleted || t.replies.length > 0);
   }
 }

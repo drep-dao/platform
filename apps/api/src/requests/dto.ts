@@ -40,4 +40,5 @@ export class PublishRequestDto {
 
 export class RequestCommentBodyDto {
   @IsString() @IsNotEmpty() @MaxLength(4000) contentMd!: string;
+  @IsOptional() @IsString() parentId?: string;
 }

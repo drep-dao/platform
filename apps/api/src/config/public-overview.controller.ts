@@ -35,7 +35,7 @@ export class PublicOverviewController {
 
   private async build() {
     const network = this.config.get<string>('CARDANO_NETWORK') ?? 'Preprod';
-    const [votingDReps, experts, propGroups, internalGroups, boardSeats, activeRound, admissionRow] = await Promise.all([
+    const [votingDReps, experts, propGroups, internalGroups, boardSeats, activeRound, admissionRow, requestGroups] = await Promise.all([
       this.prisma.drep.count({ where: { status: 'ADMITTED' } }),
       this.prisma.expert.count({ where: { approvedByBoard: true } }),
       this.prisma.proposal.groupBy({ by: ['status'], where: { type: 'FUNDING' }, _count: { _all: true } }),
@@ -43,6 +43,8 @@ export class PublicOverviewController {
       this.prisma.boardSeat.count({ where: { removedAt: null } }),
       this.rounds.activeRound().catch(() => null),
       this.prisma.platformConfig.findUnique({ where: { key: 'DREP_OPEN_ADMISSION' } }),
+      // §R — published requests from submitters to the DReps (drafts/pending stay private).
+      this.prisma.request.groupBy({ by: ['status'], _count: { _all: true } }),
     ]);
 
     const count = (s: string) => propGroups.find((g) => g.status === s)?._count._all ?? 0;
@@ -66,6 +68,10 @@ export class PublicOverviewController {
       this.logger.warn(`public overview treasury balance: ${e instanceof Error ? e.message : e}`);
     }
 
+    const rqCount = (st: string) => requestGroups.find((g) => g.status === st)?._count._all ?? 0;
+    const requestsActive = rqCount('ACTIVE');
+    const requestsTotal = requestsActive + rqCount('DONE') + rqCount('REJECTED');
+
     // DREP_OPEN_ADMISSION defaults ON when unset (matches the admission logic).
     const admissionOpen = admissionRow ? admissionRow.value === true : true;
 
@@ -81,6 +87,7 @@ export class PublicOverviewController {
       board: { seats: boardSeats, elected: boardSeats > 0 },
       proposals: { approved, inReview, rejected, total: approved + inReview + rejected },
       internalProposals: { active: internalActive, passed: internalPassed, total: internalTotal },
+      requests: { active: requestsActive, total: requestsTotal },
       activeVotes,
       activeRound: r
         ? {

@@ -1661,6 +1661,7 @@ model Request {
 model RequestComment {
   id           String    @id @default(uuid()) @db.Uuid
   requestId    String    @map("request_id") @db.Uuid
+  parentId     String?   @map("parent_id") @db.Uuid // §R — one level of threaded replies
   authorUserId String    @map("author_user_id") @db.Uuid
   contentMd    String    @map("content_md")
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -1668,6 +1669,8 @@ model RequestComment {
 
   request Request @relation(fields: [requestId], references: [id])
   author  AppUser @relation("RequestCommentAuthor", fields: [authorUserId], references: [id])
+  parent  RequestComment?  @relation("RequestCommentParent", fields: [parentId], references: [id])
+  replies RequestComment[] @relation("RequestCommentParent")
 
   @@index([requestId])
   @@map("request_comment")

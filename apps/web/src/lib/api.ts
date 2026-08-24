@@ -1449,6 +1449,7 @@ export interface PublicOverview {
   board: { seats: number; elected: boolean };
   proposals: { approved: number; inReview: number; rejected: number; total: number };
   internalProposals: { active: number; passed: number; total: number };
+  requests?: { active: number; total: number };
   activeVotes: ActiveVote[];
   activeRound: {
     number: number;
@@ -2269,6 +2270,7 @@ export interface RequestComment {
   contentMd: string | null;
   deleted: boolean;
   createdAt: string;
+  replies?: RequestComment[]; // present on top-level comments (one level of threading)
 }
 export interface RequestView {
   id: string;
@@ -2305,8 +2307,8 @@ export const requestsApi = {
   publish: (id: string, feeTxHash?: string) =>
     request<RequestView>(`/requests/${id}/publish`, { method: 'POST', body: JSON.stringify(feeTxHash ? { feeTxHash } : {}) }),
   remove: (id: string) => request<RequestView>(`/requests/${id}`, { method: 'DELETE' }),
-  comment: (id: string, contentMd: string) =>
-    request<RequestView>(`/requests/${id}/comments`, { method: 'POST', body: JSON.stringify({ contentMd }) }),
+  comment: (id: string, contentMd: string, parentId?: string) =>
+    request<RequestView>(`/requests/${id}/comments`, { method: 'POST', body: JSON.stringify({ contentMd, ...(parentId ? { parentId } : {}) }) }),
   deleteComment: (commentId: string) =>
     request<{ ok: boolean }>(`/requests/comments/${commentId}`, { method: 'DELETE' }),
   submitFeeTx: (id: string, txHash: string) =>

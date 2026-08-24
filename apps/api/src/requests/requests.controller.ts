@@ -52,7 +52,7 @@ export class RequestsController {
 
   @Post(':id/comments')
   comment(@CurrentUser() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RequestCommentBodyDto) {
-    return this.svc.addComment(ctx.userId, id, dto.contentMd);
+    return this.svc.addComment(ctx.userId, id, { contentMd: dto.contentMd, parentId: dto.parentId });
   }
 
   @Delete('comments/:id')

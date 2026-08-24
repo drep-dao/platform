@@ -67,24 +67,24 @@ export function RequestsSection({ scope = 'all' }: { scope?: 'all' | 'mine' }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
           {scope === 'all' ? <h2 className="text-lg font-semibold">{t('Requests')}</h2> : null}
           <p className="text-sm text-neutral-500">
-            {t('Requests from submitters to the DReps. A request is drafted, then published for the DReps to see and discuss. Paid types (set by the board) enter the queue only after the fee is verified on-chain.')}
+            {t('Requests from submitters to the DReps. A request is drafted, then published for the DReps to see and discuss.')}
           </p>
         </div>
         {isSubmitter ? (
           <button
             onClick={() => setEditId((v) => (v ? null : 'new'))}
-            className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700"
+            className="shrink-0 whitespace-nowrap rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700"
           >
             {editId ? t('Close form') : t('New request')}
           </button>
         ) : null}
       </div>
 
-      {editId ? <SubmitRequestForm editId={editId === 'new' ? null : editId} onDone={() => { setEditId(null); reload(); }} /> : null}
+      {editId ? <SubmitRequestForm editId={editId === 'new' ? null : editId} onDone={() => { setEditId(null); setFilter('drafts'); reload(); }} /> : null}
 
       <div className="inline-flex overflow-hidden rounded-md border border-neutral-300 text-xs dark:border-neutral-700">
         {([['open', 'New'], ['history', 'History'], ['all', 'All'], ...(hasDrafts ? [['drafts', 'Drafts'] as const] : [])] as const).map(([k, label]) => (

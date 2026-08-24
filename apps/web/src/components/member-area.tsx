@@ -21,6 +21,7 @@ import { RemovalPanel } from './removal-panel';
 import { RemovalBanner } from './removal-banner';
 import { BoardActions } from './board-actions';
 import { InternalProposals } from './internal-proposals';
+import { RequestsSection } from './requests-section';
 import { PreferencesPanel } from './preferences-panel';
 import { RewardAddressPanel } from './reward-address-panel';
 import { MeritPanel } from './merit-panel';
@@ -117,6 +118,11 @@ export function MemberArea() {
   if (isMember || isBoard) {
     tabs.push({ key: 'rules', label: 'My Rule documents', node: <MyRuleDocuments /> });
     tabs.push({ key: 'decisions', label: 'My Decisions', node: <MyDecisions /> });
+  }
+
+  // §R — an approved submitter's own requests: draft, publish, track, and read DRep discussion.
+  if (isSubmitter || mySubmitter?.status === 'APPROVED') {
+    tabs.push({ key: 'requests', label: 'My Requests', node: <RequestsSection scope="mine" /> });
   }
 
   if (isMember || isDrep || expertApproved) {

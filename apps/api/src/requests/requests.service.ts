@@ -119,7 +119,6 @@ export class RequestsService {
       if (!type || !type.active) throw new BadRequestException('unknown or inactive request type');
     }
 
-    const paid = !!type && type.priceAda > 0n;
     const req = await this.prisma.request.create({
       data: {
         submitterUserId: userId,
@@ -127,14 +126,77 @@ export class RequestsService {
         title,
         description,
         expectedResponseAt,
-        // Paid requests wait for the on-chain fee before DReps see them.
-        status: paid ? 'PENDING_FEE' : 'ACTIVE',
+        status: 'DRAFT', // §R — starts as an editable draft; the author publishes it when ready
         feeTxHash: dto.feeTxHash?.trim() || null,
       },
     });
-    // If the fee tx was pasted at submit time, try to verify it right away.
-    if (paid && req.feeTxHash) await this.tryVerifyFee(req.id).catch(() => undefined);
     return this.get(req.id, userId);
+  }
+
+  /** §R — edit a draft (owner only; locked once published). */
+  async update(userId: string, id: string, dto: { title?: string; description?: string; typeId?: string | null; expectedResponseAt?: string | null }) {
+    const r = await this.prisma.request.findUnique({ where: { id } });
+    if (!r) throw new NotFoundException('request not found');
+    if (r.submitterUserId !== userId) throw new ForbiddenException('not your request');
+    if (r.status !== 'DRAFT') throw new BadRequestException('a published request can no longer be edited');
+    const data: Record<string, unknown> = {};
+    if (dto.title !== undefined) {
+      const title = dto.title.trim();
+      if (title.length < 4) throw new BadRequestException('the title must be at least 4 characters');
+      data.title = title;
+    }
+    if (dto.description !== undefined) {
+      const description = dto.description.trim();
+      if (!description) throw new BadRequestException('a description is required');
+      data.description = description;
+    }
+    if (dto.typeId !== undefined) {
+      if (dto.typeId) {
+        const type = await this.prisma.requestType.findUnique({ where: { id: dto.typeId } });
+        if (!type || !type.active) throw new BadRequestException('unknown or inactive request type');
+      }
+      data.typeId = dto.typeId || null;
+    }
+    if (dto.expectedResponseAt !== undefined) {
+      if (dto.expectedResponseAt) {
+        const d = new Date(dto.expectedResponseAt);
+        if (Number.isNaN(d.getTime())) throw new BadRequestException('invalid expected-response time');
+        if (d.getTime() <= Date.now()) throw new BadRequestException('the expected-response time must be in the future');
+        data.expectedResponseAt = d;
+      } else data.expectedResponseAt = null;
+    }
+    await this.prisma.request.update({ where: { id }, data });
+    return this.get(id, userId);
+  }
+
+  /** §R — publish a draft: it becomes visible to the DReps and can no longer be edited. Paid types
+   *  go to PENDING_FEE (queued only once the fee verifies on-chain); free ones go straight to ACTIVE. */
+  async publish(userId: string, id: string, feeTxHash?: string | null) {
+    const r = await this.prisma.request.findUnique({ where: { id }, include: { type: true } });
+    if (!r) throw new NotFoundException('request not found');
+    if (r.submitterUserId !== userId) throw new ForbiddenException('not your request');
+    if (r.status !== 'DRAFT') throw new BadRequestException('only a draft can be published');
+    const paid = !!r.type && r.type.priceAda > 0n;
+    await this.prisma.request.update({
+      where: { id },
+      data: { status: paid ? 'PENDING_FEE' : 'ACTIVE', publishedAt: new Date(), feeTxHash: feeTxHash?.trim() || r.feeTxHash },
+    });
+    if (paid) await this.tryVerifyFee(id).catch(() => undefined);
+    return this.get(id, userId);
+  }
+
+  /** §R — the author (or board) removes a request. Soft delete: it stays findable in history,
+   *  marked DELETED, no longer active. */
+  async remove(userId: string, id: string) {
+    const r = await this.prisma.request.findUnique({ where: { id }, select: { status: true, submitterUserId: true } });
+    if (!r) throw new NotFoundException('request not found');
+    if (r.submitterUserId !== userId && !(await this.isBoard(userId))) {
+      throw new ForbiddenException('only the author or a board member can delete a request');
+    }
+    if (r.status !== 'DELETED') {
+      await this.prisma.request.update({ where: { id }, data: { status: 'DELETED', decidedAt: new Date(), decidedByUserId: userId } });
+    }
+    return this.get(id, userId);
   }
 
   /** The submitter pastes (or corrects) the fee tx hash; verification runs immediately. */
@@ -197,8 +259,12 @@ export class RequestsService {
       },
     });
     return rows
-      .filter((r) => r.status !== 'PENDING_FEE' || board || r.submitterUserId === userId)
-      .map((r) => this.view(r, board || r.submitterUserId === userId));
+      .filter((r) => {
+        if (r.status === 'DRAFT') return r.submitterUserId === userId; // drafts are private to the author
+        if (r.status === 'PENDING_FEE') return board || r.submitterUserId === userId;
+        return true; // ACTIVE / DONE / REJECTED / DELETED (deleted stays findable in history)
+      })
+      .map((r) => this.view(r, board || r.submitterUserId === userId, userId));
   }
 
   async get(id: string, userId: string | null) {
@@ -208,20 +274,24 @@ export class RequestsService {
     });
     if (!r) throw new NotFoundException('request not found');
     const board = userId ? await this.isBoard(userId) : false;
-    if (r.status === 'PENDING_FEE' && !board && r.submitterUserId !== userId) {
+    const isOwner = !!userId && r.submitterUserId === userId;
+    if (r.status === 'DRAFT' && !isOwner) throw new ForbiddenException('this request is a private draft');
+    if (r.status === 'PENDING_FEE' && !board && !isOwner) {
       throw new ForbiddenException('this request is awaiting its fee');
     }
-    return this.view(r, board || r.submitterUserId === userId);
+    const canComment = !!userId && (await this.admittedDrep(userId)) && !['DRAFT', 'DELETED', 'PENDING_FEE'].includes(r.status);
+    return { ...this.view(r, board || isOwner, userId), canComment, canModerate: board, comments: await this.loadComments(id, userId) };
   }
 
   private view(
     r: {
       id: string; title: string; description: string; expectedResponseAt: Date | null; status: string; createdAt: Date; decidedAt: Date | null;
-      feeTxHash: string | null; feeSeenOnchainAt: Date | null; submitterUserId: string;
+      publishedAt: Date | null; feeTxHash: string | null; feeSeenOnchainAt: Date | null; submitterUserId: string;
       type: { id: string; name: string; priceAda: bigint } | null;
       submitter: { id: string; displayName: string | null };
     },
     full: boolean,
+    viewerId?: string | null,
   ) {
     return {
       id: r.id,
@@ -229,6 +299,9 @@ export class RequestsService {
       description: r.description,
       expectedResponseAt: r.expectedResponseAt ? r.expectedResponseAt.toISOString() : null,
       status: r.status,
+      publishedAt: r.publishedAt ? r.publishedAt.toISOString() : null,
+      isOwner: !!viewerId && r.submitterUserId === viewerId,
+      editable: !!viewerId && r.submitterUserId === viewerId && r.status === 'DRAFT',
       createdAt: r.createdAt,
       decidedAt: r.decidedAt,
       submitter: r.submitter.displayName ?? 'Submitter',
@@ -256,5 +329,50 @@ export class RequestsService {
       data: { status, decidedAt: status === 'ACTIVE' ? null : new Date(), decidedByUserId: status === 'ACTIVE' ? null : userId },
     });
     return this.get(id, userId);
+  }
+
+  // ── comments (DReps discuss a published request) ─────────────────────────────
+  private async admittedDrep(userId: string): Promise<boolean> {
+    const drep = await this.prisma.drep.findUnique({ where: { userId }, select: { status: true } });
+    return drep?.status === 'ADMITTED';
+  }
+
+  async addComment(userId: string, id: string, contentMd: string) {
+    if (!(await this.admittedDrep(userId))) throw new ForbiddenException('only Council members can comment');
+    const r = await this.prisma.request.findUnique({ where: { id }, select: { status: true } });
+    if (!r) throw new NotFoundException('request not found');
+    if (['DRAFT', 'DELETED', 'PENDING_FEE'].includes(r.status)) throw new BadRequestException('this request is not open for comments');
+    const text = (contentMd ?? '').trim();
+    if (!text) throw new BadRequestException('a comment is required');
+    await this.prisma.requestComment.create({ data: { requestId: id, authorUserId: userId, contentMd: text } });
+    return this.get(id, userId);
+  }
+
+  async deleteComment(userId: string, commentId: string) {
+    const c = await this.prisma.requestComment.findUnique({ where: { id: commentId } });
+    if (!c) throw new NotFoundException('comment not found');
+    const canDelete = c.authorUserId === userId || (await this.isBoard(userId));
+    if (!canDelete) throw new ForbiddenException('only the comment author or a board member can delete a comment');
+    if (!c.deletedAt) await this.prisma.requestComment.update({ where: { id: commentId }, data: { deletedAt: new Date() } });
+    return { ok: true };
+  }
+
+  private async loadComments(requestId: string, userId?: string | null) {
+    const [rows, boardSeats, admitted] = await Promise.all([
+      this.prisma.requestComment.findMany({ where: { requestId }, orderBy: { createdAt: 'asc' }, include: { author: { select: { displayName: true, drepKeyHash: true } } } }),
+      this.prisma.boardSeat.findMany({ where: { removedAt: null }, select: { drepKeyHash: true } }),
+      this.prisma.drep.findMany({ where: { status: 'ADMITTED' }, select: { userId: true } }),
+    ]);
+    const boardHashes = new Set(boardSeats.map((b) => b.drepKeyHash));
+    const admittedIds = new Set(admitted.map((d) => d.userId));
+    return rows.map((c) => ({
+      id: c.id,
+      authorName: c.author.displayName ?? 'DRep',
+      authorRole: c.author.drepKeyHash && boardHashes.has(c.author.drepKeyHash) ? 'Board member' : admittedIds.has(c.authorUserId) ? 'Council member' : null,
+      isMine: c.authorUserId === userId,
+      contentMd: c.deletedAt ? null : c.contentMd,
+      deleted: !!c.deletedAt,
+      createdAt: c.createdAt.toISOString(),
+    }));
   }
 }

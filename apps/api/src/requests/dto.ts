@@ -26,3 +26,18 @@ export class UpdateRequestTypeDto {
   @IsOptional() @Min(1) priceAda?: number;
   @IsOptional() @IsBoolean() active?: boolean;
 }
+
+export class UpdateRequestDto {
+  @IsOptional() @IsString() @MaxLength(200) title?: string;
+  @IsOptional() @IsString() @MaxLength(20000) description?: string;
+  @IsOptional() @IsString() typeId?: string;
+  @IsOptional() expectedResponseAt?: string | null;
+}
+
+export class PublishRequestDto {
+  @IsOptional() @IsString() @MaxLength(64) feeTxHash?: string;
+}
+
+export class RequestCommentBodyDto {
+  @IsString() @IsNotEmpty() @MaxLength(4000) contentMd!: string;
+}

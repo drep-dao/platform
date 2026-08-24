@@ -42,6 +42,7 @@ model AppUser {
   privateMessages        PrivateMessage[]
   notifications          Notification[]
   requestsSubmitted      Request[]                @relation("RequestSubmitter")
+  requestComments        RequestComment[]         @relation("RequestCommentAuthor")
   notificationPreference NotificationPreference?
   configUpdates          PlatformConfig[]         @relation("ConfigUpdater")
   stopFundingsProposed   StopFundingProposal[]    @relation("StopProposerUser")
@@ -1640,16 +1641,34 @@ model Request {
   title            String
   description      String
   expectedResponseAt DateTime? @map("expected_response_at") @db.Timestamptz(6) // §R — submitter's requested response-by time
-  status           String    @default("ACTIVE") // PENDING_FEE | ACTIVE | DONE | REJECTED
+  status           String    @default("DRAFT") // DRAFT | PENDING_FEE | ACTIVE | DONE | REJECTED | DELETED
   feeTxHash        String?   @map("fee_tx_hash")
   feeSeenOnchainAt DateTime? @map("fee_seen_onchain_at") @db.Timestamptz(6)
+  publishedAt      DateTime? @map("published_at") @db.Timestamptz(6) // §R — locked once published
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   decidedAt        DateTime? @map("decided_at") @db.Timestamptz(6)
   decidedByUserId  String?   @map("decided_by_user_id") @db.Uuid
 
-  submitter AppUser      @relation("RequestSubmitter", fields: [submitterUserId], references: [id])
-  type      RequestType? @relation(fields: [typeId], references: [id])
+  submitter AppUser          @relation("RequestSubmitter", fields: [submitterUserId], references: [id])
+  type      RequestType?     @relation(fields: [typeId], references: [id])
+  comments  RequestComment[]
 
   @@index([status, createdAt])
   @@map("request")
+}
+
+// §R — DReps comment on a published request (flat thread).
+model RequestComment {
+  id           String    @id @default(uuid()) @db.Uuid
+  requestId    String    @map("request_id") @db.Uuid
+  authorUserId String    @map("author_user_id") @db.Uuid
+  contentMd    String    @map("content_md")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  request Request @relation(fields: [requestId], references: [id])
+  author  AppUser @relation("RequestCommentAuthor", fields: [authorUserId], references: [id])
+
+  @@index([requestId])
+  @@map("request_comment")
 }

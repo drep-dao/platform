@@ -2261,12 +2261,27 @@ export interface RequestTypeView {
   active: boolean;
 }
 
+export interface RequestComment {
+  id: string;
+  authorName: string;
+  authorRole: string | null;
+  isMine: boolean;
+  contentMd: string | null;
+  deleted: boolean;
+  createdAt: string;
+}
 export interface RequestView {
   id: string;
   title: string;
   description: string;
   expectedResponseAt: string | null; // §R — submitter's requested response-by time
-  status: 'PENDING_FEE' | 'ACTIVE' | 'DONE' | 'REJECTED';
+  status: 'DRAFT' | 'PENDING_FEE' | 'ACTIVE' | 'DONE' | 'REJECTED' | 'DELETED';
+  publishedAt: string | null;
+  isOwner: boolean;
+  editable: boolean;
+  canComment?: boolean; // present on the detail (get)
+  canModerate?: boolean;
+  comments?: RequestComment[];
   createdAt: string;
   decidedAt: string | null;
   submitter: string;
@@ -2285,6 +2300,15 @@ export const requestsApi = {
   get: (id: string) => request<RequestView>(`/requests/${id}`),
   submit: (body: { title: string; description: string; typeId?: string; feeTxHash?: string; expectedResponseAt?: string }) =>
     request<RequestView>('/requests', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id: string, body: { title?: string; description?: string; typeId?: string; expectedResponseAt?: string | null }) =>
+    request<RequestView>(`/requests/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  publish: (id: string, feeTxHash?: string) =>
+    request<RequestView>(`/requests/${id}/publish`, { method: 'POST', body: JSON.stringify(feeTxHash ? { feeTxHash } : {}) }),
+  remove: (id: string) => request<RequestView>(`/requests/${id}`, { method: 'DELETE' }),
+  comment: (id: string, contentMd: string) =>
+    request<RequestView>(`/requests/${id}/comments`, { method: 'POST', body: JSON.stringify({ contentMd }) }),
+  deleteComment: (commentId: string) =>
+    request<{ ok: boolean }>(`/requests/comments/${commentId}`, { method: 'DELETE' }),
   submitFeeTx: (id: string, txHash: string) =>
     request<RequestView>(`/requests/${id}/fee-tx`, { method: 'POST', body: JSON.stringify({ txHash }) }),
   recheckFee: (id: string) => request<{ verified: boolean }>(`/requests/${id}/recheck-fee`, { method: 'POST' }),

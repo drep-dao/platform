@@ -5,9 +5,24 @@ import { MaintenanceNotice } from '@/components/maintenance-notice';
 import { PrefsProvider } from '@/lib/prefs-context';
 import { LanguageThemeSwitcher } from '@/components/language-theme-switcher';
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://drepcouncil.org';
+
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: 'DRep Council',
   description: 'Cardano governance Council platform',
+  openGraph: {
+    type: 'website',
+    siteName: 'DRep Council',
+    title: 'DRep Council',
+    description: 'Cardano governance Council platform',
+    url: '/',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'DRep Council',
+    description: 'Cardano governance Council platform',
+  },
   // Browser-tab icon: a ballot card with a cast vote (checkmark), in the Council green. Kept to a few
   // thick strokes so it stays legible at the 16px a tab actually renders.
   // Alternatives live in /public/icons (drep-globe, drep-globe-orbit, drep-globe-network, drep-ballot).

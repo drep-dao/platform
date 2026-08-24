@@ -359,10 +359,9 @@ export class RequestsService {
     if (!text) throw new BadRequestException('a comment is required');
     let parentId: string | null = null;
     if (dto.parentId) {
-      const parent = await this.prisma.requestComment.findUnique({ where: { id: dto.parentId }, select: { requestId: true, parentId: true } });
+      const parent = await this.prisma.requestComment.findUnique({ where: { id: dto.parentId }, select: { requestId: true } });
       if (!parent || parent.requestId !== id) throw new BadRequestException('invalid parent comment');
-      // One level only: a reply to a reply attaches to its top-level comment.
-      parentId = parent.parentId ?? dto.parentId;
+      parentId = dto.parentId; // §R — arbitrary nesting: a reply can reply to a reply.
     }
     await this.prisma.requestComment.create({ data: { requestId: id, authorUserId: userId, contentMd: text, parentId } });
     return this.get(id, userId);
@@ -378,30 +377,39 @@ export class RequestsService {
   }
 
   private async loadComments(requestId: string, userId?: string | null) {
-    const [rows, boardSeats, admitted, experts] = await Promise.all([
+    const [rows, boardSeats, admitted, experts, req] = await Promise.all([
       this.prisma.requestComment.findMany({ where: { requestId }, orderBy: { createdAt: 'asc' }, include: { author: { select: { displayName: true, drepKeyHash: true } } } }),
       this.prisma.boardSeat.findMany({ where: { removedAt: null }, select: { drepKeyHash: true } }),
       this.prisma.drep.findMany({ where: { status: 'ADMITTED' }, select: { userId: true } }),
       this.prisma.expert.findMany({ where: { approvedByBoard: true, leftAt: null }, select: { userId: true } }),
+      this.prisma.request.findUnique({ where: { id: requestId }, select: { submitterUserId: true } }),
     ]);
     const boardHashes = new Set(boardSeats.map((b) => b.drepKeyHash));
     const admittedIds = new Set(admitted.map((d) => d.userId));
     const expertIds = new Set(experts.map((e) => e.userId));
+    const submitterId = req?.submitterUserId;
     type Row = (typeof rows)[number];
-    const shape = (c: Row) => ({
+    // Board member > Council member (admitted DRep) > Expert > Submitter (the request's author).
+    const role = (c: Row) =>
+      c.author.drepKeyHash && boardHashes.has(c.author.drepKeyHash) ? 'Board member'
+      : admittedIds.has(c.authorUserId) ? 'Council member'
+      : expertIds.has(c.authorUserId) ? 'Expert'
+      : c.authorUserId === submitterId ? 'Submitter'
+      : null;
+    // §R — recursive thread: every comment carries its own replies, so a reply can reply to a reply.
+    const shape = (c: Row): Record<string, unknown> => ({
       id: c.id,
       authorName: c.author.displayName ?? 'DRep',
-      authorRole: c.author.drepKeyHash && boardHashes.has(c.author.drepKeyHash) ? 'Board member' : admittedIds.has(c.authorUserId) ? 'Council member' : expertIds.has(c.authorUserId) ? 'Expert' : null,
+      authorRole: role(c),
       isMine: c.authorUserId === userId,
       contentMd: c.deletedAt ? null : c.contentMd,
       deleted: !!c.deletedAt,
       createdAt: c.createdAt.toISOString(),
+      replies: rows.filter((x) => x.parentId === c.id).map(shape),
     });
-    // §R — top-level comments each with one level of replies; a deleted top-level is kept as a
-    // tombstone only while it still has replies underneath (so the thread stays coherent).
     return rows
       .filter((c) => !c.parentId)
-      .map((t) => ({ ...shape(t), replies: rows.filter((c) => c.parentId === t.id).map(shape) }))
-      .filter((t) => !t.deleted || t.replies.length > 0);
+      .map(shape)
+      .filter((t) => !t.deleted || (t.replies as unknown[]).length > 0);
   }
 }

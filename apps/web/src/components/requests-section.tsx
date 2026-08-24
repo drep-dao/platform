@@ -192,64 +192,70 @@ function RequestCard({ r, isBoard, mine, onEdit, onChanged }: { r: RequestView; 
 }
 
 /** §R — flat comment thread. Admitted Council members comment; author/board may delete a comment. */
-function RCard({ c, canModerate, onDelete, onReply }: { c: RequestComment; canModerate: boolean; onDelete: (id: string) => void; onReply?: (id: string) => void }) {
+function RCard({ c, r, depth, onPost, onDelete }: { c: RequestComment; r: RequestView; depth: number; onPost: (contentMd: string, parentId: string) => Promise<void>; onDelete: (id: string) => void }) {
   const t = useT();
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    if (!text.trim()) return;
+    setBusy(true);
+    try { await onPost(text.trim(), c.id); setText(''); setOpen(false); } finally { setBusy(false); }
+  };
   return (
-    <div className="rounded border border-neutral-200 p-2 text-sm dark:border-neutral-800">
-      <div className="mb-0.5 flex items-center justify-between text-xs text-neutral-500">
-        <span><span className="font-medium text-neutral-700 dark:text-neutral-300">{c.authorName}</span>{c.authorRole ? ` · ${c.authorRole}` : ''}</span>
-        <span className="flex items-center gap-2">
-          <span>{new Date(c.createdAt).toLocaleString()}</span>
-          {!c.deleted && (c.isMine || canModerate) ? <button onClick={() => onDelete(c.id)} className="text-rose-600 hover:underline">{t('Delete')}</button> : null}
-        </span>
+    <div>
+      <div className="rounded border border-neutral-200 p-2 text-sm dark:border-neutral-800">
+        <div className="mb-0.5 flex items-center justify-between text-xs text-neutral-500">
+          <span><span className="font-medium text-neutral-700 dark:text-neutral-300">{c.authorName}</span>{c.authorRole ? ` · ${c.authorRole}` : ''}</span>
+          <span className="flex items-center gap-2">
+            <span>{new Date(c.createdAt).toLocaleString()}</span>
+            {!c.deleted && (c.isMine || r.canModerate) ? <button onClick={() => onDelete(c.id)} className="text-rose-600 hover:underline">{t('Delete')}</button> : null}
+          </span>
+        </div>
+        {c.deleted ? <p className="text-sm italic text-neutral-400">[deleted]</p> : <div className="prose prose-sm max-w-none text-sm dark:prose-invert"><Markdown>{c.contentMd ?? ''}</Markdown></div>}
+        {r.canComment && !c.deleted ? (
+          <button onClick={() => setOpen((v) => !v)} className="mt-1.5 rounded-md border border-emerald-300 px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30">{open ? t('Cancel') : t('Reply')}</button>
+        ) : null}
       </div>
-      {c.deleted ? <p className="text-sm italic text-neutral-400">[deleted]</p> : <div className="prose prose-sm max-w-none text-sm dark:prose-invert"><Markdown>{c.contentMd ?? ''}</Markdown></div>}
-      {onReply && !c.deleted ? <button onClick={() => onReply(c.id)} className="mt-1 text-xs text-emerald-700 hover:underline dark:text-emerald-400">{t('Reply')}</button> : null}
+      {open ? (
+        <div className="ml-3 mt-1.5">
+          <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} placeholder={t('Reply…')} className="w-full rounded-md border border-neutral-300 p-2 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+          <button disabled={busy || !text.trim()} onClick={submit} className="mt-1 rounded-md bg-emerald-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-40">{busy ? t('Posting…') : t('Reply')}</button>
+        </div>
+      ) : null}
+      {c.replies && c.replies.length > 0 ? (
+        <div className={`mt-2 space-y-2 border-l-2 border-neutral-200 pl-3 dark:border-neutral-800 ${depth >= 4 ? '' : ''}`}>
+          {c.replies.map((rep) => <RCard key={rep.id} c={rep} r={r} depth={depth + 1} onPost={onPost} onDelete={onDelete} />)}
+        </div>
+      ) : null}
     </div>
   );
+}
+
+function countComments(list: RequestComment[]): number {
+  return list.reduce((n, c) => n + 1 + (c.replies ? countComments(c.replies) : 0), 0);
 }
 
 function RequestComments({ r, onChanged }: { r: RequestView; onChanged: () => void }) {
   const t = useT();
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
-  const [replyTo, setReplyTo] = useState<string | null>(null);
-  const [replyText, setReplyText] = useState('');
   const comments = r.comments ?? [];
-  const count = comments.reduce((n, c) => n + 1 + (c.replies?.length ?? 0), 0);
+  const count = countComments(comments);
   const post = async (contentMd: string, parentId?: string) => {
     if (!contentMd.trim()) return;
     setBusy(true);
-    try {
-      await requestsApi.comment(r.id, contentMd.trim(), parentId);
-      if (parentId) { setReplyTo(null); setReplyText(''); } else setText('');
-      onChanged();
-    } finally { setBusy(false); }
+    try { await requestsApi.comment(r.id, contentMd.trim(), parentId); if (!parentId) setText(''); onChanged(); } finally { setBusy(false); }
   };
+  const reply = (contentMd: string, parentId: string) => post(contentMd, parentId);
   const del = async (id: string) => { await requestsApi.deleteComment(id); onChanged(); };
   return (
     <div className="rounded-md border border-neutral-200 p-3 dark:border-neutral-800">
-      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">{t('Discussion')} ({count})</div>
+      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">{t('Discussion')} <span className="text-blue-600 dark:text-blue-400">({count})</span></div>
       <div className="space-y-2">
         {comments.length === 0 ? <p className="text-xs text-neutral-400">{t('No comments yet.')}</p> : null}
         {comments.map((c: RequestComment) => (
-          <div key={c.id}>
-            <RCard c={c} canModerate={!!r.canModerate} onDelete={del} onReply={r.canComment ? setReplyTo : undefined} />
-            {(c.replies && c.replies.length > 0) || replyTo === c.id ? (
-              <div className="mt-2 space-y-2 border-l-2 border-neutral-200 pl-3 dark:border-neutral-800">
-                {c.replies?.map((rep) => <RCard key={rep.id} c={rep} canModerate={!!r.canModerate} onDelete={del} />)}
-                {replyTo === c.id ? (
-                  <div>
-                    <textarea value={replyText} onChange={(e) => setReplyText(e.target.value)} rows={2} placeholder={t('Reply…')} className="w-full rounded-md border border-neutral-300 p-2 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
-                    <div className="mt-1 flex gap-2">
-                      <button disabled={busy || !replyText.trim()} onClick={() => post(replyText, c.id)} className="rounded bg-emerald-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-40">{busy ? t('Posting…') : t('Reply')}</button>
-                      <button onClick={() => { setReplyTo(null); setReplyText(''); }} className="rounded border border-neutral-300 px-3 py-1 text-xs dark:border-neutral-600">{t('Cancel')}</button>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
+          <RCard key={c.id} c={c} r={r} depth={0} onPost={reply} onDelete={del} />
         ))}
       </div>
       {r.canComment ? (

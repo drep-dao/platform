@@ -2339,3 +2339,78 @@ export const subcategoriesApi = {
 export const maintenanceApi = {
   status: () => request<{ pending: boolean; secondsLeft: number }>('/maintenance/status'),
 };
+
+// §29 — configurable groups (e.g. OG): membership, member proposals + voting, comments.
+export interface GroupConfig {
+  id: string;
+  key: string;
+  name: string;
+  status: string;
+  profileFields: string[];
+  proposalTypes: string[];
+  admissionType: string;
+  approverUserId: string | null;
+  approverName: string | null;
+  commenters: string[];
+  voting: { voters: string; votingType: string; thresholdPct: number };
+}
+export interface GroupMembershipMine { groupKey: string; groupName: string; status: string }
+export interface GroupMemberView { id: string; status: string; displayName: string; bio: string | null; photo: string | null; since: string | null }
+export interface GroupMembersResult { group: GroupConfig; canManage: boolean; members: GroupMemberView[]; pending: GroupMemberView[] }
+export interface GroupMembership { status: string; displayName: string | null; bio: string | null; photo: string | null; since: string | null }
+export interface GroupMembershipResult { group: GroupConfig; membership: GroupMembership | null; canManage: boolean }
+export interface GroupProposalSummary { id: string; title: string; type: string; status: string; author: string; votingEndAt: string; createdAt: string }
+export interface GroupProposalsResult { group: GroupConfig; canSubmit: boolean; proposals: GroupProposalSummary[] }
+export type GroupTally =
+  | { kind: 'THRESHOLD'; eligible: number; voted: number; yes: number; no: number; abstain: number; denominator: number; ratioPct: number; thresholdPct: number; approved: boolean }
+  | { kind: 'POLL'; eligible: number; voted: number; abstain: number; options: { option: string; voters: number }[] };
+export interface GroupComment {
+  id: string;
+  authorName: string;
+  authorRole: string | null;
+  isMine: boolean;
+  contentMd: string | null;
+  deleted: boolean;
+  createdAt: string;
+  replies?: GroupComment[];
+}
+export interface GroupProposalDetail {
+  id: string;
+  groupKey: string;
+  groupName: string;
+  title: string;
+  contentMd: string;
+  type: string;
+  status: string;
+  author: string;
+  votingEndAt: string;
+  decidedAt: string | null;
+  createdAt: string;
+  poll: { multiple: boolean; options: string[] } | null;
+  canVote: boolean;
+  myVotes: string[];
+  canComment: boolean;
+  canModerate: boolean;
+  comments: GroupComment[];
+  tally: GroupTally;
+}
+export interface RegisterGroupInput { displayName?: string; bio?: string; photo?: string }
+export interface SubmitGroupProposalInput { title: string; contentMd: string; type: string; votingEndAt: string; pollOptions?: string[]; pollMultiple?: boolean }
+export interface GroupVoteInput { choice?: string; options?: string[] }
+
+export const groupsApi = {
+  listActive: () => request<GroupConfig[]>('/groups'),
+  mine: () => request<GroupMembershipMine[]>('/groups/mine'),
+  membership: (key: string) => request<GroupMembershipResult>(`/groups/${key}/membership`),
+  register: (key: string, input: RegisterGroupInput) => request<GroupMembershipResult>(`/groups/${key}/register`, { method: 'POST', body: JSON.stringify(input) }),
+  members: (key: string) => request<GroupMembersResult>(`/groups/${key}/members`),
+  approveMember: (key: string, memberId: string) => request<GroupMembersResult>(`/groups/${key}/members/${memberId}/approve`, { method: 'POST' }),
+  rejectMember: (key: string, memberId: string) => request<GroupMembersResult>(`/groups/${key}/members/${memberId}/reject`, { method: 'POST' }),
+  kickMember: (key: string, memberId: string) => request<GroupMembersResult>(`/groups/${key}/members/${memberId}/kick`, { method: 'POST' }),
+  proposals: (key: string) => request<GroupProposalsResult>(`/groups/${key}/proposals`),
+  proposal: (id: string) => request<GroupProposalDetail>(`/groups/proposal/${id}`),
+  submit: (key: string, input: SubmitGroupProposalInput) => request<GroupProposalDetail>(`/groups/${key}/proposals`, { method: 'POST', body: JSON.stringify(input) }),
+  vote: (id: string, input: GroupVoteInput) => request<GroupProposalDetail>(`/groups/proposal/${id}/vote`, { method: 'POST', body: JSON.stringify(input) }),
+  comment: (id: string, contentMd: string, parentId?: string) => request<GroupProposalDetail>(`/groups/proposal/${id}/comments`, { method: 'POST', body: JSON.stringify({ contentMd, ...(parentId ? { parentId } : {}) }) }),
+  deleteComment: (commentId: string) => request<GroupProposalDetail>(`/groups/comment/${commentId}`, { method: 'DELETE' }),
+};

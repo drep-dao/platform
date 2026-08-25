@@ -19,6 +19,7 @@ import { SubmitterModule } from './submitter/submitter.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { JobsModule } from './jobs/jobs.module';
 import { RequestsModule } from './requests/requests.module';
+import { GroupsModule } from './groups/groups.module';
 import { DeployModule } from './deploy/deploy.module';
 import { RuleDocumentsModule } from './rule-documents/rule-documents.module';
 import { SubcategoriesModule } from './subcategories/subcategories.module';
@@ -48,6 +49,7 @@ import { DecisionsModule } from './decisions/decisions.module';
     NotificationsModule,
     JobsModule,
     InternalProposalsModule,
+    GroupsModule,
     RequestsModule,
     PreferencesModule,
     DeployModule,

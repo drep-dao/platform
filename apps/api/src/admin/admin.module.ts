@@ -13,10 +13,12 @@ import { ResetController } from './reset.controller';
 import { ResetService } from './reset.service';
 import { SysadminConfigController } from './sysadmin-config.controller';
 import { SysadminMaintenanceController } from './sysadmin-maintenance.controller';
+import { SysadminGroupsController } from './sysadmin-groups.controller';
+import { GroupsModule } from '../groups/groups.module';
 import { GovernanceModule } from '../governance/governance.module';
 
 @Module({
-  imports: [GovernanceModule],
+  imports: [GovernanceModule, GroupsModule],
   controllers: [
     SysadminAuthController,
     SysadminGenesisController,
@@ -26,6 +28,7 @@ import { GovernanceModule } from '../governance/governance.module';
     ResetController,
     SysadminConfigController,
     SysadminMaintenanceController,
+    SysadminGroupsController,
   ],
   providers: [AdminAuthService, AdminAuditService, AdminService, GenesisService, AdminGuard, ResetService],
   exports: [AdminAuthService],

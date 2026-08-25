@@ -4,11 +4,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { card } from '@/lib/ui';
 import { MyRuleDocuments } from './rule-documents';
 import { MyDecisions } from './decisions';
+import { GroupMemberships } from './group-register';
 import { useAuth } from '@/lib/auth-context';
 import { useT } from '@/lib/prefs-context';
 import { useUrlNav } from '@/lib/use-url-nav';
 import { useTodoCounts } from '@/lib/use-todo-counts';
-import { expertApi, drepApi, submitterApi, configApi, type MyExpert, type MySubmitter, type EntryEligibility, type ReviewMode } from '@/lib/api';
+import { expertApi, drepApi, submitterApi, configApi, groupsApi, type MyExpert, type MySubmitter, type EntryEligibility, type ReviewMode } from '@/lib/api';
 import { DrepForm } from './drep-form';
 import { EntryRequirementsNotice } from './join-dao-button';
 import { MyDrepStatus } from './my-drep-status';
@@ -69,6 +70,9 @@ export function MemberArea() {
   // §14 — is a board seated? While none is, an admitted Council member reviews Expert/Submitter apps.
   const [boardSeated, setBoardSeated] = useState<boolean | null>(null);
   useEffect(() => { submitterApi.pendingCount().then((r) => setBoardSeated(r.boardElected)).catch(() => setBoardSeated(null)); }, []);
+  // §29 — configurable groups: show a My-area "Groups" tab (Register as <Name> member) when any is active.
+  const [activeGroups, setActiveGroups] = useState(0);
+  useEffect(() => { groupsApi.listActive().then((g) => setActiveGroups(g.length)).catch(() => setActiveGroups(0)); }, []);
 
   const isBoard = !!profile?.roles.includes('BOARD');
   const canVote = !!profile && (profile.roles.includes('DREP') || profile.roles.includes('DAO_MEMBER') || profile.roles.includes('BOARD'));
@@ -111,6 +115,11 @@ export function MemberArea() {
       />
     ),
   });
+
+  // §29 — Register as a group member (e.g. OG) + membership status, for every active group.
+  if (activeGroups > 0) {
+    tabs.push({ key: 'groups', label: 'Groups', node: <GroupMemberships /> });
+  }
 
   // §27 — a DRep's own rule documents: draft privately, publish, edit until an approval vote opens.
   // Authoring is for members on the platform (admitted DReps + board), same gate as internal

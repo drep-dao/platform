@@ -94,6 +94,31 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
 
+// §29 — configurable groups.
+export interface AdminGroupConfig {
+  name: string;
+  profileFields: string[]; // memberSince | displayName | photo | bio
+  proposalTypes: string[]; // INFORMATIVE | POLL
+  admissionType: string; // FREE | BOARD | DREPS | SINGLE_DREP | ADMIN
+  approverUserId: string | null;
+  commenters: string[]; // members | dreps | experts | submitters | viewers
+  status: string; // ACTIVE | HIDDEN
+}
+export interface AdminGroup extends AdminGroupConfig {
+  id: string;
+  key: string;
+  approverName: string | null;
+  voting: { voters: string; votingType: string; thresholdPct: number };
+  members: number;
+  pending: number;
+}
+export interface AdminGroupMember {
+  id: string;
+  status: string; // ADMITTED | PENDING
+  name: string;
+  since: string | null;
+}
+
 export const adminApi = {
   login: (username: string, password: string) =>
     request<LoginResult>('/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
@@ -126,6 +151,16 @@ export const adminApi = {
     get: () => request<MaintenanceState>('/maintenance'),
     enable: () => request<MaintenanceState>('/maintenance/enable', { method: 'POST' }),
     disable: () => request<MaintenanceState>('/maintenance/disable', { method: 'POST' }),
+  },
+  // §29 — configurable groups (e.g. OG). Create → HIDDEN; set status ACTIVE to turn on.
+  groups: {
+    list: () => request<AdminGroup[]>('/groups'),
+    dreps: () => request<{ userId: string; name: string }[]>('/groups/dreps'),
+    create: (name: string, key: string) => request<AdminGroup>('/groups', { method: 'POST', body: JSON.stringify({ name, key }) }),
+    update: (id: string, dto: Partial<AdminGroupConfig>) => request<AdminGroup>(`/groups/${id}`, { method: 'PATCH', body: JSON.stringify(dto) }),
+    members: (id: string) => request<AdminGroupMember[]>(`/groups/${id}/members`),
+    approveMember: (id: string, memberId: string) => request<{ ok: true }>(`/groups/${id}/members/${memberId}/approve`, { method: 'POST' }),
+    kickMember: (id: string, memberId: string) => request<{ ok: true }>(`/groups/${id}/members/${memberId}/kick`, { method: 'POST' }),
   },
   wallet: () => request<AdminWalletStatus>('/wallet'),
   sweepWallet: () => request<{ txHash: string; to: string }>('/wallet/sweep', { method: 'POST' }),

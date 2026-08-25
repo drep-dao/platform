@@ -19,6 +19,9 @@ import { InternalProposals } from './internal-proposals';
 import { RuleDocuments } from './rule-documents';
 import { Decisions } from './decisions';
 import { RequestsSection } from './requests-section';
+import { GroupMembers } from './group-members';
+import { GroupProposals } from './group-proposals';
+import { groupsApi, type GroupConfig } from '@/lib/api';
 import { JoinDaoButton } from './join-dao-button';
 import { NotificationBadge } from './notification-badge';
 import { NotificationBell } from './notification-bell';
@@ -58,6 +61,12 @@ export function HomeShell() {
   // The active menu view + an optionally-open proposal come from the URL, so every screen
   // (and any open proposal) has its own shareable link. Switching the menu clears submenu state.
   const view = (NAV.some((n) => n.key === get('view')) ? get('view') : 'overview') as View;
+  // §29 — configurable groups add dynamic left-nav items ("<Name> members" / "<Name> proposals").
+  const [groups, setGroups] = useState<GroupConfig[]>([]);
+  useEffect(() => { groupsApi.listActive().then(setGroups).catch(() => setGroups([])); }, []);
+  const rawView = get('view') ?? 'overview';
+  const groupMatch = /^g:([a-z0-9-]+):(members|proposals)$/.exec(rawView);
+  const openGroupView = (key: string) => setParams({ view: key, tab: null, round: null, proposal: null, ip: null, expert: null, doc: null });
   // Switching the menu (or signing in as a different user) clears all sub-navigation —
   // tab inside My-area, opened round / funding proposal, opened internal proposal (`ip`).
   const [viewNonce, setViewNonce] = useState(0);
@@ -217,6 +226,25 @@ export function HomeShell() {
               </button>
             );
           })}
+          {groups.map((g) => (
+            <div key={g.key} className="contents">
+              {(['members', 'proposals'] as const).map((kind) => {
+                const key = `g:${g.key}:${kind}`;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => openGroupView(key)}
+                    className={`flex w-auto shrink-0 items-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-left text-sm lg:w-full ${
+                      rawView === key ? 'bg-emerald-600 font-medium text-white' : 'text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800'
+                    }`}
+                  >
+                    <NavIcon name={kind === 'members' ? 'circle-user' : 'clipboard'} className="h-4 w-4 opacity-80" />
+                    {g.name} {kind === 'members' ? t('members') : t('proposals')}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </nav>
         <div className="mt-6 border-t border-neutral-200 pt-3 text-xs text-neutral-400 dark:border-neutral-800">
           <HealthBadge />
@@ -225,8 +253,10 @@ export function HomeShell() {
 
       {/* Center: content starts at the top. A ?proposal=<id> link shows that proposal on
           top of whatever view is selected, so proposal URLs are shareable from anywhere. */}
-      <main key={`${view}-${viewNonce}`} className="order-last min-w-0 flex-1 lg:order-none">
-        {view === 'overview' ? (
+      <main key={`${rawView}-${viewNonce}`} className="order-last min-w-0 flex-1 lg:order-none">
+        {groupMatch ? (
+          groupMatch[2] === 'members' ? <GroupMembers groupKey={groupMatch[1]} /> : <GroupProposals groupKey={groupMatch[1]} />
+        ) : view === 'overview' ? (
           <DaoOverview />
         ) : view === 'submitters' ? (
           <SubmittersDirectory />

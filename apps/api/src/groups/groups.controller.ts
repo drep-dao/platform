@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { CurrentUser, type AuthContext } from '../auth/current-user.decorator';
@@ -59,6 +59,12 @@ export class GroupsController {
   @UseGuards(JwtAuthGuard)
   register(@CurrentUser() ctx: AuthContext, @Param('key') key: string, @Body() dto: RegisterGroupDto) {
     return this.svc.register(ctx.userId, key, dto);
+  }
+
+  @Patch(':key/profile')
+  @UseGuards(JwtAuthGuard)
+  updateProfile(@CurrentUser() ctx: AuthContext, @Param('key') key: string, @Body() dto: RegisterGroupDto) {
+    return this.svc.updateProfile(ctx.userId, key, dto);
   }
 
   @Get(':key/members')

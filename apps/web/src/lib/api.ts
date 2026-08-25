@@ -2357,7 +2357,7 @@ export interface GroupConfig {
 export interface GroupMembershipMine { groupKey: string; groupName: string; status: string }
 export interface GroupMemberView { id: string; status: string; displayName: string; bio: string | null; photo: string | null; country: string | null; conflictOfInterest: string | null; address: string | null; subcategoryIds: string[]; socials: Record<string, string> | null; preferences: Record<string, boolean> | null; since: string | null }
 export interface GroupMembersResult { group: GroupConfig; canManage: boolean; members: GroupMemberView[]; pending: GroupMemberView[] }
-export interface GroupMembership { status: string; displayName: string | null; bio: string | null; photo: string | null; since: string | null }
+export interface GroupMembership { status: string; displayName: string | null; bio: string | null; photo: string | null; country: string | null; conflictOfInterest: string | null; address: string | null; subcategoryIds: string[]; socials: Record<string, string> | null; preferences: Record<string, boolean> | null; since: string | null }
 export interface GroupMembershipResult { group: GroupConfig; membership: GroupMembership | null; canManage: boolean }
 export interface GroupProposalSummary { id: string; title: string; type: string; status: string; author: string; votingEndAt: string; createdAt: string }
 export interface GroupProposalsResult { group: GroupConfig; canSubmit: boolean; proposals: GroupProposalSummary[] }
@@ -2405,6 +2405,7 @@ export const groupsApi = {
   mine: () => request<GroupMembershipMine[]>('/groups/mine'),
   membership: (key: string) => request<GroupMembershipResult>(`/groups/${key}/membership`),
   register: (key: string, input: RegisterGroupInput) => request<GroupMembershipResult>(`/groups/${key}/register`, { method: 'POST', body: JSON.stringify(input) }),
+  updateProfile: (key: string, input: RegisterGroupInput) => request<GroupMembershipResult>(`/groups/${key}/profile`, { method: 'PATCH', body: JSON.stringify(input) }),
   members: (key: string) => request<GroupMembersResult>(`/groups/${key}/members`),
   approveMember: (key: string, memberId: string) => request<GroupMembersResult>(`/groups/${key}/members/${memberId}/approve`, { method: 'POST' }),
   rejectMember: (key: string, memberId: string) => request<GroupMembersResult>(`/groups/${key}/members/${memberId}/reject`, { method: 'POST' }),

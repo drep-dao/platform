@@ -179,6 +179,29 @@ export class GroupsService {
     return this.myMembership(userId, key);
   }
 
+  /** An admitted member edits their own group profile (fields per the group's profileFields). */
+  async updateProfile(userId: string, key: string, dto: RegisterGroupDto) {
+    const g = await this.activeGroupByKey(key);
+    const m = await this.prisma.groupMember.findUnique({ where: { groupId_userId: { groupId: g.id, userId } } });
+    if (!m || m.status !== 'ADMITTED') throw new ForbiddenException('only admitted members can edit their profile');
+    const has = (f: string) => g.profileFields.includes(f);
+    await this.prisma.groupMember.update({
+      where: { id: m.id },
+      data: {
+        displayName: has('displayName') ? (dto.displayName?.trim() || null) : m.displayName,
+        bio: has('bio') ? (dto.bio?.trim() || null) : m.bio,
+        photo: has('photo') ? (dto.photo ?? m.photo) : m.photo,
+        country: has('country') ? (dto.country?.trim() || null) : m.country,
+        conflictOfInterest: has('conflictOfInterest') ? (dto.conflictOfInterest?.trim() || null) : m.conflictOfInterest,
+        address: has('blockchainAddress') ? (dto.address?.trim() || null) : m.address,
+        subcategoryIds: has('expertise') ? (dto.subcategoryIds ?? []) : m.subcategoryIds,
+        socials: has('links') && dto.socials ? (dto.socials as object) : (m.socials ?? undefined),
+        preferences: has('preferences') && dto.preferences ? (dto.preferences as object) : (m.preferences ?? undefined),
+      },
+    });
+    return this.myMembership(userId, key);
+  }
+
   async myMembership(userId: string, key: string) {
     const g = await this.activeGroupByKey(key);
     const m = await this.prisma.groupMember.findUnique({ where: { groupId_userId: { groupId: g.id, userId } } });

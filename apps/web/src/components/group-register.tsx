@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { groupsApi, type GroupConfig, type GroupMembershipMine } from '@/lib/api';
+import { groupsApi, type GroupConfig, type GroupMembership, type GroupMembershipMine, type GroupMembershipResult } from '@/lib/api';
+import { GroupProposals } from './group-proposals';
 import { card } from '@/lib/ui';
 import { useT } from '@/lib/prefs-context';
 import { MarkdownEditor } from './markdown';
@@ -13,20 +14,22 @@ const field = 'w-full rounded-md border border-neutral-300 px-3 py-2 text-sm dar
 /** §29 — the group registration form, shown when a user picks "Apply as <Name> member" in the
  *  My-area participation chooser. Fields follow the group's configured profileFields; the user is
  *  already wallet-authenticated (Cardano login), so no on-chain DRep is required. */
-export function GroupRegisterForm({ group, onDone }: { group: GroupConfig; onDone: () => void }) {
+export function GroupRegisterForm({ group, onDone, initial }: { group: GroupConfig; onDone: () => void; initial?: GroupMembership }) {
   const t = useT();
   const { subs } = useSubcategories();
   const has = (f: string) => group.profileFields.includes(f);
-  const [displayName, setDisplayName] = useState('');
-  const [bio, setBio] = useState('');
-  const [photo, setPhoto] = useState<string | null>(null);
+  const editing = !!initial;
+  const so = initial?.socials ?? {};
+  const [displayName, setDisplayName] = useState(initial?.displayName ?? '');
+  const [bio, setBio] = useState(initial?.bio ?? '');
+  const [photo, setPhoto] = useState<string | null>(initial?.photo ?? null);
   const [photoErr, setPhotoErr] = useState<string | null>(null);
-  const [country, setCountry] = useState('');
-  const [conflict, setConflict] = useState('');
-  const [address, setAddress] = useState('');
-  const [expertise, setExpertise] = useState<string[]>([]);
-  const [links, setLinks] = useState<{ x: string; telegram: string; github: string; email: string }>({ x: '', telegram: '', github: '', email: '' });
-  const [prefs, setPrefs] = useState<{ contact: boolean; notifications: boolean }>({ contact: false, notifications: false });
+  const [country, setCountry] = useState(initial?.country ?? '');
+  const [conflict, setConflict] = useState(initial?.conflictOfInterest ?? '');
+  const [address, setAddress] = useState(initial?.address ?? '');
+  const [expertise, setExpertise] = useState<string[]>(initial?.subcategoryIds ?? []);
+  const [links, setLinks] = useState<{ x: string; telegram: string; github: string; email: string }>({ x: so.x ?? '', telegram: so.telegram ?? '', github: so.github ?? '', email: so.email ?? '' });
+  const [prefs, setPrefs] = useState<{ contact: boolean; notifications: boolean }>({ contact: !!initial?.preferences?.contact, notifications: !!initial?.preferences?.notifications });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,7 +40,7 @@ export function GroupRegisterForm({ group, onDone }: { group: GroupConfig; onDon
     setBusy(true);
     try {
       const socials = Object.fromEntries(Object.entries(links).map(([k, v]) => [k, v.trim()]).filter(([, v]) => v));
-      await groupsApi.register(group.key, {
+      await (editing ? groupsApi.updateProfile : groupsApi.register)(group.key, {
         ...(has('displayName') ? { displayName: displayName.trim() } : {}),
         ...(has('bio') ? { bio } : {}),
         ...(has('photo') && photo ? { photo } : {}),
@@ -55,11 +58,13 @@ export function GroupRegisterForm({ group, onDone }: { group: GroupConfig; onDon
   return (
     <div className="space-y-3">
       <div>
-        <h3 className="text-base font-semibold">{t('Register as')} {group.name} {t('member')}</h3>
-        <p className="mt-1 text-sm text-neutral-500">
-          {t('Join with your Cardano wallet.')}{' '}
-          {group.admissionType === 'SINGLE_DREP' ? t('A DRep approves new members.') : group.admissionType === 'FREE' ? t('Admission is open.') : t('A reviewer approves new members.')}
-        </p>
+        <h3 className="text-base font-semibold">{editing ? `${t('Your')} ${group.name} ${t('profile')}` : `${t('Register as')} ${group.name} ${t('member')}`}</h3>
+        {!editing ? (
+          <p className="mt-1 text-sm text-neutral-500">
+            {t('Join with your Cardano wallet.')}{' '}
+            {group.admissionType === 'SINGLE_DREP' ? t('A DRep approves new members.') : group.admissionType === 'FREE' ? t('Admission is open.') : t('A reviewer approves new members.')}
+          </p>
+        ) : null}
       </div>
       {has('displayName') ? (
         <label className="block text-sm">{t('Display name')}
@@ -118,7 +123,7 @@ export function GroupRegisterForm({ group, onDone }: { group: GroupConfig; onDon
       ) : null}
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
       <button disabled={busy} onClick={register} className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
-        {busy ? t('Registering…') : `${t('Register as')} ${group.name} ${t('member')}`}
+        {busy ? t('Saving…') : editing ? t('Save profile') : `${t('Register as')} ${group.name} ${t('member')}`}
       </button>
     </div>
   );
@@ -161,5 +166,25 @@ function GroupApplyCard({ g, pending, onChanged }: { g: GroupConfig; pending: bo
         <div className="mt-2"><GroupRegisterForm group={g} onDone={() => { setOpen(false); onChanged(); }} /></div>
       )}
     </section>
+  );
+}
+
+
+/** §29 — an admitted member's My-area home for a group: edit their profile + submit and track the
+ *  group's proposals (history). Consistent with how a DRep manages their profile + internal proposals. */
+export function GroupMemberArea({ groupKey }: { groupKey: string }) {
+  const t = useT();
+  const [data, setData] = useState<GroupMembershipResult | null>(null);
+  const load = useCallback(() => { groupsApi.membership(groupKey).then(setData).catch(() => setData(null)); }, [groupKey]);
+  useEffect(load, [load]);
+  if (!data || !data.membership) return null;
+  return (
+    <div className="space-y-4">
+      <section className={card}>
+        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">{t('Your')} {data.group.name} {t('membership')}</div>
+        <GroupRegisterForm group={data.group} initial={data.membership} onDone={load} />
+      </section>
+      <GroupProposals groupKey={groupKey} />
+    </div>
   );
 }

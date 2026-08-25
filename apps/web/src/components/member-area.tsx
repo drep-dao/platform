@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { card } from '@/lib/ui';
 import { MyRuleDocuments } from './rule-documents';
 import { MyDecisions } from './decisions';
-import { GroupRegisterForm, GroupApply } from './group-register';
+import { GroupRegisterForm, GroupApply, GroupMemberArea } from './group-register';
 import { GroupApprovals } from './group-members';
 import { useAuth } from '@/lib/auth-context';
 import { useT } from '@/lib/prefs-context';
@@ -71,6 +71,9 @@ export function MemberArea() {
   // §14 — is a board seated? While none is, an admitted Council member reviews Expert/Submitter apps.
   const [boardSeated, setBoardSeated] = useState<boolean | null>(null);
   useEffect(() => { submitterApi.pendingCount().then((r) => setBoardSeated(r.boardElected)).catch(() => setBoardSeated(null)); }, []);
+  // §29 — groups the viewer is an admitted member of get their own My-area tab (profile + proposals).
+  const [myGroups, setMyGroups] = useState<GroupMembershipMine[]>([]);
+  useEffect(() => { groupsApi.mine().then((r) => setMyGroups(r.filter((m) => m.status === 'ADMITTED'))).catch(() => setMyGroups([])); }, []);
 
   const isBoard = !!profile?.roles.includes('BOARD');
   const canVote = !!profile && (profile.roles.includes('DREP') || profile.roles.includes('DAO_MEMBER') || profile.roles.includes('BOARD'));
@@ -113,6 +116,11 @@ export function MemberArea() {
       />
     ),
   });
+
+  // §29 — an admitted group member manages their group profile + proposals from a dedicated tab.
+  for (const mg of myGroups) {
+    tabs.push({ key: `grp-${mg.groupKey}`, label: mg.groupName, node: <GroupMemberArea groupKey={mg.groupKey} /> });
+  }
 
   // §27 — a DRep's own rule documents: draft privately, publish, edit until an approval vote opens.
   // Authoring is for members on the platform (admitted DReps + board), same gate as internal

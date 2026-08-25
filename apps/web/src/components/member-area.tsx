@@ -5,6 +5,7 @@ import { card } from '@/lib/ui';
 import { MyRuleDocuments } from './rule-documents';
 import { MyDecisions } from './decisions';
 import { GroupRegisterForm, GroupApply } from './group-register';
+import { GroupApprovals } from './group-members';
 import { useAuth } from '@/lib/auth-context';
 import { useT } from '@/lib/prefs-context';
 import { useUrlNav } from '@/lib/use-url-nav';
@@ -449,6 +450,7 @@ function ApplicationsTab() {
       <section className={card}><BoardReviewPanel history={showHistory} /></section>
       <section className={card}><ExpertReviewPanel history={showHistory} /></section>
       <SubmitterReviewPanel history={showHistory} />
+      <GroupApprovals />
       <section className={card}><RemovalPanel history={showHistory} /></section>
     </div>
   );
@@ -470,6 +472,7 @@ function CouncilApplicationsTab() {
       </div>
       <section className={card}><ExpertReviewPanel history={showHistory} /></section>
       <SubmitterReviewPanel history={showHistory} />
+      <GroupApprovals />
     </div>
   );
 }

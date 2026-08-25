@@ -98,3 +98,46 @@ function MemberCard({ m, fields, canManage, busy, onKick, t }: {
     </div>
   );
 }
+
+/** §29 — pending group-member registrations the viewer may approve (they are the group's
+ *  approver DRep / board / etc.), surfaced in the My-area "Applications" hub alongside Expert
+ *  and Submitter reviews. Renders nothing when there is nothing to approve. */
+export function GroupApprovals() {
+  const t = useT();
+  const [items, setItems] = useState<{ group: GroupMembersResult['group']; pending: GroupMemberView[] }[]>([]);
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(async () => {
+    const groups = await groupsApi.listActive().catch(() => []);
+    const results = await Promise.all(
+      groups.map(async (g) => {
+        const m = await groupsApi.members(g.key).catch(() => null);
+        return m && m.canManage && m.pending.length > 0 ? { group: m.group, pending: m.pending } : null;
+      }),
+    );
+    setItems(results.filter((x): x is { group: GroupMembersResult['group']; pending: GroupMemberView[] } => !!x));
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+  const act = async (fn: () => Promise<unknown>) => { setBusy(true); try { await fn(); await load(); } finally { setBusy(false); } };
+
+  if (items.length === 0) return null;
+  return (
+    <div className="space-y-4">
+      {items.map(({ group, pending }) => (
+        <section className={card} key={group.key}>
+          <h3 className="text-base font-semibold">{group.name} — {t('member applications')} <span className="text-sm font-normal text-neutral-500">({pending.length} {t('pending')})</span></h3>
+          <ul className="mt-2 space-y-2">
+            {pending.map((m) => (
+              <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                <span className="font-medium">{m.displayName}</span>
+                <span className="flex gap-2">
+                  <button disabled={busy} onClick={() => act(() => groupsApi.approveMember(group.key, m.id))} className="rounded bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50">{t('Approve')}</button>
+                  <button disabled={busy} onClick={() => act(() => groupsApi.rejectMember(group.key, m.id))} className="rounded border border-neutral-300 px-2.5 py-1 text-xs hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800">{t('Reject')}</button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+    </div>
+  );
+}

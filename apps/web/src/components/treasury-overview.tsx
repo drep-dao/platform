@@ -10,6 +10,7 @@ import { TreasuryTransactions } from './treasury-transactions';
 import { useTreasuryAutoRefresh } from '@/lib/treasury-refresh';
 import { useT } from '@/lib/prefs-context';
 import { useAuth } from '@/lib/auth-context';
+import { brand } from '@/lib/brand';
 
 const ada = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 0 });
 const BUCKET_COLOR: Record<string, string> = {
@@ -137,7 +138,7 @@ export function TreasuryOverview() {
           {/* Budget buckets — allocated, with spent overlaid as a bar. */}
           <div className="space-y-3">
             <div className="text-sm font-medium">{t('Budget allocation')}</div>
-            {data.buckets.map((b) => {
+            {data.buckets.filter((b) => brand.kind === 'funding' || (b.key !== 'total-funding' && !b.key.startsWith('round-'))).map((b) => {
               const pct = b.allocatedAda > 0 ? Math.min(100, (b.spentAda / b.allocatedAda) * 100) : 0;
               const color = BUCKET_COLOR[b.key] ?? roundColor;
               return (
@@ -169,9 +170,11 @@ export function TreasuryOverview() {
               <span className="text-neutral-500">{t('Total spent')}</span>
               <span className="font-medium tabular-nums">{ada(data.totalSpentAda)} ₳</span>
             </div>
-            <div className="flex justify-between pl-3 text-xs text-neutral-500">
-              <span>{t('· funding')}</span><span className="tabular-nums">{ada(data.spent.funding)} ₳</span>
-            </div>
+            {brand.kind === 'funding' ? (
+              <div className="flex justify-between pl-3 text-xs text-neutral-500">
+                <span>{t('· funding')}</span><span className="tabular-nums">{ada(data.spent.funding)} ₳</span>
+              </div>
+            ) : null}
             <div className="flex justify-between pl-3 text-xs text-neutral-500">
               <span>{t('· rewards')}</span><span className="tabular-nums">{ada(data.spent.rewards)} ₳</span>
             </div>

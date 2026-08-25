@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from './prisma/prisma.module';
 import { MeritModule } from './merit/merit.module';
 import { RedisModule } from './redis/redis.module';
+import { RateLimitModule } from './common/rate-limit/rate-limit.module';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
@@ -35,6 +36,7 @@ import { DecisionsModule } from './decisions/decisions.module';
     PrismaModule,
     MeritModule,
     RedisModule,
+    RateLimitModule,
     CardanoModule,
     HealthModule,
     UsersModule,

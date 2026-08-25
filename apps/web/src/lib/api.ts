@@ -2355,7 +2355,7 @@ export interface GroupConfig {
   voting: { voters: string; votingType: string; thresholdPct: number };
 }
 export interface GroupMembershipMine { groupKey: string; groupName: string; status: string }
-export interface GroupMemberView { id: string; status: string; displayName: string; bio: string | null; photo: string | null; since: string | null }
+export interface GroupMemberView { id: string; status: string; displayName: string; bio: string | null; photo: string | null; country: string | null; conflictOfInterest: string | null; address: string | null; subcategoryIds: string[]; socials: Record<string, string> | null; since: string | null }
 export interface GroupMembersResult { group: GroupConfig; canManage: boolean; members: GroupMemberView[]; pending: GroupMemberView[] }
 export interface GroupMembership { status: string; displayName: string | null; bio: string | null; photo: string | null; since: string | null }
 export interface GroupMembershipResult { group: GroupConfig; membership: GroupMembership | null; canManage: boolean }
@@ -2387,6 +2387,8 @@ export interface GroupProposalDetail {
   decidedAt: string | null;
   createdAt: string;
   poll: { multiple: boolean; options: string[] } | null;
+  actors: string[] | null;
+  deliveryDate: string | null;
   canVote: boolean;
   myVotes: string[];
   canComment: boolean;
@@ -2394,8 +2396,8 @@ export interface GroupProposalDetail {
   comments: GroupComment[];
   tally: GroupTally;
 }
-export interface RegisterGroupInput { displayName?: string; bio?: string; photo?: string }
-export interface SubmitGroupProposalInput { title: string; contentMd: string; type: string; votingEndAt: string; pollOptions?: string[]; pollMultiple?: boolean }
+export interface RegisterGroupInput { displayName?: string; bio?: string; photo?: string; country?: string; conflictOfInterest?: string; address?: string; subcategoryIds?: string[]; socials?: Record<string, string>; preferences?: Record<string, boolean> }
+export interface SubmitGroupProposalInput { title: string; contentMd: string; type: string; votingEndAt: string; pollOptions?: string[]; pollMultiple?: boolean; actors?: string[]; deliveryDate?: string }
 export interface GroupVoteInput { choice?: string; options?: string[] }
 
 export const groupsApi = {

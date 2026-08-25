@@ -3,13 +3,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { BoardService } from '../auth/board.service';
 import type { AdminCreateGroupDto, AdminUpdateGroupDto, GroupCommentDto, GroupVoteDto, RegisterGroupDto, SubmitGroupProposalDto } from './dto';
 
-// §29 — forced, non-configurable voting rules for every group.
-const THRESHOLD_PCT = 67;
-
 type GroupRow = {
   id: string; key: string; name: string; status: string;
   profileFields: string[]; proposalTypes: string[]; admissionType: string;
-  approverUserId: string | null; commenters: string[]; sortIdx: number;
+  approverUserId: string | null; commenters: string[]; votingType: string; thresholdPct: number; sortIdx: number;
 };
 
 @Injectable()
@@ -32,8 +29,8 @@ export class GroupsService {
       approverUserId: g.approverUserId,
       approverName: g.approver?.displayName ?? null,
       commenters: g.commenters,
-      // Forced rules, surfaced read-only so the UI can display them.
-      voting: { voters: 'members', votingType: 'ONE_PERSON_ONE_VOTE', thresholdPct: THRESHOLD_PCT },
+      // Voters are always the group's members; votingType + thresholdPct are configurable.
+      voting: { voters: 'members', votingType: g.votingType, thresholdPct: g.thresholdPct },
     };
   }
 
@@ -82,6 +79,8 @@ export class GroupsService {
         ...(dto.admissionType !== undefined ? { admissionType: dto.admissionType } : {}),
         ...(dto.approverUserId !== undefined ? { approverUserId: dto.approverUserId || null } : {}),
         ...(dto.commenters !== undefined ? { commenters: dto.commenters } : {}),
+        ...(dto.votingType !== undefined ? { votingType: dto.votingType } : {}),
+        ...(dto.thresholdPct !== undefined ? { thresholdPct: dto.thresholdPct } : {}),
         ...(dto.status !== undefined ? { status: dto.status } : {}),
       },
     });
@@ -158,12 +157,19 @@ export class GroupsService {
     const existing = await this.prisma.groupMember.findUnique({ where: { groupId_userId: { groupId: g.id, userId } } });
     if (existing && existing.status !== 'REMOVED') throw new ConflictException('you already have a membership for this group');
     const free = g.admissionType === 'FREE';
+    const has = (f: string) => g.profileFields.includes(f);
     const data = {
       status: free ? 'ADMITTED' : 'PENDING',
       admittedAt: free ? new Date() : null,
-      displayName: g.profileFields.includes('displayName') ? (dto.displayName?.trim() || null) : null,
-      bio: g.profileFields.includes('bio') ? (dto.bio?.trim() || null) : null,
-      photo: g.profileFields.includes('photo') ? (dto.photo || null) : null,
+      displayName: has('displayName') ? (dto.displayName?.trim() || null) : null,
+      bio: has('bio') ? (dto.bio?.trim() || null) : null,
+      photo: has('photo') ? (dto.photo || null) : null,
+      country: has('country') ? (dto.country?.trim() || null) : null,
+      conflictOfInterest: has('conflictOfInterest') ? (dto.conflictOfInterest?.trim() || null) : null,
+      address: has('blockchainAddress') ? (dto.address?.trim() || null) : null,
+      subcategoryIds: has('expertise') ? (dto.subcategoryIds ?? []) : [],
+      socials: has('links') && dto.socials ? (dto.socials as object) : undefined,
+      preferences: has('preferences') && dto.preferences ? (dto.preferences as object) : undefined,
     };
     if (existing) {
       await this.prisma.groupMember.update({ where: { id: existing.id }, data: { ...data, removedAt: null } });
@@ -179,7 +185,7 @@ export class GroupsService {
     return {
       group: this.config(g),
       membership: m && m.status !== 'REMOVED'
-        ? { status: m.status, displayName: m.displayName, bio: m.bio, photo: m.photo, since: m.admittedAt?.toISOString() ?? null }
+        ? { status: m.status, displayName: m.displayName, bio: m.bio, photo: m.photo, country: m.country, conflictOfInterest: m.conflictOfInterest, address: m.address, subcategoryIds: m.subcategoryIds, socials: m.socials, preferences: m.preferences, since: m.admittedAt?.toISOString() ?? null }
         : null,
       canManage: await this.canManageMembers(userId, g),
     };
@@ -193,13 +199,19 @@ export class GroupsService {
       include: { user: { select: { displayName: true } } },
       orderBy: [{ status: 'asc' }, { admittedAt: 'asc' }, { createdAt: 'asc' }],
     });
+    const has = (f: string) => g.profileFields.includes(f);
     const view = (m: (typeof rows)[number]) => ({
       id: m.id,
       status: m.status,
-      displayName: g.profileFields.includes('displayName') ? (m.displayName ?? m.user.displayName ?? 'Member') : (m.user.displayName ?? 'Member'),
-      bio: g.profileFields.includes('bio') ? m.bio : null,
-      photo: g.profileFields.includes('photo') ? m.photo : null,
-      since: g.profileFields.includes('memberSince') ? (m.admittedAt?.toISOString() ?? null) : null,
+      displayName: has('displayName') ? (m.displayName ?? m.user.displayName ?? 'Member') : (m.user.displayName ?? 'Member'),
+      bio: has('bio') ? m.bio : null,
+      photo: has('photo') ? m.photo : null,
+      country: has('country') ? m.country : null,
+      conflictOfInterest: has('conflictOfInterest') ? m.conflictOfInterest : null,
+      address: has('blockchainAddress') ? m.address : null,
+      subcategoryIds: has('expertise') ? m.subcategoryIds : [],
+      socials: has('links') ? (m.socials ?? null) : null,
+      since: has('memberSince') ? (m.admittedAt?.toISOString() ?? null) : null,
     });
     return {
       group: this.config(g),
@@ -266,6 +278,8 @@ export class GroupsService {
       decidedAt: fresh.decidedAt?.toISOString() ?? null,
       createdAt: fresh.createdAt.toISOString(),
       poll: fresh.type === 'POLL' ? { multiple: !!poll?.multiple, options: poll?.options ?? [] } : null,
+      actors: (fresh.actors as string[] | null) ?? null,
+      deliveryDate: fresh.deliveryDate?.toISOString() ?? null,
       canVote: isMember && fresh.status === 'ACTIVE',
       myVotes,
       canComment: await this.canComment(userId, g),
@@ -287,10 +301,13 @@ export class GroupsService {
       if (options.length < 2) throw new BadRequestException('a poll needs at least two options');
       pollOptions = { multiple: !!dto.pollMultiple, options };
     }
+    const instructive = dto.type === 'INSTRUCTIVE';
     const p = await this.prisma.groupProposal.create({
       data: {
         groupId: g.id, authorUserId: userId, title: dto.title.trim(), contentMd: dto.contentMd,
         type: dto.type, pollOptions: pollOptions ?? undefined, status: 'ACTIVE', votingEndAt: end,
+        actors: instructive && dto.actors?.length ? dto.actors : undefined,
+        deliveryDate: instructive && dto.deliveryDate ? new Date(dto.deliveryDate) : undefined,
       },
     });
     return this.getProposal(userId, p.id);
@@ -332,6 +349,8 @@ export class GroupsService {
   }
 
   private async tally(p: { id: string; groupId: string; type: string; pollOptions: unknown }) {
+    const group = await this.prisma.group.findUnique({ where: { id: p.groupId }, select: { thresholdPct: true } });
+    const thresholdPct = group?.thresholdPct ?? 67;
     const memberIds = await this.admittedMemberIds(p.groupId);
     const eligible = memberIds.size;
     const votes = (await this.prisma.groupVote.findMany({ where: { proposalId: p.id } })).filter((v) => memberIds.has(v.voterUserId));
@@ -360,7 +379,7 @@ export class GroupsService {
     }
     const denominator = Math.max(0, eligible - abstain);
     const ratioPct = denominator > 0 ? Math.round((yes / denominator) * 1000) / 10 : 0;
-    return { kind: 'THRESHOLD' as const, eligible, voted: yes + no + abstain, yes, no, abstain, denominator, ratioPct, thresholdPct: THRESHOLD_PCT, approved: ratioPct >= THRESHOLD_PCT };
+    return { kind: 'THRESHOLD' as const, eligible, voted: yes + no + abstain, yes, no, abstain, denominator, ratioPct, thresholdPct, approved: ratioPct >= thresholdPct };
   }
 
   private async maybeFinalize(p: { id: string; status: string; votingEndAt: Date; type: string; groupId: string; pollOptions: unknown }) {

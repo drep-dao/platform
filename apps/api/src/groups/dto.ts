@@ -1,11 +1,12 @@
-import { ArrayMinSize, IsArray, IsBoolean, IsIn, IsISO8601, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { ArrayMinSize, IsArray, IsBoolean, IsIn, IsInt, IsISO8601, IsObject, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 // §29 — configurable groups. Forced voting rules (members-only, 1 member = 1 vote, 67% threshold)
 // are NOT configurable and are enforced in the service, so they are absent from these DTOs.
 export const ADMISSION_TYPES = ['FREE', 'BOARD', 'DREPS', 'SINGLE_DREP', 'ADMIN'];
-export const GROUP_PROFILE_FIELDS = ['memberSince', 'displayName', 'photo', 'bio'];
-export const GROUP_PROPOSAL_TYPES = ['INFORMATIVE', 'POLL'];
+export const GROUP_PROFILE_FIELDS = ['memberSince', 'displayName', 'photo', 'bio', 'country', 'conflictOfInterest', 'blockchainAddress', 'expertise', 'links', 'preferences'];
+export const GROUP_PROPOSAL_TYPES = ['INFORMATIVE', 'POLL', 'INSTRUCTIVE'];
 export const GROUP_COMMENTERS = ['members', 'dreps', 'experts', 'submitters', 'viewers'];
+export const GROUP_VOTING_TYPES = ['ONE_PERSON_ONE_VOTE', 'DREP_POWER', 'ADJUSTED_POWER'];
 
 /** Sysadmin: create a group (starts HIDDEN — the JSON config always carries the group name). */
 export class AdminCreateGroupDto {
@@ -21,6 +22,8 @@ export class AdminUpdateGroupDto {
   @IsOptional() @IsIn(ADMISSION_TYPES) admissionType?: string;
   @IsOptional() approverUserId?: string | null; // a DRep's AppUser id (SINGLE_DREP); null clears it
   @IsOptional() @IsArray() @IsIn(GROUP_COMMENTERS, { each: true }) commenters?: string[];
+  @IsOptional() @IsIn(GROUP_VOTING_TYPES) votingType?: string;
+  @IsOptional() @IsInt() @Min(1) @Max(100) thresholdPct?: number;
   @IsOptional() @IsIn(['ACTIVE', 'HIDDEN']) status?: string;
 }
 
@@ -29,6 +32,12 @@ export class RegisterGroupDto {
   @IsOptional() @IsString() @MaxLength(80) displayName?: string;
   @IsOptional() @IsString() @MaxLength(8000) bio?: string;
   @IsOptional() @IsString() photo?: string; // data URL
+  @IsOptional() @IsString() @MaxLength(80) country?: string;
+  @IsOptional() @IsString() @MaxLength(2000) conflictOfInterest?: string;
+  @IsOptional() @IsString() @MaxLength(200) address?: string; // Cardano/blockchain address
+  @IsOptional() @IsArray() @IsString({ each: true }) subcategoryIds?: string[]; // expertise
+  @IsOptional() @IsObject() socials?: Record<string, string>; // { x, telegram, github, email, website }
+  @IsOptional() @IsObject() preferences?: Record<string, boolean>; // { contact, notifications }
 }
 
 /** A member submits a proposal for the group (only INFORMATIVE / POLL). */
@@ -39,6 +48,8 @@ export class SubmitGroupProposalDto {
   @IsISO8601() votingEndAt!: string;
   @IsOptional() @IsArray() @IsString({ each: true }) @ArrayMinSize(2) pollOptions?: string[];
   @IsOptional() @IsBoolean() pollMultiple?: boolean;
+  @IsOptional() @IsArray() @IsString({ each: true }) actors?: string[]; // INSTRUCTIVE
+  @IsOptional() @IsISO8601() deliveryDate?: string; // INSTRUCTIVE
 }
 
 /** Cast/change a vote. INFORMATIVE uses `choice`; POLL uses `options`. */

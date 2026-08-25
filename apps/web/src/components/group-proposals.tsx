@@ -43,7 +43,7 @@ export function GroupProposals({ groupKey }: { groupKey: string }) {
           <button key={p.id} onClick={() => setOpenId(p.id)} className="flex w-full flex-wrap items-center justify-between gap-2 rounded-md border border-neutral-200 p-3 text-left hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900">
             <span className="flex min-w-0 items-center gap-2">
               <span className="truncate font-medium">{p.title}</span>
-              <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">{p.type === 'POLL' ? t('Poll') : t('Informative')}</span>
+              <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">{p.type === 'POLL' ? t('Poll') : p.type === 'INSTRUCTIVE' ? t('Instructive') : t('Informative')}</span>
             </span>
             <span className="flex items-center gap-2 text-xs text-neutral-500">
               <span>{p.author}</span>
@@ -76,9 +76,12 @@ function SubmitForm({ group, onDone }: { group: GroupProposalsResult['group']; o
   const [votingEnd, setVotingEnd] = useState(() => { const d = new Date(Date.now() + 7 * 86400000); return toLocalInput(d.toISOString()); });
   const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
   const [pollMultiple, setPollMultiple] = useState(false);
+  const [actors, setActors] = useState('');
+  const [deliveryDate, setDeliveryDate] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isPoll = type === 'POLL';
+  const isInstructive = type === 'INSTRUCTIVE';
 
   const submit = async () => {
     setError(null);
@@ -90,7 +93,7 @@ function SubmitForm({ group, onDone }: { group: GroupProposalsResult['group']; o
     if (isPoll && clean.length < 2) return setError(t('A poll needs at least two options.'));
     setBusy(true);
     try {
-      await groupsApi.submit(group.key, { title: title.trim(), contentMd: content, type, votingEndAt: end.toISOString(), ...(isPoll ? { pollOptions: clean, pollMultiple } : {}) });
+      await groupsApi.submit(group.key, { title: title.trim(), contentMd: content, type, votingEndAt: end.toISOString(), ...(isPoll ? { pollOptions: clean, pollMultiple } : {}), ...(isInstructive ? { actors: actors.split(',').map((a) => a.trim()).filter(Boolean), ...(deliveryDate ? { deliveryDate: new Date(deliveryDate).toISOString() } : {}) } : {}) });
       onDone();
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
@@ -101,7 +104,7 @@ function SubmitForm({ group, onDone }: { group: GroupProposalsResult['group']; o
       {types.length > 1 ? (
         <label className="block text-sm">{t('Type')}
           <select value={type} onChange={(e) => setType(e.target.value)} className={field}>
-            {types.map((k) => <option key={k} value={k}>{k === 'POLL' ? t('Poll (choose option(s))') : t('Informative (yes / no decision)')}</option>)}
+            {types.map((k) => <option key={k} value={k}>{k === 'POLL' ? t('Poll (choose option(s))') : k === 'INSTRUCTIVE' ? t('Instructive (action with actors)') : t('Informative (yes / no decision)')}</option>)}
           </select>
         </label>
       ) : null}
@@ -120,6 +123,16 @@ function SubmitForm({ group, onDone }: { group: GroupProposalsResult['group']; o
           ))}
           <button onClick={() => setPollOptions((opts) => [...opts, ''])} className="text-xs text-emerald-700 hover:underline dark:text-emerald-400">{t('+ add option')}</button>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={pollMultiple} onChange={(e) => setPollMultiple(e.target.checked)} /> {t('Allow voters to choose more than one option')}</label>
+        </div>
+      ) : null}
+      {isInstructive ? (
+        <div className="space-y-2 rounded border border-neutral-200 p-2 dark:border-neutral-800">
+          <label className="block text-sm">{t('Actors (comma-separated)')}
+            <input value={actors} onChange={(e) => setActors(e.target.value)} placeholder={t('who is expected to act')} className={field} />
+          </label>
+          <label className="block text-sm">{t('Expected delivery (optional)')}
+            <DateField value={deliveryDate} onChange={setDeliveryDate} min={toLocalInput(new Date().toISOString())} />
+          </label>
         </div>
       ) : null}
       <label className="block text-sm">{t('Voting ends')}
@@ -164,6 +177,12 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
         <span className="flex items-center gap-2 text-xs text-neutral-500"><span>{p.author}</span><StatusChip status={p.status} /></span>
       </div>
       <div className="prose prose-sm mt-3 max-w-none text-sm dark:prose-invert"><Markdown>{p.contentMd}</Markdown></div>
+      {p.type === 'INSTRUCTIVE' && ((p.actors && p.actors.length) || p.deliveryDate) ? (
+        <div className="mt-2 rounded-md border border-neutral-200 p-2 text-xs text-neutral-600 dark:border-neutral-800 dark:text-neutral-400">
+          {p.actors && p.actors.length ? <div><span className="font-medium">{t('Actors')}:</span> {p.actors.join(', ')}</div> : null}
+          {p.deliveryDate ? <div><span className="font-medium">{t('Expected delivery')}:</span> {new Date(p.deliveryDate).toLocaleDateString()}</div> : null}
+        </div>
+      ) : null}
       <p className="mt-2 text-xs text-neutral-500">
         {p.status === 'ACTIVE'
           ? `${t('Voting ends')} ${new Date(p.votingEndAt).toLocaleString()}`

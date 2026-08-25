@@ -5,8 +5,9 @@ import { adminApi, type AdminGroup, type AdminGroupConfig, type AdminGroupMember
 
 // §29 — the sysadmin GROUPS tab: create configurable groups (e.g. OG), set what they collect and
 // submit, who admits members, and who may comment — then activate (or hide/pause) them.
-const PROFILE_FIELDS: [string, string][] = [['memberSince', 'Member since'], ['displayName', 'Display name'], ['photo', 'Photo'], ['bio', 'Bio']];
-const PROPOSAL_TYPES: [string, string][] = [['INFORMATIVE', 'Informative'], ['POLL', 'Poll']];
+const PROFILE_FIELDS: [string, string][] = [['memberSince', 'Member since'], ['displayName', 'Display name'], ['photo', 'Photo'], ['bio', 'Bio'], ['country', 'Country'], ['conflictOfInterest', 'Conflict of interest'], ['blockchainAddress', 'Blockchain address'], ['expertise', 'Expertise'], ['links', 'Links (X / Telegram / GitHub / email)'], ['preferences', 'Preferences']];
+const PROPOSAL_TYPES: [string, string][] = [['INFORMATIVE', 'Informative'], ['POLL', 'Poll'], ['INSTRUCTIVE', 'Instructive']];
+const VOTING_TYPES: [string, string, boolean][] = [['ONE_PERSON_ONE_VOTE', '1 member = 1 vote', true], ['DREP_POWER', 'DRep voting power', false], ['ADJUSTED_POWER', 'Adjusted voting power', false]];
 const ADMISSION: [string, string][] = [['FREE', 'Free admission'], ['BOARD', 'Board approval'], ['DREPS', 'DReps approval'], ['SINGLE_DREP', 'Single DRep approval'], ['ADMIN', 'Admin approval']];
 const COMMENTERS: [string, string][] = [['members', 'Group members'], ['dreps', 'DReps'], ['experts', 'Experts'], ['submitters', 'Submitters'], ['viewers', 'Viewers']];
 
@@ -109,6 +110,8 @@ function GroupEditor({ group, dreps, busy, onSave, onReload }: {
   const [admissionType, setAdmissionType] = useState(group.admissionType);
   const [approverUserId, setApproverUserId] = useState<string>(group.approverUserId ?? '');
   const [commenters, setCommenters] = useState<string[]>(group.commenters);
+  const [votingType, setVotingType] = useState(group.voting.votingType);
+  const [thresholdPct, setThresholdPct] = useState(group.voting.thresholdPct);
   const [members, setMembers] = useState<AdminGroupMember[] | null>(null);
   const [justSaved, setJustSaved] = useState(false);
   const arrEq = (a: string[], b: string[]) => a.length === b.length && [...a].sort().join('|') === [...b].sort().join('|');
@@ -118,14 +121,16 @@ function GroupEditor({ group, dreps, busy, onSave, onReload }: {
     !arrEq(proposalTypes, group.proposalTypes) ||
     admissionType !== group.admissionType ||
     (approverUserId || null) !== (group.approverUserId ?? null) ||
-    !arrEq(commenters, group.commenters);
+    !arrEq(commenters, group.commenters) ||
+    votingType !== group.voting.votingType ||
+    thresholdPct !== group.voting.thresholdPct;
 
   const toggle = (list: string[], set: (v: string[]) => void, key: string) => (on: boolean) => set(on ? [...new Set([...list, key])] : list.filter((x) => x !== key));
 
   const loadMembers = useCallback(async () => { setMembers(await adminApi.groups.members(group.id).catch(() => [])); }, [group.id]);
   useEffect(() => { void loadMembers(); }, [loadMembers]);
 
-  const save = async () => { await onSave({ name: name.trim(), profileFields, proposalTypes, admissionType, approverUserId: approverUserId || null, commenters }); setJustSaved(true); };
+  const save = async () => { await onSave({ name: name.trim(), profileFields, proposalTypes, admissionType, approverUserId: approverUserId || null, commenters, votingType, thresholdPct }); setJustSaved(true); };
 
   return (
     <div className="mt-3 space-y-3 border-t border-slate-800 pt-3 text-sm">
@@ -164,6 +169,16 @@ function GroupEditor({ group, dreps, busy, onSave, onReload }: {
         ) : null}
       </div>
 
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex flex-col gap-1 text-xs text-slate-400">Voting power
+          <select value={votingType} onChange={(e) => setVotingType(e.target.value)} className={inputCls}>
+            {VOTING_TYPES.map(([k, l, on]) => <option key={k} value={k} disabled={!on}>{l}{on ? '' : ' — not available yet'}</option>)}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-slate-400">Pass threshold (%)
+          <input type="number" min={1} max={100} value={thresholdPct} onChange={(e) => setThresholdPct(Math.max(1, Math.min(100, Number(e.target.value) || 0)))} className={`${inputCls} w-24`} />
+        </label>
+      </div>
       <div>
         <div className="text-xs font-medium uppercase tracking-wide text-slate-400">Who can comment on proposals</div>
         <div className="mt-1 flex flex-wrap gap-4">

@@ -102,6 +102,8 @@ export interface AdminGroupConfig {
   admissionType: string; // FREE | BOARD | DREPS | SINGLE_DREP | ADMIN
   approverUserId: string | null;
   commenters: string[]; // members | dreps | experts | submitters | viewers
+  votingType: string; // ONE_PERSON_ONE_VOTE | DREP_POWER | ADJUSTED_POWER
+  thresholdPct: number;
   status: string; // ACTIVE | HIDDEN
 }
 export interface AdminGroup extends AdminGroupConfig {

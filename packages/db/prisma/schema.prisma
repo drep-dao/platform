@@ -1702,6 +1702,8 @@ model Group {
   approver       AppUser? @relation("GroupApprover", fields: [approverUserId], references: [id])
   // Who may comment on this group's proposals (empty = no one).
   commenters     String[] @map("commenters") // members | dreps | experts | submitters | viewers
+  votingType     String   @default("ONE_PERSON_ONE_VOTE") @map("voting_type") // ONE_PERSON_ONE_VOTE (only wired) | DREP_POWER | ADJUSTED_POWER
+  thresholdPct   Int      @default(67) @map("threshold_pct")
   sortIdx        Int      @default(0) @map("sort_idx")
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -1713,17 +1715,23 @@ model Group {
 }
 
 model GroupMember {
-  id               String    @id @default(uuid()) @db.Uuid
-  groupId          String    @map("group_id") @db.Uuid
-  userId           String    @map("user_id") @db.Uuid
-  status           String    @default("PENDING") // PENDING | ADMITTED | REMOVED
-  displayName      String?   @map("display_name")
-  bio              String?
-  photo            String? // data URL
-  admittedAt       DateTime? @map("admitted_at") @db.Timestamptz(6) // "member since"
-  approvedByUserId String?   @map("approved_by_user_id") @db.Uuid
-  removedAt        DateTime? @map("removed_at") @db.Timestamptz(6)
-  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  id                 String    @id @default(uuid()) @db.Uuid
+  groupId            String    @map("group_id") @db.Uuid
+  userId             String    @map("user_id") @db.Uuid
+  status             String    @default("PENDING") // PENDING | ADMITTED | REMOVED
+  displayName        String?   @map("display_name")
+  bio                String?
+  photo              String? // data URL
+  country            String?
+  conflictOfInterest String?   @map("conflict_of_interest")
+  address            String? // Cardano/blockchain address
+  subcategoryIds     String[]  @map("subcategory_ids") // expertise
+  socials            Json? // links: { x, telegram, github, email, website }
+  preferences        Json? // opt-ins: { contact, notifications }
+  admittedAt         DateTime? @map("admitted_at") @db.Timestamptz(6) // "member since"
+  approvedByUserId   String?   @map("approved_by_user_id") @db.Uuid
+  removedAt          DateTime? @map("removed_at") @db.Timestamptz(6)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
   group Group   @relation(fields: [groupId], references: [id])
   user  AppUser @relation("GroupMemberUser", fields: [userId], references: [id])
@@ -1741,6 +1749,8 @@ model GroupProposal {
   contentMd    String    @map("content_md")
   type         String // INFORMATIVE | POLL
   pollOptions  Json?     @map("poll_options") // { multiple: boolean, options: string[] }
+  actors       Json? // INSTRUCTIVE: named actors (string[])
+  deliveryDate DateTime? @map("delivery_date") @db.Timestamptz(6) // INSTRUCTIVE: expected delivery
   status       String    @default("ACTIVE") // ACTIVE | PASSED | FAILED | CLOSED
   votingEndAt  DateTime  @map("voting_end_at") @db.Timestamptz(6)
   decidedAt    DateTime? @map("decided_at") @db.Timestamptz(6)

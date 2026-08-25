@@ -5,6 +5,7 @@ import { groupsApi, type GroupMembersResult, type GroupMemberView } from '@/lib/
 import { card } from '@/lib/ui';
 import { useT } from '@/lib/prefs-context';
 import { Markdown } from './markdown';
+import { useSubcategories } from '@/lib/subcategories';
 
 /** §29 — a group's member directory (left-nav "<Name> members"). The group's approver sees a
  *  pending-registrations queue with Approve/Reject and can remove admitted members. */
@@ -52,9 +53,20 @@ export function GroupMembers({ groupKey }: { groupKey: string }) {
   );
 }
 
+function memberLinkHref(kind: string, v: string): string {
+  const s = v.trim();
+  if (kind === 'email') return `mailto:${s}`;
+  if (/^https?:\/\//.test(s)) return s;
+  if (kind === 'telegram') return `https://t.me/${s.replace(/^@/, '')}`;
+  if (kind === 'x') return `https://x.com/${s.replace(/^@/, '')}`;
+  if (kind === 'github') return `https://github.com/${s.replace(/^@/, '')}`;
+  return `https://${s}`;
+}
+
 function MemberCard({ m, fields, canManage, busy, onKick, t }: {
   m: GroupMemberView; fields: string[]; canManage: boolean; busy: boolean; onKick: () => void; t: (s: string) => string;
 }) {
+  const { labelOf } = useSubcategories();
   return (
     <div className="rounded-lg border border-neutral-200 p-3 dark:border-neutral-800">
       <div className="flex items-center gap-3">
@@ -69,6 +81,19 @@ function MemberCard({ m, fields, canManage, busy, onKick, t }: {
         </div>
       </div>
       {fields.includes('bio') && m.bio ? <div className="prose prose-sm mt-2 max-w-none text-sm dark:prose-invert"><Markdown>{m.bio}</Markdown></div> : null}
+      {fields.includes('country') && m.country ? <div className="mt-1 text-xs text-neutral-500">{t('Country')}: {m.country}</div> : null}
+      {fields.includes('expertise') && m.subcategoryIds.length ? (
+        <div className="mt-1 flex flex-wrap gap-1">
+          {m.subcategoryIds.map((id) => <span key={id} className="rounded-full border border-emerald-300 px-2 py-0.5 text-[11px] text-emerald-700 dark:border-emerald-800 dark:text-emerald-300">{labelOf(id)}</span>)}
+        </div>
+      ) : null}
+      {fields.includes('conflictOfInterest') && m.conflictOfInterest ? <div className="mt-1 text-xs text-neutral-500"><span className="font-medium">{t('Conflict of interest')}:</span> {m.conflictOfInterest}</div> : null}
+      {fields.includes('blockchainAddress') && m.address ? <div className="mt-1 break-all font-mono text-[11px] text-neutral-500">{m.address}</div> : null}
+      {fields.includes('links') && m.socials && Object.keys(m.socials).length ? (
+        <div className="mt-1 flex flex-wrap gap-2 text-xs">
+          {Object.entries(m.socials).map(([k, v]) => <a key={k} href={memberLinkHref(k, v)} target="_blank" rel="noreferrer" className="text-emerald-700 hover:underline dark:text-emerald-400">{k === 'x' ? 'X' : k}</a>)}
+        </div>
+      ) : null}
       {canManage ? <button disabled={busy} onClick={onKick} className="mt-2 rounded border border-rose-300 px-2.5 py-1 text-xs text-rose-700 hover:bg-rose-50 disabled:opacity-50 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950">{t('Remove member')}</button> : null}
     </div>
   );

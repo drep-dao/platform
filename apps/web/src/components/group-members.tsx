@@ -63,12 +63,10 @@ function memberLinkHref(kind: string, v: string): string {
   return `https://${s}`;
 }
 
-function MemberCard({ m, fields, canManage, busy, onKick, t }: {
-  m: GroupMemberView; fields: string[]; canManage: boolean; busy: boolean; onKick: () => void; t: (s: string) => string;
-}) {
+function MemberFields({ m, fields, t }: { m: GroupMemberView; fields: string[]; t: (s: string) => string }) {
   const { labelOf } = useSubcategories();
   return (
-    <div className="rounded-lg border border-neutral-200 p-3 dark:border-neutral-800">
+    <>
       <div className="flex items-center gap-3">
         {fields.includes('photo') ? (
           m.photo
@@ -94,6 +92,19 @@ function MemberCard({ m, fields, canManage, busy, onKick, t }: {
           {Object.entries(m.socials).map(([k, v]) => <a key={k} href={memberLinkHref(k, v)} target="_blank" rel="noreferrer" className="text-emerald-700 hover:underline dark:text-emerald-400">{k === 'x' ? 'X' : k}</a>)}
         </div>
       ) : null}
+      {fields.includes('preferences') && m.preferences && (m.preferences.contact || m.preferences.notifications) ? (
+        <div className="mt-1 text-xs text-neutral-500">{t('Preferences')}: {[m.preferences.contact ? t('open to contact') : null, m.preferences.notifications ? t('notifications') : null].filter(Boolean).join(', ')}</div>
+      ) : null}
+    </>
+  );
+}
+
+function MemberCard({ m, fields, canManage, busy, onKick, t }: {
+  m: GroupMemberView; fields: string[]; canManage: boolean; busy: boolean; onKick: () => void; t: (s: string) => string;
+}) {
+  return (
+    <div className="rounded-lg border border-neutral-200 p-3 dark:border-neutral-800">
+      <MemberFields m={m} fields={fields} t={t} />
       {canManage ? <button disabled={busy} onClick={onKick} className="mt-2 rounded border border-rose-300 px-2.5 py-1 text-xs text-rose-700 hover:bg-rose-50 disabled:opacity-50 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950">{t('Remove member')}</button> : null}
     </div>
   );
@@ -125,17 +136,17 @@ export function GroupApprovals() {
       {items.map(({ group, pending }) => (
         <section className={card} key={group.key}>
           <h3 className="text-base font-semibold">{group.name} — {t('member applications')} <span className="text-sm font-normal text-neutral-500">({pending.length} {t('pending')})</span></h3>
-          <ul className="mt-2 space-y-2">
+          <div className="mt-2 space-y-3">
             {pending.map((m) => (
-              <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                <span className="font-medium">{m.displayName}</span>
-                <span className="flex gap-2">
-                  <button disabled={busy} onClick={() => act(() => groupsApi.approveMember(group.key, m.id))} className="rounded bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50">{t('Approve')}</button>
-                  <button disabled={busy} onClick={() => act(() => groupsApi.rejectMember(group.key, m.id))} className="rounded border border-neutral-300 px-2.5 py-1 text-xs hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800">{t('Reject')}</button>
-                </span>
-              </li>
+              <div key={m.id} className="rounded-lg border border-neutral-200 p-3 dark:border-neutral-800">
+                <MemberFields m={m} fields={group.profileFields} t={t} />
+                <div className="mt-3 flex gap-2">
+                  <button disabled={busy} onClick={() => act(() => groupsApi.approveMember(group.key, m.id))} className="rounded bg-emerald-600 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50">{t('Approve')}</button>
+                  <button disabled={busy} onClick={() => act(() => groupsApi.rejectMember(group.key, m.id))} className="rounded border border-neutral-300 px-3 py-1 text-xs hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800">{t('Reject')}</button>
+                </div>
+              </div>
             ))}
-          </ul>
+          </div>
         </section>
       ))}
     </div>

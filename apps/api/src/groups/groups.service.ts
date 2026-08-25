@@ -211,6 +211,7 @@ export class GroupsService {
       address: has('blockchainAddress') ? m.address : null,
       subcategoryIds: has('expertise') ? m.subcategoryIds : [],
       socials: has('links') ? (m.socials ?? null) : null,
+      preferences: has('preferences') ? (m.preferences ?? null) : null,
       since: has('memberSince') ? (m.admittedAt?.toISOString() ?? null) : null,
     });
     return {

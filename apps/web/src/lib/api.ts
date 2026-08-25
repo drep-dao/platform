@@ -2355,7 +2355,7 @@ export interface GroupConfig {
   voting: { voters: string; votingType: string; thresholdPct: number };
 }
 export interface GroupMembershipMine { groupKey: string; groupName: string; status: string }
-export interface GroupMemberView { id: string; status: string; displayName: string; bio: string | null; photo: string | null; country: string | null; conflictOfInterest: string | null; address: string | null; subcategoryIds: string[]; socials: Record<string, string> | null; since: string | null }
+export interface GroupMemberView { id: string; status: string; displayName: string; bio: string | null; photo: string | null; country: string | null; conflictOfInterest: string | null; address: string | null; subcategoryIds: string[]; socials: Record<string, string> | null; preferences: Record<string, boolean> | null; since: string | null }
 export interface GroupMembersResult { group: GroupConfig; canManage: boolean; members: GroupMemberView[]; pending: GroupMemberView[] }
 export interface GroupMembership { status: string; displayName: string | null; bio: string | null; photo: string | null; since: string | null }
 export interface GroupMembershipResult { group: GroupConfig; membership: GroupMembership | null; canManage: boolean }

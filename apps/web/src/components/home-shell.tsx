@@ -226,6 +226,12 @@ export function HomeShell() {
               </button>
             );
           })}
+          {groups.length > 0 ? (
+            <div className="mt-2 hidden border-t border-neutral-200 pt-2 lg:block dark:border-neutral-800" />
+          ) : null}
+          {groups.length > 0 ? (
+            <div className="px-3 pt-1 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">{t('GROUPS')}</div>
+          ) : null}
           {groups.map((g) => (
             <div key={g.key} className="contents">
               {(['members', 'proposals'] as const).map((kind) => {

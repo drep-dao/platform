@@ -100,7 +100,7 @@ function GroupEditor({ group, dreps, busy, onSave, onReload }: {
   group: AdminGroup;
   dreps: { userId: string; name: string }[];
   busy: boolean;
-  onSave: (dto: Partial<AdminGroupConfig>) => void;
+  onSave: (dto: Partial<AdminGroupConfig>) => Promise<void>;
   onReload: () => Promise<void>;
 }) {
   const [name, setName] = useState(group.name);
@@ -110,13 +110,22 @@ function GroupEditor({ group, dreps, busy, onSave, onReload }: {
   const [approverUserId, setApproverUserId] = useState<string>(group.approverUserId ?? '');
   const [commenters, setCommenters] = useState<string[]>(group.commenters);
   const [members, setMembers] = useState<AdminGroupMember[] | null>(null);
+  const [justSaved, setJustSaved] = useState(false);
+  const arrEq = (a: string[], b: string[]) => a.length === b.length && [...a].sort().join('|') === [...b].sort().join('|');
+  const dirty =
+    name.trim() !== group.name ||
+    !arrEq(profileFields, group.profileFields) ||
+    !arrEq(proposalTypes, group.proposalTypes) ||
+    admissionType !== group.admissionType ||
+    (approverUserId || null) !== (group.approverUserId ?? null) ||
+    !arrEq(commenters, group.commenters);
 
   const toggle = (list: string[], set: (v: string[]) => void, key: string) => (on: boolean) => set(on ? [...new Set([...list, key])] : list.filter((x) => x !== key));
 
   const loadMembers = useCallback(async () => { setMembers(await adminApi.groups.members(group.id).catch(() => [])); }, [group.id]);
   useEffect(() => { void loadMembers(); }, [loadMembers]);
 
-  const save = () => onSave({ name: name.trim(), profileFields, proposalTypes, admissionType, approverUserId: approverUserId || null, commenters });
+  const save = async () => { await onSave({ name: name.trim(), profileFields, proposalTypes, admissionType, approverUserId: approverUserId || null, commenters }); setJustSaved(true); };
 
   return (
     <div className="mt-3 space-y-3 border-t border-slate-800 pt-3 text-sm">
@@ -163,7 +172,7 @@ function GroupEditor({ group, dreps, busy, onSave, onReload }: {
         {commenters.length === 0 ? <p className="mt-1 text-xs text-slate-500">No one can comment.</p> : null}
       </div>
 
-      <button disabled={busy} onClick={save} className={btnCls}>Save configuration</button>
+      <div className="flex items-center gap-3"><button disabled={busy || !dirty} onClick={save} className={btnCls}>Save configuration</button>{justSaved && !dirty ? <span className="text-sm font-medium text-emerald-400">Saved ✓</span> : null}</div>
 
       {/* member oversight */}
       <div className="mt-2 border-t border-slate-800 pt-2">

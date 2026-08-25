@@ -4,12 +4,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { card } from '@/lib/ui';
 import { MyRuleDocuments } from './rule-documents';
 import { MyDecisions } from './decisions';
-import { GroupMemberships } from './group-register';
+import { GroupRegisterForm, GroupApply } from './group-register';
 import { useAuth } from '@/lib/auth-context';
 import { useT } from '@/lib/prefs-context';
 import { useUrlNav } from '@/lib/use-url-nav';
 import { useTodoCounts } from '@/lib/use-todo-counts';
-import { expertApi, drepApi, submitterApi, configApi, groupsApi, type MyExpert, type MySubmitter, type EntryEligibility, type ReviewMode } from '@/lib/api';
+import { expertApi, drepApi, submitterApi, configApi, groupsApi, type MyExpert, type MySubmitter, type EntryEligibility, type ReviewMode, type GroupConfig, type GroupMembershipMine } from '@/lib/api';
 import { DrepForm } from './drep-form';
 import { EntryRequirementsNotice } from './join-dao-button';
 import { MyDrepStatus } from './my-drep-status';
@@ -70,9 +70,6 @@ export function MemberArea() {
   // §14 — is a board seated? While none is, an admitted Council member reviews Expert/Submitter apps.
   const [boardSeated, setBoardSeated] = useState<boolean | null>(null);
   useEffect(() => { submitterApi.pendingCount().then((r) => setBoardSeated(r.boardElected)).catch(() => setBoardSeated(null)); }, []);
-  // §29 — configurable groups: show a My-area "Groups" tab (Register as <Name> member) when any is active.
-  const [activeGroups, setActiveGroups] = useState(0);
-  useEffect(() => { groupsApi.listActive().then((g) => setActiveGroups(g.length)).catch(() => setActiveGroups(0)); }, []);
 
   const isBoard = !!profile?.roles.includes('BOARD');
   const canVote = !!profile && (profile.roles.includes('DREP') || profile.roles.includes('DAO_MEMBER') || profile.roles.includes('BOARD'));
@@ -115,11 +112,6 @@ export function MemberArea() {
       />
     ),
   });
-
-  // §29 — Register as a group member (e.g. OG) + membership status, for every active group.
-  if (activeGroups > 0) {
-    tabs.push({ key: 'groups', label: 'Groups', node: <GroupMemberships /> });
-  }
 
   // §27 — a DRep's own rule documents: draft privately, publish, edit until an approval vote opens.
   // Authoring is for members on the platform (admitted DReps + board), same gate as internal
@@ -246,6 +238,7 @@ function ProfileTab({ isMember, isBoard, daoPending, expertApproved, expertPendi
                   (the panel amber-nags until it's set). */}
               {expertApproved ? <RewardAddressPanel /> : null}
               {submitterRoleCard}
+              <GroupApply />
               <section className={card}><PreferencesPanel /></section>
             </div>
           )}
@@ -304,6 +297,7 @@ function ProfileTab({ isMember, isBoard, daoPending, expertApproved, expertPendi
               </button>
             </section>
           ) : null}
+          <GroupApply />
           {/* §15.4 — payment address for rewards. Amber-nags when empty. */}
           <RewardAddressPanel />
           {/* §13 — merit points + ledger + avoid-period (vacancy) signalling. Hidden when merit is off. */}
@@ -532,7 +526,22 @@ function EmptyHint({ text }: { text: string }) {
 /** §14 — both participation routes; pick one (until accepted). */
 function ApplyOptions({ registeredDRep, onExpertChange, onSubmitterChange, showSubmitterCard }: { registeredDRep: boolean; onExpertChange: () => void; onSubmitterChange: () => void; showSubmitterCard: boolean }) {
   const t = useT();
-  const [mode, setMode] = useState<'choose' | 'dao' | 'expert' | 'submitter'>('choose');
+  const [mode, setMode] = useState<string>('choose');
+  // §29 — configurable groups appear here as "Apply as <Name> member" options.
+  const [groups, setGroups] = useState<GroupConfig[]>([]);
+  const [mine, setMine] = useState<GroupMembershipMine[]>([]);
+  const loadGroups = () => { groupsApi.listActive().then(setGroups).catch(() => setGroups([])); groupsApi.mine().then(setMine).catch(() => setMine([])); };
+  useEffect(loadGroups, []);
+  const groupOptions = groups.map((g) => ({ g, status: mine.find((m) => m.groupKey === g.key)?.status ?? null })).filter((o) => o.status !== 'ADMITTED');
+  const activeGroup = mode.startsWith('g:') ? groups.find((g) => `g:${g.key}` === mode) ?? null : null;
+  if (activeGroup) {
+    return (
+      <div className="space-y-2">
+        <BackButton onBack={() => setMode('choose')} />
+        <GroupRegisterForm group={activeGroup} onDone={() => { loadGroups(); setMode('choose'); }} />
+      </div>
+    );
+  }
 
   if (mode === 'dao') {
     return (
@@ -581,6 +590,19 @@ function ApplyOptions({ registeredDRep, onExpertChange, onSubmitterChange, showS
             <div className="text-xs text-neutral-500">{t('To submit proposals. Fill in a short profile; a board member approves it, then you can submit.')}</div>
           </button>
         ) : null}
+        {groupOptions.map(({ g, status }) => (
+          status === 'PENDING' ? (
+            <div key={g.key} className="rounded-lg border border-amber-200 p-3 text-left dark:border-amber-900">
+              <div className="font-medium">{g.name} {t('member')}</div>
+              <div className="text-xs text-amber-700 dark:text-amber-400">{t('Your registration is awaiting approval.')}</div>
+            </div>
+          ) : (
+            <button key={g.key} onClick={() => setMode(`g:${g.key}`)} className="rounded-lg border border-neutral-200 p-3 text-left hover:border-emerald-400 dark:border-neutral-700">
+              <div className="font-medium">{t('Apply as')} {g.name} {t('member')}</div>
+              <div className="text-xs text-neutral-500">{t('Submit and vote on')} {g.name} {t('proposals. Register with your Cardano wallet; the group’s reviewer approves you.')}</div>
+            </button>
+          )
+        ))}
       </div>
     </div>
   );

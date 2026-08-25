@@ -38,7 +38,7 @@ export class SysadminConfigController {
       action: 'config.param.update',
       target: dto.key,
       payload: { value: res.value },
-      ip: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip,
+      ip: req.ip /* SEC-06: trusted framework IP, not spoofable XFF */,
       userAgent: req.headers['user-agent'],
     });
     return res;
@@ -66,7 +66,7 @@ export class SysadminConfigController {
           dto.dbsyncUrl !== undefined ? 'dbsyncUrl' : null,
         ].filter(Boolean),
       },
-      ip: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip,
+      ip: req.ip /* SEC-06: trusted framework IP, not spoofable XFF */,
       userAgent: req.headers['user-agent'],
     });
     return res;

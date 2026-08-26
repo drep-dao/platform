@@ -150,7 +150,7 @@ function MemberCardCompact({ m, fields, onOpen, t }: {
 /** §29 — pending group-member registrations the viewer may approve (they are the group's
  *  approver DRep / board / etc.), surfaced in the My-area "Applications" hub alongside Expert
  *  and Submitter reviews. Renders nothing when there is nothing to approve. */
-export function GroupApprovals() {
+export function GroupApprovals({ showWhenEmpty = false }: { showWhenEmpty?: boolean }) {
   const t = useT();
   const [items, setItems] = useState<{ group: GroupMembersResult['group']; pending: GroupMemberView[] }[]>([]);
   const [busy, setBusy] = useState(false);
@@ -167,7 +167,7 @@ export function GroupApprovals() {
   useEffect(() => { void load(); }, [load]);
   const act = async (fn: () => Promise<unknown>) => { setBusy(true); try { await fn(); await load(); } finally { setBusy(false); } };
 
-  if (items.length === 0) return null;
+  if (items.length === 0) return showWhenEmpty ? <section className={card}><p className="text-sm text-neutral-500">{t('No pending applications right now.')}</p></section> : null;
   return (
     <div className="space-y-4">
       {items.map(({ group, pending }) => (

@@ -155,9 +155,16 @@ export class GroupsService {
   async myMemberships(userId: string) {
     const rows = await this.prisma.groupMember.findMany({
       where: { userId, status: { in: ['PENDING', 'ADMITTED'] }, group: { status: 'ACTIVE' } },
-      include: { group: { select: { key: true, name: true } } },
+      include: { group: true },
     });
-    return rows.map((m) => ({ groupKey: m.group.key, groupName: m.group.name, status: m.status, displayName: m.displayName ?? null }));
+    // canManage tells the app whether to surface an "Applications" tab for this member (self-governance).
+    return Promise.all(rows.map(async (m) => ({
+      groupKey: m.group.key,
+      groupName: m.group.name,
+      status: m.status,
+      displayName: m.displayName ?? null,
+      canManage: m.status === 'ADMITTED' ? await this.canManageMembers(userId, m.group) : false,
+    })));
   }
 
   async register(userId: string, key: string, dto: RegisterGroupDto) {
@@ -286,6 +293,13 @@ export class GroupsService {
     if (!(await this.canManageMembers(userId, m.group))) throw new ForbiddenException('you are not allowed to manage this group’s members');
     if (action === 'approve') {
       if (m.status !== 'PENDING') throw new BadRequestException('only pending registrations can be approved');
+      // §29 OG — EXACT quorum caps the group size: don't admit beyond the exact count; a member must leave first.
+      if (m.group.quorumMode === 'EXACT') {
+        const admitted = await this.prisma.groupMember.count({ where: { groupId: m.group.id, status: 'ADMITTED' } });
+        if (admitted >= (m.group.quorumCount ?? 0)) {
+          throw new BadRequestException(`this group is limited to exactly ${m.group.quorumCount ?? 0} member(s); a member must leave before admitting another`);
+        }
+      }
       await this.prisma.groupMember.update({ where: { id: memberId }, data: { status: 'ADMITTED', admittedAt: new Date(), approvedByUserId: userId } });
     } else {
       await this.prisma.groupMember.update({ where: { id: memberId }, data: { status: 'REMOVED', removedAt: new Date() } });

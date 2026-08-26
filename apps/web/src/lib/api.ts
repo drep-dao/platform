@@ -2367,7 +2367,7 @@ export interface GroupConfig {
   quorumMode: string; // OPEN | EXACT | MINIMUM
   quorumCount: number | null;
 }
-export interface GroupMembershipMine { groupKey: string; groupName: string; status: string; displayName: string | null }
+export interface GroupMembershipMine { groupKey: string; groupName: string; status: string; displayName: string | null; canManage: boolean }
 export interface GroupMemberView { id: string; status: string; displayName: string; bio: string | null; photo: string | null; country: string | null; conflictOfInterest: string | null; noSelfVote: boolean | null; address: string | null; subcategoryIds: string[]; socials: Record<string, string> | null; preferences: Record<string, boolean> | null; since: string | null }
 export interface GroupMembersResult { group: GroupConfig; canManage: boolean; members: GroupMemberView[]; pending: GroupMemberView[] }
 export interface GroupMembership { status: string; displayName: string | null; bio: string | null; photo: string | null; country: string | null; conflictOfInterest: string | null; noSelfVote: boolean; address: string | null; subcategoryIds: string[]; socials: Record<string, string> | null; preferences: Record<string, boolean> | null; since: string | null }

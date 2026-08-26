@@ -126,6 +126,11 @@ export function MemberArea() {
     tabs.push({ key: `grp-${mg.groupKey}`, label: `${mg.groupName} profile`, node: <GroupMemberArea groupKey={mg.groupKey} /> });
     tabs.push({ key: `grp-${mg.groupKey}-proposals`, label: `${mg.groupName} proposals`, node: <GroupProposals groupKey={mg.groupKey} /> });
   }
+  // §29 OG self-governance — a top-menu "Applications" item for members who may approve applicants,
+  // unless they are a council member (whose own Applications tab already shows group approvals).
+  if (GROUPS_ENABLED && !isMember && !isBoard && myGroups.some((g) => g.canManage)) {
+    tabs.push({ key: 'group-apps', label: 'Applications', node: <GroupApprovals showWhenEmpty /> });
+  }
 
   // §27 — a DRep's own rule documents: draft privately, publish, edit until an approval vote opens.
   // Authoring is for members on the platform (admitted DReps + board), same gate as internal

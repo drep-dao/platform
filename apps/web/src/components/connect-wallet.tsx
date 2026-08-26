@@ -20,13 +20,15 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 /** Primary login — Cardano wallet. Recognizes the wallet and shows the role. */
 export function ConnectWallet() {
   const t = useT();
-  const { profile, loading, wallets, login, logout, refreshWallets } = useAuth();
+  const { profile, loading, wallets, login, logout, refreshWallets, proveDrepKey } = useAuth();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Each connect attempt gets a number; cancelling bumps it so a stale, still-
   // pending attempt that resolves late can't clobber the UI (or re-enable a
   // spinner the user already dismissed).
   const attemptRef = useRef(0);
+  const [proving, setProving] = useState(false);
+  const [proveMsg, setProveMsg] = useState<string | null>(null);
 
   if (profile) {
     // §2 — combined status: the primary role, then every additional role the
@@ -70,6 +72,33 @@ export function ConnectWallet() {
         {profile.onchainDrep.registered && profile.onchainDrep.drepId ? (
           <div className="break-all font-mono text-xs text-neutral-500">{profile.onchainDrep.drepId}</div>
         ) : null}
+        {/* SEC-01 — prove control of the wallet's CIP-95 DRep key so board/DRep authority
+            rests on a cryptographic proof, not an unverified claim. Hidden once proven. */}
+        {!profile.onchainDrep.proven ? (
+          <div className="mt-1 space-y-1">
+            <button
+              disabled={proving}
+              onClick={async () => {
+                setProveMsg(null);
+                setProving(true);
+                try {
+                  const p = await proveDrepKey();
+                  setProveMsg(p ? null : t('No DRep key found in this wallet.'));
+                } catch (e) {
+                  setProveMsg(e instanceof Error ? e.message : t('DRep key verification failed.'));
+                } finally {
+                  setProving(false);
+                }
+              }}
+              className="rounded-md border border-emerald-300 px-3 py-1 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950"
+            >
+              {proving ? t('Check your wallet…') : t('Verify DRep key')}
+            </button>
+            {proveMsg ? <div className="text-xs text-red-600">{proveMsg}</div> : null}
+          </div>
+        ) : (
+          <div className="text-xs text-emerald-600 dark:text-emerald-400">{t('DRep key verified ✓')}</div>
+        )}
         <button
           onClick={() => logout()}
           className="mt-1 rounded-md border border-neutral-300 px-3 py-1 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"

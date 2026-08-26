@@ -96,7 +96,8 @@ export function HomeShell() {
   const isBoard = profile?.roles.includes('BOARD') ?? false;
   // Match member-area's definition (EXPERT handled inside the hook via the reward-address nag)
   // so the left-nav badge, the login-box badge, and the in-area tab badges all agree.
-  const canVote = (profile?.roles.includes('DREP') || profile?.roles.includes('DAO_MEMBER') || profile?.roles.includes('BOARD')) ?? false;
+  // §20 — council voters only (see member-area): registered-but-not-joined DReps aren't nagged.
+  const canVote = (profile?.roles.includes('DAO_MEMBER') || profile?.roles.includes('BOARD')) ?? false;
   // Bumped by the login-box "refresh" button to force an immediate re-check of the to-dos.
   // Top-right "Connect wallet" dropdown on the logged-out public shell. Declared before the
   // logged-out early return so hook order stays stable across both renders.

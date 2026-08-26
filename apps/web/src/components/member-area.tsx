@@ -80,7 +80,9 @@ export function MemberArea() {
   useEffect(() => { if (GROUPS_ENABLED) groupsApi.mine().then((r) => setMyGroups(r.filter((m) => m.status === 'ADMITTED'))).catch(() => setMyGroups([])); }, []);
 
   const isBoard = !!profile?.roles.includes('BOARD');
-  const canVote = !!profile && (profile.roles.includes('DREP') || profile.roles.includes('DAO_MEMBER') || profile.roles.includes('BOARD'));
+  // §20 — only COUNCIL members (joined DReps + board) vote on internal proposals / earn rewards. A
+  // registered DRep who hasn't joined does NOT, so they must not be nagged (reward-address to-do).
+  const canVote = !!profile && (profile.roles.includes('DAO_MEMBER') || profile.roles.includes('BOARD'));
   // §20 — red-circle to-do counts (shared with the left-nav + login-box badges).
   const todo = useTodoCounts(isBoard, canVote);
 

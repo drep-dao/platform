@@ -64,7 +64,7 @@ export function ConnectWallet() {
         <div className="flex items-center gap-2">
           <span className="text-emerald-600 dark:text-emerald-400">●</span>
           <span className="font-medium">
-            {profile.user.displayName ?? t('Signed in')}
+            {profile.user.displayName ?? myGroups.find((g) => g.displayName)?.displayName ?? t('Signed in')}
             {(profile.roles.includes('DAO_MEMBER') || profile.roles.includes('BOARD')) &&
             profile.roles.includes('SUBMITTER') &&
             profile.submitterName &&

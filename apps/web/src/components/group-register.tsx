@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { groupsApi, type GroupConfig, type GroupMembership, type GroupMembershipMine, type GroupMembershipResult } from '@/lib/api';
-import { GroupProposals } from './group-proposals';
 import { card } from '@/lib/ui';
 import { useT } from '@/lib/prefs-context';
 import { MarkdownEditor } from './markdown';
@@ -191,7 +190,6 @@ export function GroupMemberArea({ groupKey }: { groupKey: string }) {
       {admitted ? <GroupVotingSettings group={data.group} onSaved={load} /> : null}
       {/* §29 OG — when the group self-governs, admitted members approve new applicants here. */}
       {data.canManage ? <GroupPendingApprovals groupKey={groupKey} groupName={data.group.name} /> : null}
-      <GroupProposals groupKey={groupKey} />
     </div>
   );
 }

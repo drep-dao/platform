@@ -6,6 +6,7 @@ import { MyRuleDocuments } from './rule-documents';
 import { MyDecisions } from './decisions';
 import { GroupRegisterForm, GroupApply, GroupMemberArea } from './group-register';
 import { GroupApprovals } from './group-members';
+import { GroupProposals } from './group-proposals';
 import { useAuth } from '@/lib/auth-context';
 import { useT } from '@/lib/prefs-context';
 import { GROUPS_ENABLED } from '@/lib/features';
@@ -121,7 +122,9 @@ export function MemberArea() {
 
   // §29 — an admitted group member manages their group profile + proposals from a dedicated tab.
   for (const mg of myGroups) {
-    tabs.push({ key: `grp-${mg.groupKey}`, label: `${mg.groupName} proposals`, node: <GroupMemberArea groupKey={mg.groupKey} /> });
+    // §29 OG — a profile/membership tab and a separate proposals tab (like a DRep's Profile + Internal proposals).
+    tabs.push({ key: `grp-${mg.groupKey}`, label: `${mg.groupName} profile`, node: <GroupMemberArea groupKey={mg.groupKey} /> });
+    tabs.push({ key: `grp-${mg.groupKey}-proposals`, label: `${mg.groupName} proposals`, node: <GroupProposals groupKey={mg.groupKey} /> });
   }
 
   // §27 — a DRep's own rule documents: draft privately, publish, edit until an approval vote opens.

@@ -157,7 +157,7 @@ export class GroupsService {
       where: { userId, status: { in: ['PENDING', 'ADMITTED'] }, group: { status: 'ACTIVE' } },
       include: { group: { select: { key: true, name: true } } },
     });
-    return rows.map((m) => ({ groupKey: m.group.key, groupName: m.group.name, status: m.status }));
+    return rows.map((m) => ({ groupKey: m.group.key, groupName: m.group.name, status: m.status, displayName: m.displayName ?? null }));
   }
 
   async register(userId: string, key: string, dto: RegisterGroupDto) {

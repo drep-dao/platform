@@ -174,6 +174,7 @@ export const adminApi = {
         method: 'POST',
       }),
     enable: (code: string) => request<{ enabled: true }>('/2fa/enable', { method: 'POST', body: JSON.stringify({ code }) }),
+    disable: () => request<{ disabled: true }>('/2fa/disable', { method: 'POST' }),
   },
   health: () => request<AdminHealth>('/health'),
   admins: () => request<AdminRow[]>('/admins'),

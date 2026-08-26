@@ -290,6 +290,17 @@ export class AdminAuthService {
   }
 
   /** Validate an admin_session cookie. Returns identity or null. */
+  /** SEC-03 — disable 2FA for an admin (removes the secret + recovery codes). Gated by step-up at
+   *  the controller, so a fresh TOTP code is required — a hijacked session can't strip 2FA. Used to
+   *  re-enroll (e.g. to regenerate lost recovery codes). */
+  async disableTwoFa(adminId: string): Promise<{ disabled: true }> {
+    await this.prisma.$transaction([
+      this.prisma.adminRecoveryCode.deleteMany({ where: { adminId } }),
+      this.prisma.admin2fa.deleteMany({ where: { adminId } }),
+    ]);
+    return { disabled: true };
+  }
+
   /** SEC-03 — has this admin enrolled 2FA? (drives the "Enable 2FA" UI + step-up availability). */
   async adminHasTwoFa(adminId: string): Promise<boolean> {
     return (await this.prisma.admin2fa.count({ where: { adminId } })) > 0;

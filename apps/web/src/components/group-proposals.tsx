@@ -35,7 +35,14 @@ export function GroupProposals({ groupKey }: { groupKey: string }) {
       </div>
       <p className="mt-1 text-sm text-neutral-500">{t('Members only · 1 member = 1 vote · 67% threshold.')}</p>
 
-      {creating ? <SubmitForm group={data.group} onDone={() => { setCreating(false); load(); }} /> : null}
+      {/* §29 OG — member-count quorum not met: submitting is blocked until it is. */}
+      {!data.canSubmit && data.submitBlockedReason ? (
+        <div className="mt-3 rounded-md border border-amber-200 bg-amber-50/60 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-300">
+          {data.submitBlockedReason}
+        </div>
+      ) : null}
+
+      {creating && data.canSubmit ? <SubmitForm group={data.group} onDone={() => { setCreating(false); load(); }} /> : null}
 
       <div className="mt-4 space-y-2">
         {data.proposals.length === 0 ? <p className="text-sm text-neutral-400">{t('No proposals yet.')}</p> : null}

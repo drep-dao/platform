@@ -295,11 +295,15 @@ export class GroupsService {
     const g = await this.activeGroupByKey(key);
     const rows = await this.prisma.groupProposal.findMany({ where: { groupId: g.id }, orderBy: { createdAt: 'desc' }, include: { author: { select: { displayName: true } } } });
     for (const p of rows) await this.maybeFinalize(p);
-    const canSubmit = !!userId && (await this.admittedMember(g.id, userId));
+    const isMember = !!userId && (await this.admittedMember(g.id, userId));
+    const memberCount = await this.prisma.groupMember.count({ where: { groupId: g.id, status: 'ADMITTED' } });
+    const submitBlockedReason = isMember ? this.quorumBlockReason(g, memberCount) : null;
+    const canSubmit = isMember && !submitBlockedReason;
     const fresh = await this.prisma.groupProposal.findMany({ where: { groupId: g.id }, orderBy: { createdAt: 'desc' }, include: { author: { select: { displayName: true } } } });
     return {
       group: this.config(g),
       canSubmit,
+      submitBlockedReason,
       proposals: fresh.map((p) => ({
         id: p.id, title: p.title, type: p.type, status: p.status,
         author: p.author.displayName ?? 'Member',
@@ -345,20 +349,26 @@ export class GroupsService {
     };
   }
 
+  /** §29 OG — why (if at all) the member-count quorum currently blocks voting/submitting. Null = ok. */
+  private quorumBlockReason(g: GroupRow, memberCount: number): string | null {
+    if (!g.quorumMode || g.quorumMode === 'OPEN') return null;
+    const need = g.quorumCount ?? 0;
+    if (g.quorumMode === 'EXACT' && memberCount !== need) {
+      return `this group can submit proposals only with exactly ${need} member(s); it currently has ${memberCount}`;
+    }
+    if (g.quorumMode === 'MINIMUM' && memberCount < need) {
+      return `this group needs at least ${need} member(s) to submit proposals; it currently has ${memberCount}`;
+    }
+    return null;
+  }
+
   async submitProposal(userId: string, key: string, dto: SubmitGroupProposalDto) {
     const g = await this.activeGroupByKey(key);
     if (!(await this.admittedMember(g.id, userId))) throw new ForbiddenException('only admitted members can submit proposals');
-    // §29 OG — member-count quorum gate. EXACT: count must equal quorumCount; MINIMUM: count >= quorumCount.
-    if (g.quorumMode && g.quorumMode !== 'OPEN') {
-      const memberCount = await this.prisma.groupMember.count({ where: { groupId: g.id, status: 'ADMITTED' } });
-      const need = g.quorumCount ?? 0;
-      if (g.quorumMode === 'EXACT' && memberCount !== need) {
-        throw new BadRequestException(`this group can vote only with exactly ${need} member(s); it currently has ${memberCount}`);
-      }
-      if (g.quorumMode === 'MINIMUM' && memberCount < need) {
-        throw new BadRequestException(`this group needs at least ${need} member(s) to vote; it currently has ${memberCount}`);
-      }
-    }
+    // §29 OG — member-count quorum gate.
+    const memberCount = await this.prisma.groupMember.count({ where: { groupId: g.id, status: 'ADMITTED' } });
+    const blocked = this.quorumBlockReason(g, memberCount);
+    if (blocked) throw new BadRequestException(blocked);
     if (!g.proposalTypes.includes(dto.type)) throw new BadRequestException('this group does not allow that proposal type');
     const end = new Date(dto.votingEndAt);
     if (Number.isNaN(end.getTime()) || end.getTime() <= Date.now()) throw new BadRequestException('the voting end must be a date in the future');

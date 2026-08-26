@@ -16,10 +16,27 @@ export function GroupMembers({ groupKey }: { groupKey: string }) {
   const load = useCallback(() => { groupsApi.members(groupKey).then(setData).catch(() => setData(null)); }, [groupKey]);
   useEffect(load, [load]);
 
+  const [openId, setOpenId] = useState<string | null>(null);
   const act = async (fn: () => Promise<GroupMembersResult>) => { setBusy(true); try { setData(await fn()); } finally { setBusy(false); } };
 
   if (!data) return <section className={card}><p className="text-sm text-neutral-500">{t('Loading…')}</p></section>;
   const fields = data.group.profileFields;
+
+  // Detail view — a single member's full profile with a back link (mirrors the Council directory).
+  const open = openId ? data.members.find((m) => m.id === openId) : null;
+  if (open) {
+    return (
+      <section className={card}>
+        <button onClick={() => setOpenId(null)} className="text-sm text-emerald-700 hover:underline dark:text-emerald-400">← {data.group.name} {t('members')}</button>
+        <div className="mt-4">
+          <MemberFields m={open} fields={fields} t={t} />
+          {data.canManage ? (
+            <button disabled={busy} onClick={() => { void act(() => groupsApi.kickMember(groupKey, open.id)); setOpenId(null); }} className="mt-3 rounded border border-rose-300 px-2.5 py-1 text-xs text-rose-700 hover:bg-rose-50 disabled:opacity-50 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950">{t('Remove member')}</button>
+          ) : null}
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className={card}>
@@ -43,10 +60,10 @@ export function GroupMembers({ groupKey }: { groupKey: string }) {
         </div>
       ) : null}
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {data.members.length === 0 ? <p className="text-sm text-neutral-400">{t('No members yet.')}</p> : null}
         {data.members.map((m) => (
-          <MemberCard key={m.id} m={m} fields={fields} canManage={data.canManage} busy={busy} onKick={() => act(() => groupsApi.kickMember(groupKey, m.id))} t={t} />
+          <MemberCardCompact key={m.id} m={m} fields={fields} onOpen={() => setOpenId(m.id)} t={t} />
         ))}
       </div>
     </section>
@@ -99,14 +116,29 @@ function MemberFields({ m, fields, t }: { m: GroupMemberView; fields: string[]; 
   );
 }
 
-function MemberCard({ m, fields, canManage, busy, onKick, t }: {
-  m: GroupMemberView; fields: string[]; canManage: boolean; busy: boolean; onKick: () => void; t: (s: string) => string;
+/** Compact, clickable directory card (photo + name + since + bio preview) — opens the full detail. */
+function MemberCardCompact({ m, fields, onOpen, t }: {
+  m: GroupMemberView; fields: string[]; onOpen: () => void; t: (s: string) => string;
 }) {
+  const bioPreview = m.bio ? m.bio.replace(/[#*_`>[\]]/g, '').trim().slice(0, 140) : '';
   return (
-    <div className="rounded-lg border border-neutral-200 p-3 dark:border-neutral-800">
-      <MemberFields m={m} fields={fields} t={t} />
-      {canManage ? <button disabled={busy} onClick={onKick} className="mt-2 rounded border border-rose-300 px-2.5 py-1 text-xs text-rose-700 hover:bg-rose-50 disabled:opacity-50 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950">{t('Remove member')}</button> : null}
-    </div>
+    <button onClick={onOpen} className="flex flex-col rounded-lg border border-neutral-200 p-3 text-left transition hover:border-emerald-300 hover:shadow-sm dark:border-neutral-800 dark:hover:border-emerald-800">
+      <div className="flex items-center gap-3">
+        {fields.includes('photo') ? (
+          m.photo
+            ? <img src={m.photo} alt="" className="h-12 w-12 shrink-0 rounded-full object-cover" />
+            : <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-neutral-200 text-sm font-semibold text-neutral-500 dark:bg-neutral-800">{m.displayName.slice(0, 1).toUpperCase()}</span>
+        ) : null}
+        <div className="min-w-0">
+          <div className="truncate font-medium">{m.displayName}</div>
+          {fields.includes('memberSince') && m.since ? <div className="text-xs text-neutral-500">{t('Member since')} {new Date(m.since).toLocaleDateString()}</div> : null}
+        </div>
+      </div>
+      {fields.includes('bio') && bioPreview ? (
+        <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">{bioPreview}{m.bio && m.bio.length > 140 ? '…' : ''}</p>
+      ) : null}
+      <span className="mt-2 text-xs font-medium text-emerald-700 dark:text-emerald-400">{t('View profile')} →</span>
+    </button>
   );
 }
 

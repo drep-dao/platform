@@ -1,8 +1,10 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
+import { groupsApi, type GroupMembershipMine } from '@/lib/api';
+import { GROUPS_ENABLED } from '@/lib/features';
 import { useT } from '@/lib/prefs-context';
 import type { Cip30WalletEntry } from '@/lib/cip30';
 import { DrepVerifyControl } from './drep-verify-control';
@@ -28,6 +30,12 @@ export function ConnectWallet() {
   // pending attempt that resolves late can't clobber the UI (or re-enable a
   // spinner the user already dismissed).
   const attemptRef = useRef(0);
+  // §29 — the viewer's admitted group memberships (e.g. OG), shown in the status line next to the base role.
+  const [myGroups, setMyGroups] = useState<GroupMembershipMine[]>([]);
+  useEffect(() => {
+    if (GROUPS_ENABLED && profile) groupsApi.mine().then((r) => setMyGroups(r.filter((m) => m.status === 'ADMITTED'))).catch(() => setMyGroups([]));
+    else setMyGroups([]);
+  }, [profile]);
 
   if (profile) {
     // §2 — combined status: the primary role, then every additional role the
@@ -44,6 +52,7 @@ export function ConnectWallet() {
           : t('Viewer');
     const status = [
       base,
+      ...myGroups.map((g) => g.groupName), // §29 — e.g. "OG" → "Registered DRep | OG", "Council member | OG"
       ...(profile.roles.includes('EXPERT') ? [t('Expert')] : []),
       ...(profile.roles.includes('SUBMITTER') ? [t('Submitter')] : []),
     ].join(' | ');

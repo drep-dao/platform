@@ -8,6 +8,7 @@ import { GroupRegisterForm, GroupApply, GroupMemberArea } from './group-register
 import { GroupApprovals } from './group-members';
 import { useAuth } from '@/lib/auth-context';
 import { useT } from '@/lib/prefs-context';
+import { GROUPS_ENABLED } from '@/lib/features';
 import { DrepVerifyControl } from './drep-verify-control';
 import { useUrlNav } from '@/lib/use-url-nav';
 import { useTodoCounts } from '@/lib/use-todo-counts';
@@ -74,7 +75,7 @@ export function MemberArea() {
   useEffect(() => { submitterApi.pendingCount().then((r) => setBoardSeated(r.boardElected)).catch(() => setBoardSeated(null)); }, []);
   // §29 — groups the viewer is an admitted member of get their own My-area tab (profile + proposals).
   const [myGroups, setMyGroups] = useState<GroupMembershipMine[]>([]);
-  useEffect(() => { groupsApi.mine().then((r) => setMyGroups(r.filter((m) => m.status === 'ADMITTED'))).catch(() => setMyGroups([])); }, []);
+  useEffect(() => { if (GROUPS_ENABLED) groupsApi.mine().then((r) => setMyGroups(r.filter((m) => m.status === 'ADMITTED'))).catch(() => setMyGroups([])); }, []);
 
   const isBoard = !!profile?.roles.includes('BOARD');
   const canVote = !!profile && (profile.roles.includes('DREP') || profile.roles.includes('DAO_MEMBER') || profile.roles.includes('BOARD'));
@@ -136,8 +137,9 @@ export function MemberArea() {
     tabs.push({ key: 'requests', label: 'My Requests', node: <RequestsSection scope="mine" /> });
   }
 
-  if (isMember || isDrep || expertApproved) {
-    // §10 — internal proposals (Council governance): submit + browse + vote. Same component as
+  if (isMember || isBoard) {
+    // §10 — internal proposals (Council governance): submit + browse + vote. Council members only —
+    // a registered DRep who hasn't joined can't act here (SEC/UX: no Internal-proposals tab for them). Same component as
     // the left-nav "Internal proposals" view; the tab adds a notification badge for items
     // awaiting THIS DRep's vote.
     tabs.push({
@@ -158,7 +160,7 @@ export function MemberArea() {
     tabs.push({ key: 'sign', label: 'Actions', badge: todo.actions, node: <ActionsTab /> });
     tabs.push({ key: 'rewards', label: 'Rewards', node: <RewardsTab /> });
     tabs.push({ key: 'apps', label: 'Applications', badge: todo.applications, node: <ApplicationsTab /> });
-  } else if ((isMember || isDrep) && boardSeated === false) {
+  } else if (isMember && boardSeated === false) {
     // §14 bootstrap: no board seated → a Council member approves Expert + Submitter applications
     // (open admission only auto-admits DReps; those two roles always need a human approval).
     tabs.push({ key: 'apps', label: 'Applications', node: <CouncilApplicationsTab /> });
@@ -261,7 +263,7 @@ function ProfileTab({ isMember, isBoard, daoPending, expertApproved, expertPendi
                   (the panel amber-nags until it's set). */}
               {expertApproved ? <RewardAddressPanel /> : null}
               {submitterRoleCard}
-              <GroupApply />
+              {GROUPS_ENABLED ? <GroupApply /> : null}
               <section className={card}><PreferencesPanel /></section>
             </div>
           )}
@@ -320,7 +322,7 @@ function ProfileTab({ isMember, isBoard, daoPending, expertApproved, expertPendi
               </button>
             </section>
           ) : null}
-          <GroupApply />
+          {GROUPS_ENABLED ? <GroupApply /> : null}
           {/* §15.4 — payment address for rewards. Amber-nags when empty. */}
           <RewardAddressPanel />
           {/* §13 — merit points + ledger + avoid-period (vacancy) signalling. Hidden when merit is off. */}
@@ -472,7 +474,7 @@ function ApplicationsTab() {
       <section className={card}><BoardReviewPanel history={showHistory} /></section>
       <section className={card}><ExpertReviewPanel history={showHistory} /></section>
       <SubmitterReviewPanel history={showHistory} />
-      <GroupApprovals />
+      {GROUPS_ENABLED ? <GroupApprovals /> : null}
       <section className={card}><RemovalPanel history={showHistory} /></section>
     </div>
   );
@@ -494,7 +496,7 @@ function CouncilApplicationsTab() {
       </div>
       <section className={card}><ExpertReviewPanel history={showHistory} /></section>
       <SubmitterReviewPanel history={showHistory} />
-      <GroupApprovals />
+      {GROUPS_ENABLED ? <GroupApprovals /> : null}
     </div>
   );
 }

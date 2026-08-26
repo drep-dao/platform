@@ -23,6 +23,7 @@ import { RequestsSection } from './requests-section';
 import { GroupMembers } from './group-members';
 import { GroupProposals } from './group-proposals';
 import { groupsApi, type GroupConfig } from '@/lib/api';
+import { GROUPS_ENABLED } from '@/lib/features';
 import { JoinDaoButton } from './join-dao-button';
 import { NotificationBadge } from './notification-badge';
 import { NotificationBell } from './notification-bell';
@@ -64,7 +65,7 @@ export function HomeShell() {
   const view = (NAV.some((n) => n.key === get('view')) ? get('view') : 'overview') as View;
   // §29 — configurable groups add dynamic left-nav items ("<Name> members" / "<Name> proposals").
   const [groups, setGroups] = useState<GroupConfig[]>([]);
-  useEffect(() => { groupsApi.listActive().then(setGroups).catch(() => setGroups([])); }, []);
+  useEffect(() => { if (GROUPS_ENABLED) groupsApi.listActive().then(setGroups).catch(() => setGroups([])); }, []);
   const rawView = get('view') ?? 'overview';
   const groupMatch = /^g:([a-z0-9-]+):(members|proposals)$/.exec(rawView);
   const openGroupView = (key: string) => setParams({ view: key, tab: null, round: null, proposal: null, ip: null, expert: null, doc: null });
@@ -211,7 +212,7 @@ export function HomeShell() {
                 key={n.key}
                 onClick={() => setView(n.key)}
                 className={`flex w-auto shrink-0 items-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-left text-sm lg:w-full lg:justify-between lg:gap-0 ${
-                  view === n.key
+                  !groupMatch && view === n.key
                     ? 'bg-emerald-600 font-medium text-white'
                     : 'text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800'
                 }`}

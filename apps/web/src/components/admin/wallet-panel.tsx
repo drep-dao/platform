@@ -39,9 +39,9 @@ export function WalletPanel() {
   const swept = (w?.hotWallet.balanceAda ?? 0) <= 2; // ~empty → safe to rotate
 
   return (
-    <section className="rounded-lg border border-slate-800 bg-slate-900/50 p-4">
-      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-400">Anchor hot wallet</h2>
-      <p className="mb-3 text-xs text-slate-400">
+    <section className="rounded-lg border border-neutral-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 p-4">
+      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500 dark:text-slate-400">Anchor hot wallet</h2>
+      <p className="mb-3 text-xs text-neutral-500 dark:text-slate-400">
         The hot wallet pays the small per-decision tx fees. Keep its balance minimal. To rotate the seed (e.g. on
         compromise), first move all funds to the treasury (multisig), then exchange the seed — the new address is
         funded afresh. The seed is never shown.
@@ -50,7 +50,7 @@ export function WalletPanel() {
       {msg ? <div className="mb-2 text-sm text-emerald-400">{msg}</div> : null}
 
       {!w ? (
-        <p className="text-sm text-slate-400">Loading…</p>
+        <p className="text-sm text-neutral-500 dark:text-slate-400">Loading…</p>
       ) : (
         <>
           <dl className="space-y-2 text-xs">
@@ -98,7 +98,7 @@ export function WalletPanel() {
             >
               {busy === 'rotate' ? 'Exchanging…' : '2. Exchange the seed'}
             </button>
-            <span className="text-xs text-slate-500">{swept ? 'Hot wallet is empty — seed can be exchanged.' : 'Sweep before exchanging the seed.'}</span>
+            <span className="text-xs text-neutral-400 dark:text-slate-500">{swept ? 'Hot wallet is empty — seed can be exchanged.' : 'Sweep before exchanging the seed.'}</span>
           </div>
         </>
       )}
@@ -127,12 +127,12 @@ export function WalletPanel() {
 function WalletRow({ label, address, balanceAda, configured }: { label: string; address: string | null; balanceAda: number; configured: boolean }) {
   return (
     <div className="flex flex-wrap items-baseline gap-2">
-      <dt className="w-36 shrink-0 font-medium text-slate-400">{label}</dt>
+      <dt className="w-36 shrink-0 font-medium text-neutral-500 dark:text-slate-400">{label}</dt>
       <dd className="min-w-0 flex-1">
         {address ? (
           <>
-            <span className="break-all font-mono text-slate-300">{address}</span>
-            <span className="ml-2 tabular-nums text-slate-400">· {balanceAda.toLocaleString()} ₳</span>
+            <span className="break-all font-mono text-neutral-700 dark:text-slate-300">{address}</span>
+            <span className="ml-2 tabular-nums text-neutral-500 dark:text-slate-400">· {balanceAda.toLocaleString()} ₳</span>
           </>
         ) : (
           <span className="text-amber-400">{configured ? 'not derivable' : 'not configured'}</span>

@@ -174,6 +174,7 @@ export class GroupsService {
       photo: has('photo') ? (dto.photo || null) : null,
       country: has('country') ? (dto.country?.trim() || null) : null,
       conflictOfInterest: has('conflictOfInterest') ? (dto.conflictOfInterest?.trim() || null) : null,
+      noSelfVotePledge: has('conflictOfInterest') ? !!dto.noSelfVote : false,
       address: has('blockchainAddress') ? (dto.address?.trim() || null) : null,
       subcategoryIds: has('expertise') ? (dto.subcategoryIds ?? []) : [],
       socials: has('links') && dto.socials ? (dto.socials as object) : undefined,
@@ -201,6 +202,7 @@ export class GroupsService {
         photo: has('photo') ? (dto.photo ?? m.photo) : m.photo,
         country: has('country') ? (dto.country?.trim() || null) : m.country,
         conflictOfInterest: has('conflictOfInterest') ? (dto.conflictOfInterest?.trim() || null) : m.conflictOfInterest,
+        noSelfVotePledge: has('conflictOfInterest') ? !!dto.noSelfVote : m.noSelfVotePledge,
         address: has('blockchainAddress') ? (dto.address?.trim() || null) : m.address,
         subcategoryIds: has('expertise') ? (dto.subcategoryIds ?? []) : m.subcategoryIds,
         socials: has('links') && dto.socials ? (dto.socials as object) : (m.socials ?? undefined),
@@ -240,7 +242,7 @@ export class GroupsService {
     return {
       group: this.config(g),
       membership: m && m.status !== 'REMOVED'
-        ? { status: m.status, displayName: m.displayName, bio: m.bio, photo: m.photo, country: m.country, conflictOfInterest: m.conflictOfInterest, address: m.address, subcategoryIds: m.subcategoryIds, socials: m.socials, preferences: m.preferences, since: m.admittedAt?.toISOString() ?? null }
+        ? { status: m.status, displayName: m.displayName, bio: m.bio, photo: m.photo, country: m.country, conflictOfInterest: m.conflictOfInterest, noSelfVote: m.noSelfVotePledge, address: m.address, subcategoryIds: m.subcategoryIds, socials: m.socials, preferences: m.preferences, since: m.admittedAt?.toISOString() ?? null }
         : null,
       canManage: await this.canManageMembers(userId, g),
     };
@@ -263,6 +265,7 @@ export class GroupsService {
       photo: has('photo') ? m.photo : null,
       country: has('country') ? m.country : null,
       conflictOfInterest: has('conflictOfInterest') ? m.conflictOfInterest : null,
+      noSelfVote: has('conflictOfInterest') ? m.noSelfVotePledge : null,
       address: has('blockchainAddress') ? m.address : null,
       subcategoryIds: has('expertise') ? m.subcategoryIds : [],
       socials: has('links') ? (m.socials ?? null) : null,

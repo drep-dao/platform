@@ -8,6 +8,7 @@ import { MarkdownEditor } from './markdown';
 import { PhotoUpload } from './photo-upload';
 import { useSubcategories } from '@/lib/subcategories';
 import { ConfirmDialog } from './confirm-dialog';
+import { COUNTRIES } from '@/lib/countries';
 
 const field = 'w-full rounded-md border border-neutral-300 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900';
 
@@ -26,6 +27,7 @@ export function GroupRegisterForm({ group, onDone, initial }: { group: GroupConf
   const [photoErr, setPhotoErr] = useState<string | null>(null);
   const [country, setCountry] = useState(initial?.country ?? '');
   const [conflict, setConflict] = useState(initial?.conflictOfInterest ?? '');
+  const [noSelfVote, setNoSelfVote] = useState(!!initial?.noSelfVote);
   const [address, setAddress] = useState(initial?.address ?? '');
   const [expertise, setExpertise] = useState<string[]>(initial?.subcategoryIds ?? []);
   const [links, setLinks] = useState<{ x: string; telegram: string; github: string; email: string }>({ x: so.x ?? '', telegram: so.telegram ?? '', github: so.github ?? '', email: so.email ?? '' });
@@ -45,7 +47,7 @@ export function GroupRegisterForm({ group, onDone, initial }: { group: GroupConf
         ...(has('bio') ? { bio } : {}),
         ...(has('photo') && photo ? { photo } : {}),
         ...(has('country') ? { country: country.trim() } : {}),
-        ...(has('conflictOfInterest') ? { conflictOfInterest: conflict.trim() } : {}),
+        ...(has('conflictOfInterest') ? { conflictOfInterest: conflict.trim(), noSelfVote } : {}),
         ...(has('blockchainAddress') ? { address: address.trim() } : {}),
         ...(has('expertise') ? { subcategoryIds: expertise } : {}),
         ...(has('links') ? { socials } : {}),
@@ -82,7 +84,10 @@ export function GroupRegisterForm({ group, onDone, initial }: { group: GroupConf
       ) : null}
       {has('country') ? (
         <label className="block text-sm">{t('Country')}
-          <input value={country} onChange={(e) => setCountry(e.target.value)} className={field} placeholder={t('Country')} />
+          <select value={country} onChange={(e) => setCountry(e.target.value)} className={field}>
+            <option value="">{t('— select a country —')}</option>
+            {COUNTRIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
         </label>
       ) : null}
       {has('blockchainAddress') ? (
@@ -91,9 +96,15 @@ export function GroupRegisterForm({ group, onDone, initial }: { group: GroupConf
         </label>
       ) : null}
       {has('conflictOfInterest') ? (
-        <label className="block text-sm">{t('Conflict of interest')}
-          <textarea value={conflict} onChange={(e) => setConflict(e.target.value)} rows={2} className={field} placeholder={t('Any conflicts to disclose…')} />
-        </label>
+        <div className="space-y-2">
+          <label className="block text-sm">{t('Conflict of interest')}
+            <textarea value={conflict} onChange={(e) => setConflict(e.target.value)} rows={2} className={field} placeholder={t('Any conflicts to disclose…')} />
+          </label>
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" checked={noSelfVote} onChange={(e) => setNoSelfVote(e.target.checked)} className="mt-0.5" />
+            <span>{t('I will not vote for my own proposal')} <span className="text-xs text-neutral-500">{t('(informative — optional)')}</span></span>
+          </label>
+        </div>
       ) : null}
       {has('expertise') ? (
         <div>

@@ -267,6 +267,7 @@ model Expert {
   bio                String?
   // §2 — conflict-of-interest disclosure (markdown), same as DRep/submitter profiles.
   conflictOfInterest String?   @map("conflict_of_interest")
+  noSelfVotePledge   Boolean   @default(false) @map("no_self_vote_pledge") // §29 — "I will not vote for my own proposals" (tied to the conflict-of-interest field)
   // §2 — the expert's motivation + where they want to help (filtering / debate & vote / milestones).
   motivation         String?   @map("motivation")
   // §2 — contact + social, mirroring the submitter profile. email/telegram are
@@ -1750,6 +1751,7 @@ model GroupMember {
   photo              String? // data URL
   country            String?
   conflictOfInterest String?   @map("conflict_of_interest")
+  noSelfVotePledge   Boolean   @default(false) @map("no_self_vote_pledge") // §29 — "I will not vote for my own proposals" (tied to the conflict-of-interest field)
   address            String? // Cardano/blockchain address
   subcategoryIds     String[]  @map("subcategory_ids") // expertise
   socials            Json? // links: { x, telegram, github, email, website }

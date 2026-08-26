@@ -11,13 +11,13 @@ const VOTING_TYPES: [string, string, boolean][] = [['ONE_PERSON_ONE_VOTE', '1 me
 const ADMISSION: [string, string][] = [['FREE', 'Free admission'], ['BOARD', 'Board approval'], ['DREPS', 'DReps approval'], ['SINGLE_DREP', 'Single DRep approval'], ['ADMIN', 'Admin approval']];
 const COMMENTERS: [string, string][] = [['members', 'Group members'], ['dreps', 'DReps'], ['experts', 'Experts'], ['submitters', 'Submitters'], ['viewers', 'Viewers']];
 
-const inputCls = 'rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-100';
+const inputCls = 'rounded border border-neutral-300 dark:border-slate-700 bg-neutral-100 dark:bg-slate-950 px-2 py-1 text-sm text-neutral-900 dark:text-slate-100';
 const btnCls = 'rounded bg-emerald-600 px-3 py-1 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-40';
-const ghostBtn = 'rounded border border-slate-700 px-3 py-1 text-sm text-slate-200 hover:bg-slate-800';
+const ghostBtn = 'rounded border border-neutral-300 dark:border-slate-700 px-3 py-1 text-sm text-neutral-800 dark:text-slate-200 hover:bg-neutral-100 dark:hover:bg-slate-800';
 
 function Check({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
-    <label className="flex items-center gap-1.5 text-sm text-slate-200">
+    <label className="flex items-center gap-1.5 text-sm text-neutral-800 dark:text-slate-200">
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} /> {label}
     </label>
   );
@@ -46,12 +46,12 @@ export function GroupsPanel() {
   const create = () => run(async () => { await adminApi.groups.create(newName.trim(), newKey.trim()); setNewName(''); setNewKey(''); });
 
   return (
-    <section className="rounded-lg border border-slate-800 bg-slate-900/50 p-4">
+    <section className="rounded-lg border border-neutral-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 p-4">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-200">Groups</h2>
-        <span className="text-xs text-slate-400">configurable roles that submit + vote on their own proposals</span>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-800 dark:text-slate-200">Groups</h2>
+        <span className="text-xs text-neutral-500 dark:text-slate-400">configurable roles that submit + vote on their own proposals</span>
       </div>
-      <p className="mt-2 text-xs text-slate-300">
+      <p className="mt-2 text-xs text-neutral-700 dark:text-slate-300">
         Create a group, configure it, then <strong>Activate</strong> to turn it on (it starts hidden). Hiding pauses a group without deleting it.
         Voting is fixed for every group: <em>members only · 1 member = 1 vote · 67% threshold</em>.
       </p>
@@ -60,10 +60,10 @@ export function GroupsPanel() {
 
       {/* create */}
       <div className="mt-3 flex flex-wrap items-end gap-2">
-        <label className="flex flex-col gap-1 text-xs text-slate-400">Name
+        <label className="flex flex-col gap-1 text-xs text-neutral-500 dark:text-slate-400">Name
           <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="OG" className={inputCls} />
         </label>
-        <label className="flex flex-col gap-1 text-xs text-slate-400">Key (slug)
+        <label className="flex flex-col gap-1 text-xs text-neutral-500 dark:text-slate-400">Key (slug)
           <input value={newKey} onChange={(e) => setNewKey(e.target.value)} placeholder="og" className={inputCls} />
         </label>
         <button disabled={busy || newName.trim().length < 2 || newKey.trim().length < 2} onClick={create} className={btnCls}>Add group</button>
@@ -71,16 +71,16 @@ export function GroupsPanel() {
 
       {/* list */}
       <div className="mt-4 space-y-3">
-        {groups == null ? <p className="text-xs text-slate-400">loading…</p> : null}
-        {groups?.length === 0 ? <p className="text-xs text-slate-400">No groups yet.</p> : null}
+        {groups == null ? <p className="text-xs text-neutral-500 dark:text-slate-400">loading…</p> : null}
+        {groups?.length === 0 ? <p className="text-xs text-neutral-500 dark:text-slate-400">No groups yet.</p> : null}
         {groups?.map((g) => (
-          <div key={g.id} className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+          <div key={g.id} className="rounded-lg border border-neutral-200 dark:border-slate-800 bg-neutral-100 dark:bg-slate-950/40 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <span className="font-medium text-slate-100">{g.name}</span>
-                <span className="text-xs text-slate-500">/{g.key}</span>
-                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${g.status === 'ACTIVE' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-slate-600/30 text-slate-300'}`}>{g.status === 'ACTIVE' ? 'ACTIVE' : 'HIDDEN'}</span>
-                <span className="text-xs text-slate-400">{g.members} member{g.members === 1 ? '' : 's'}{g.pending ? ` · ${g.pending} pending` : ''}</span>
+                <span className="font-medium text-neutral-900 dark:text-slate-100">{g.name}</span>
+                <span className="text-xs text-neutral-400 dark:text-slate-500">/{g.key}</span>
+                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${g.status === 'ACTIVE' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-neutral-200 dark:bg-slate-600/30 text-neutral-700 dark:text-slate-300'}`}>{g.status === 'ACTIVE' ? 'ACTIVE' : 'HIDDEN'}</span>
+                <span className="text-xs text-neutral-500 dark:text-slate-400">{g.members} member{g.members === 1 ? '' : 's'}{g.pending ? ` · ${g.pending} pending` : ''}</span>
               </div>
               <div className="flex items-center gap-2">
                 <button disabled={busy} onClick={() => run(() => adminApi.groups.update(g.id, { status: g.status === 'ACTIVE' ? 'HIDDEN' : 'ACTIVE' }))} className={ghostBtn}>
@@ -135,74 +135,74 @@ function GroupEditor({ group, dreps, busy, onSave, onReload }: {
   const save = async () => { await onSave({ name: name.trim(), profileFields, proposalTypes, admissionType, approverUserId: approverUserId || null, commenters, votingType, thresholdPct, membersCanApprove }); setJustSaved(true); };
 
   return (
-    <div className="mt-3 space-y-3 border-t border-slate-800 pt-3 text-sm">
-      <label className="flex flex-col gap-1 text-xs text-slate-400">Group name
+    <div className="mt-3 space-y-3 border-t border-neutral-200 dark:border-slate-800 pt-3 text-sm">
+      <label className="flex flex-col gap-1 text-xs text-neutral-500 dark:text-slate-400">Group name
         <input value={name} onChange={(e) => setName(e.target.value)} className={`${inputCls} max-w-xs`} />
       </label>
 
       <div>
-        <div className="text-xs font-medium uppercase tracking-wide text-slate-400">Profile fields</div>
+        <div className="text-xs font-medium uppercase tracking-wide text-neutral-500 dark:text-slate-400">Profile fields</div>
         <div className="mt-1 flex flex-wrap gap-4">
           {PROFILE_FIELDS.map(([k, l]) => <Check key={k} checked={profileFields.includes(k)} onChange={toggle(profileFields, setProfileFields, k)} label={l} />)}
         </div>
       </div>
 
       <div>
-        <div className="text-xs font-medium uppercase tracking-wide text-slate-400">Proposal types members can submit</div>
+        <div className="text-xs font-medium uppercase tracking-wide text-neutral-500 dark:text-slate-400">Proposal types members can submit</div>
         <div className="mt-1 flex flex-wrap gap-4">
           {PROPOSAL_TYPES.map(([k, l]) => <Check key={k} checked={proposalTypes.includes(k)} onChange={toggle(proposalTypes, setProposalTypes, k)} label={l} />)}
         </div>
-        <p className="mt-1 text-xs text-slate-500">Fixed for all proposals: title, content (edit/preview), voting-ends date · voters = members only · 1 member = 1 vote · 67% threshold.</p>
+        <p className="mt-1 text-xs text-neutral-400 dark:text-slate-500">Fixed for all proposals: title, content (edit/preview), voting-ends date · voters = members only · 1 member = 1 vote · 67% threshold.</p>
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1 text-xs text-slate-400">Admission
+        <label className="flex flex-col gap-1 text-xs text-neutral-500 dark:text-slate-400">Admission
           <select value={admissionType} onChange={(e) => setAdmissionType(e.target.value)} className={inputCls}>
             {ADMISSION.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
         </label>
         {admissionType === 'SINGLE_DREP' ? (
-          <label className="flex flex-col gap-1 text-xs text-slate-400">Approver DRep
+          <label className="flex flex-col gap-1 text-xs text-neutral-500 dark:text-slate-400">Approver DRep
             <select value={approverUserId} onChange={(e) => setApproverUserId(e.target.value)} className={inputCls}>
               <option value="">— none (registrations stay pending) —</option>
               {dreps.map((d) => <option key={d.userId} value={d.userId}>{d.name}</option>)}
             </select>
           </label>
         ) : null}
-        <label className="flex items-center gap-2 text-xs text-slate-300">
+        <label className="flex items-center gap-2 text-xs text-neutral-700 dark:text-slate-300">
           <input type="checkbox" checked={membersCanApprove} onChange={(e) => setMembersCanApprove(e.target.checked)} />
           Members can approve new applicants (self-governance)
         </label>
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1 text-xs text-slate-400">Voting power
+        <label className="flex flex-col gap-1 text-xs text-neutral-500 dark:text-slate-400">Voting power
           <select value={votingType} onChange={(e) => setVotingType(e.target.value)} className={inputCls}>
             {VOTING_TYPES.map(([k, l, on]) => <option key={k} value={k} disabled={!on}>{l}{on ? '' : ' — not available yet'}</option>)}
           </select>
         </label>
-        <label className="flex flex-col gap-1 text-xs text-slate-400">Pass threshold (%)
+        <label className="flex flex-col gap-1 text-xs text-neutral-500 dark:text-slate-400">Pass threshold (%)
           <input type="number" min={1} max={100} value={thresholdPct} onChange={(e) => setThresholdPct(Math.max(1, Math.min(100, Number(e.target.value) || 0)))} className={`${inputCls} w-24`} />
         </label>
       </div>
       <div>
-        <div className="text-xs font-medium uppercase tracking-wide text-slate-400">Who can comment on proposals</div>
+        <div className="text-xs font-medium uppercase tracking-wide text-neutral-500 dark:text-slate-400">Who can comment on proposals</div>
         <div className="mt-1 flex flex-wrap gap-4">
           {COMMENTERS.map(([k, l]) => <Check key={k} checked={commenters.includes(k)} onChange={toggle(commenters, setCommenters, k)} label={l} />)}
         </div>
-        {commenters.length === 0 ? <p className="mt-1 text-xs text-slate-500">No one can comment.</p> : null}
+        {commenters.length === 0 ? <p className="mt-1 text-xs text-neutral-400 dark:text-slate-500">No one can comment.</p> : null}
       </div>
 
       <div className="flex items-center gap-3"><button disabled={busy || !dirty} onClick={save} className={btnCls}>Save configuration</button>{justSaved && !dirty ? <span className="text-sm font-medium text-emerald-400">Saved ✓</span> : null}</div>
 
       {/* member oversight */}
-      <div className="mt-2 border-t border-slate-800 pt-2">
-        <div className="text-xs font-medium uppercase tracking-wide text-slate-400">Members</div>
-        {members == null ? <p className="text-xs text-slate-500">loading…</p> : members.length === 0 ? <p className="text-xs text-slate-500">No members yet.</p> : (
+      <div className="mt-2 border-t border-neutral-200 dark:border-slate-800 pt-2">
+        <div className="text-xs font-medium uppercase tracking-wide text-neutral-500 dark:text-slate-400">Members</div>
+        {members == null ? <p className="text-xs text-neutral-400 dark:text-slate-500">loading…</p> : members.length === 0 ? <p className="text-xs text-neutral-400 dark:text-slate-500">No members yet.</p> : (
           <ul className="mt-1 space-y-1">
             {members.map((m) => (
-              <li key={m.id} className="flex items-center justify-between gap-2 text-sm text-slate-200">
-                <span>{m.name} {m.status === 'PENDING' ? <span className="rounded bg-amber-500/15 px-1.5 text-xs text-amber-300">pending</span> : <span className="text-xs text-slate-500">member{m.since ? ` · since ${new Date(m.since).toLocaleDateString()}` : ''}</span>}</span>
+              <li key={m.id} className="flex items-center justify-between gap-2 text-sm text-neutral-800 dark:text-slate-200">
+                <span>{m.name} {m.status === 'PENDING' ? <span className="rounded bg-amber-500/15 px-1.5 text-xs text-amber-300">pending</span> : <span className="text-xs text-neutral-400 dark:text-slate-500">member{m.since ? ` · since ${new Date(m.since).toLocaleDateString()}` : ''}</span>}</span>
                 <span className="flex gap-2">
                   {m.status === 'PENDING' ? <button disabled={busy} onClick={async () => { await adminApi.groups.approveMember(group.id, m.id); await loadMembers(); await onReload(); }} className={ghostBtn}>Approve</button> : null}
                   <button disabled={busy} onClick={async () => { await adminApi.groups.kickMember(group.id, m.id); await loadMembers(); await onReload(); }} className="rounded border border-rose-800 px-3 py-1 text-sm text-rose-300 hover:bg-rose-950/40">Remove</button>

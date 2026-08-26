@@ -35,6 +35,7 @@ export class RegisterGroupDto {
   @IsOptional() @IsString() photo?: string; // data URL
   @IsOptional() @IsString() @MaxLength(80) country?: string;
   @IsOptional() @IsString() @MaxLength(2000) conflictOfInterest?: string;
+  @IsOptional() @IsBoolean() noSelfVote?: boolean; // §29 pledge, tied to conflictOfInterest
   @IsOptional() @IsString() @MaxLength(200) address?: string; // Cardano/blockchain address
   @IsOptional() @IsArray() @IsString({ each: true }) subcategoryIds?: string[]; // expertise
   @IsOptional() @IsObject() socials?: Record<string, string>; // { x, telegram, github, email, website }

@@ -103,6 +103,11 @@ function MemberFields({ m, fields, t }: { m: GroupMemberView; fields: string[]; 
         </div>
       ) : null}
       {fields.includes('conflictOfInterest') && m.conflictOfInterest ? <div className="mt-1 text-xs text-neutral-500"><span className="font-medium">{t('Conflict of interest')}:</span> {m.conflictOfInterest}</div> : null}
+      {fields.includes('conflictOfInterest') ? (
+        <div className={`mt-1 text-xs ${m.noSelfVote ? 'text-emerald-700 dark:text-emerald-400' : 'text-neutral-500'}`}>
+          {m.noSelfVote ? t('✓ Pledged not to vote on own proposals') : t('Has not pledged to abstain from own proposals')}
+        </div>
+      ) : null}
       {fields.includes('blockchainAddress') && m.address ? <div className="mt-1 break-all font-mono text-[11px] text-neutral-500">{m.address}</div> : null}
       {fields.includes('links') && m.socials && Object.keys(m.socials).length ? (
         <div className="mt-1 flex flex-wrap gap-2 text-xs">

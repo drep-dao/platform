@@ -5,6 +5,7 @@ import { CardanoQueryService } from '../cardano/cardano-query.service';
 import { AnchorService } from '../cardano/anchor.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RequestsService } from '../requests/requests.service';
+import { GroupsService } from '../groups/groups.service';
 
 const FAST_MS = 30_000; // request-fee poller
 const MID_MS = 5 * 60_000; // multisig-key reminders + anchor sweep
@@ -33,6 +34,7 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     private readonly anchor: AnchorService,
     private readonly notify: NotificationsService,
     private readonly requests: RequestsService,
+    private readonly groups: GroupsService,
   ) {}
 
   onModuleInit() {
@@ -76,6 +78,8 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
   // ── 5-minute tick ─────────────────────────────────────────────────────────────
   async midTick() {
     await this.remindMultisigKeys().catch((e) => this.logger.warn(`multisig-key reminder: ${e instanceof Error ? e.message : e}`));
+    // §29 — finalize + anchor group (OG) proposals whose voting has ended, even if nobody opened them.
+    await this.groups.finalizeDueProposals().catch((e) => this.logger.warn(`group finalize: ${e instanceof Error ? e.message : e}`));
     await this.retryPendingAnchors().catch((e) => this.logger.warn(`anchor retry: ${e instanceof Error ? e.message : e}`));
   }
 

@@ -237,6 +237,7 @@ export class AnchorService implements OnModuleInit {
     threshold: number;
     totalPower?: number; // BAL: total eligible voting power (for the on-chain tally)
     preimageVotes?: unknown; // richer votes (rationale/signature) for the off-chain preimage
+    group?: { key: string; name: string } | null; // §29 — configurable group (e.g. OG) this result belongs to
   }): Promise<AnchorResult> {
     const preimage = {
       subject: params.subject,
@@ -246,6 +247,7 @@ export class AnchorService implements OnModuleInit {
       ...(params.docHash ? { docHash: params.docHash } : {}),
       ...(params.electedBoard?.length ? { electedBoard: params.electedBoard } : {}),
       votes: params.preimageVotes ?? params.votes,
+      ...(params.group ? { group: params.group } : {}),
       result: { outcome: params.outcome, yes: params.yes, no: params.no, threshold: params.threshold },
     };
     const hash = sha256hex(JSON.stringify(preimage));
@@ -265,6 +267,7 @@ export class AnchorService implements OnModuleInit {
       totalPower: params.totalPower,
       outcome: params.outcome,
       proofHash: hash,
+      group: params.group ?? null,
     })[GOVERNANCE_METADATA_LABEL];
 
     let txHash: string | null = null;

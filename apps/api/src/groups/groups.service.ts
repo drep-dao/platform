@@ -1,6 +1,9 @@
+import { createHash } from 'node:crypto';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { GovSubject, VotingStyle } from '@drep-dao/cardano';
 import { PrismaService } from '../prisma/prisma.service';
 import { BoardService } from '../auth/board.service';
+import { AnchorService } from '../cardano/anchor.service';
 import type { AdminCreateGroupDto, AdminUpdateGroupDto, GroupCommentDto, GroupVoteDto, RegisterGroupDto, SubmitGroupProposalDto } from './dto';
 
 type GroupRow = {
@@ -15,6 +18,7 @@ export class GroupsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly board: BoardService,
+    private readonly anchor: AnchorService,
   ) {}
 
   // ── config JSON (always carries the group name) ─────────────────────────────
@@ -542,7 +546,47 @@ export class GroupsService {
     if (p.status !== 'ACTIVE' || p.votingEndAt.getTime() > Date.now()) return;
     const t = await this.tally(p);
     const status = p.type === 'POLL' ? 'CLOSED' : t.kind === 'THRESHOLD' && t.approved ? 'PASSED' : 'FAILED';
-    await this.prisma.groupProposal.update({ where: { id: p.id }, data: { status, decidedAt: new Date() } });
+    // Atomic: only the first finalizer (count === 1) anchors, so concurrent views can't double-anchor.
+    const res = await this.prisma.groupProposal.updateMany({ where: { id: p.id, status: 'ACTIVE' }, data: { status, decidedAt: new Date() } });
+    if (res.count === 1) await this.anchorGroupResult(p.id, status).catch(() => undefined); // anchoring never blocks finalization
+  }
+
+  /** §29/§3 — anchor a finalized group proposal on-chain (pending until a board member submits it).
+   *  The self-describing JSON carries the GROUP identity (key + name) + every member's vote + the tally,
+   *  so anyone can verify which group decided what. Never throws (anchoring must not block finalization). */
+  private async anchorGroupResult(proposalId: string, outcome: string) {
+    const p = await this.prisma.groupProposal.findUnique({ where: { id: proposalId }, include: { group: true } });
+    if (!p) return;
+    const t = await this.tally(p);
+    const nameOf = await this.groupMemberNames(p.groupId);
+    const voteRows = await this.prisma.groupVote.findMany({ where: { proposalId }, select: { voterUserId: true, choice: true, rationale: true }, orderBy: { createdAt: 'asc' } });
+    await this.anchor.anchorResult({
+      kind: GovSubject.GROUP,
+      subject: GovSubject.GROUP,
+      style: VotingStyle.ONE_PERSON_ONE_VOTE, // OG groups are strictly 1 member = 1 vote
+      ref: p.title,
+      proposalId: p.id,
+      publicId: `${p.group.key.toUpperCase()} · ${p.title}`,
+      docHash: createHash('sha256').update(`${p.title}\n${p.contentMd}`).digest('hex'),
+      votes: voteRows.map((v) => ({ drep: nameOf.get(v.voterUserId) ?? 'Member', vote: v.choice })),
+      outcome,
+      yes: t.kind === 'THRESHOLD' ? t.yes : 0,
+      no: t.kind === 'THRESHOLD' ? t.no : 0,
+      threshold: t.kind === 'THRESHOLD' ? t.thresholdPct : 0,
+      group: { key: p.group.key, name: p.group.name },
+      preimageVotes: voteRows.map((v) => ({ voter: nameOf.get(v.voterUserId) ?? 'Member', choice: v.choice, ...(v.rationale ? { rationale: v.rationale } : {}) })),
+    });
+  }
+
+  /** §29 — finalize + anchor every group proposal whose voting has ended but is still ACTIVE.
+   *  Run periodically (jobs) so results are anchored even if no one opened the proposal. Returns how many. */
+  async finalizeDueProposals(): Promise<number> {
+    const due = await this.prisma.groupProposal.findMany({
+      where: { status: 'ACTIVE', votingEndAt: { lte: new Date() } },
+      select: { id: true, status: true, votingEndAt: true, type: true, groupId: true, pollOptions: true },
+    });
+    for (const p of due) await this.maybeFinalize(p).catch(() => undefined);
+    return due.length;
   }
 
   // ── app: comments (recursive; shared with the DiscussionThread UI) ───────────

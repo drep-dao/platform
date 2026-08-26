@@ -586,7 +586,21 @@ export class GroupsService {
       select: { id: true, status: true, votingEndAt: true, type: true, groupId: true, pollOptions: true },
     });
     for (const p of due) await this.maybeFinalize(p).catch(() => undefined);
+    await this.backfillDecidedAnchors().catch(() => undefined);
     return due.length;
+  }
+
+  /** §29 — anchor already-decided group proposals that have no on-chain anchor yet (e.g. they were
+   *  decided before anchoring existed). Idempotent — skips proposals that already have a 'group' anchor. */
+  private async backfillDecidedAnchors(): Promise<void> {
+    const decided = await this.prisma.groupProposal.findMany({
+      where: { status: { in: ['PASSED', 'FAILED', 'CLOSED'] } },
+      select: { id: true, status: true },
+    });
+    for (const p of decided) {
+      const has = await this.prisma.anchor.count({ where: { kind: 'group', proposalId: p.id } });
+      if (has === 0) await this.anchorGroupResult(p.id, p.status).catch(() => undefined);
+    }
   }
 
   // ── app: comments (recursive; shared with the DiscussionThread UI) ───────────

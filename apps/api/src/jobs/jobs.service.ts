@@ -80,7 +80,7 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     await this.remindMultisigKeys().catch((e) => this.logger.warn(`multisig-key reminder: ${e instanceof Error ? e.message : e}`));
     // §29 — finalize + anchor group (OG) proposals whose voting has ended, even if nobody opened them.
     await this.groups.finalizeDueProposals().catch((e) => this.logger.warn(`group finalize: ${e instanceof Error ? e.message : e}`));
-    await this.retryPendingAnchors().catch((e) => this.logger.warn(`anchor retry: ${e instanceof Error ? e.message : e}`));
+    await this.anchorSweepIfDue().catch((e) => this.logger.warn(`anchor sweep: ${e instanceof Error ? e.message : e}`));
   }
 
   /**
@@ -109,6 +109,19 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
    * §24 — auto-submit anchors that were recorded but never made it on-chain (txHash null),
    * chaining each tx's change into the next so racing decisions all get anchored.
    */
+  /** §24 — run the on-chain anchor sweep only when the admin-configured interval (default 24h) has
+   *  elapsed since the last run. Admin can still force it immediately via the wallet panel. */
+  private async anchorSweepIfDue() {
+    const hours = await this.anchor.getSweepHours();
+    const key = 'JOB_LAST_RUN:anchor_sweep';
+    const row = await this.prisma.platformConfig.findUnique({ where: { key } });
+    const last = row ? Number(row.value) : 0;
+    if (Number.isFinite(last) && last > 0 && Date.now() - last < hours * 3_600_000) return;
+    await this.retryPendingAnchors();
+    const now = String(Date.now());
+    await this.prisma.platformConfig.upsert({ where: { key }, update: { value: now }, create: { key, value: now } });
+  }
+
   async retryPendingAnchors() {
     if (this.anchorSweepRunning) return;
     if (!this.anchor.walletConfigured()) return;

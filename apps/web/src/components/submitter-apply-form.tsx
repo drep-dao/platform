@@ -142,7 +142,7 @@ export function SubmitterApplyForm({ onChange }: { onChange?: () => void }) {
               : <>{t('You are an approved submitter ✅ — you can raise')} <strong>{t('Requests')}</strong> {t('(this functionality is coming soon)')}. {t('You can still update your profile below.')}</>}
           </p>
         ) : mine?.status === 'PENDING' ? (
-          <p className="text-sm text-amber-600">{t('Your application is under board review. You can update it below.')}</p>
+          <p className="text-sm text-amber-600">{t('Your registration is awaiting approval. You can still update it below.')}</p>
         ) : mine?.status === 'LEFT' ? (
           <p className="text-sm text-neutral-500">{t('You left the platform')}{mine.leftAt ? ` ${t('on')} ${new Date(mine.leftAt).toLocaleDateString()}` : ''} {t('— your profile is kept in the history. You can re-apply below.')}</p>
         ) : mine?.status === 'REJECTED' ? (

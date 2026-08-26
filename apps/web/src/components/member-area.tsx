@@ -7,6 +7,7 @@ import { MyDecisions } from './decisions';
 import { GroupRegisterForm, GroupApply, GroupMemberArea } from './group-register';
 import { GroupApprovals } from './group-members';
 import { GroupProposals } from './group-proposals';
+import { PendingNotice } from './pending-notice';
 import { useAuth } from '@/lib/auth-context';
 import { useT } from '@/lib/prefs-context';
 import { GROUPS_ENABLED } from '@/lib/features';
@@ -248,6 +249,7 @@ function ProfileTab({ isMember, isBoard, daoPending, expertApproved, expertPendi
     if (daoPending) {
       return (
         <div className="space-y-6">
+          <PendingNotice title={t('Council membership')} canUpdate={false} />
           <section className={card}><MyDrepStatus /></section>
           <section className={card}><PreferencesPanel /></section>
         </div>
@@ -265,6 +267,7 @@ function ProfileTab({ isMember, isBoard, daoPending, expertApproved, expertPendi
             <section className={card}><SubmitterApplyForm onChange={onSubmitterChange} /></section>
           ) : (
             <div className="space-y-6">
+              {expertPending && !expertApproved ? <PendingNotice title={t('Expert application')} /> : null}
               <section className={card}><ExpertApplyForm onChange={loadExpert} /></section>
               {/* §15.4 — approved experts earn ADA rewards, so they need a reward
                   payment address. This is what the My-area to-do badge points at

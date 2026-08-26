@@ -58,8 +58,15 @@ export function GroupProposals({ groupKey }: { groupKey: string }) {
                 <StatusChip status={p.status} />
               </span>
             </span>
-            <span className="text-xs text-neutral-500">
-              {p.votedCount} {t('of')} {p.eligible} {t('members voted')}{p.voters.length ? ` · ${p.voters.join(', ')}` : ''}
+            <span className="flex flex-wrap items-center gap-x-1 text-xs text-neutral-500">
+              <span>{p.votedCount} {t('of')} {p.eligible} {t('members voted')}</span>
+              {p.result ? (
+                <>
+                  <span>· {t('YES')} {p.result.ratioPct}% · {t('threshold')} {p.result.thresholdPct}% ·</span>
+                  <span className={p.result.approved ? 'font-medium text-emerald-600 dark:text-emerald-400' : 'font-medium text-rose-600 dark:text-rose-400'}>{p.result.approved ? t('passing') : t('not passing')}</span>
+                </>
+              ) : null}
+              {p.voters.length ? <span>· {p.voters.map((v) => `${v.voter} (${choiceLabel(v.choice, t)})`).join(', ')}</span> : null}
             </span>
           </button>
         ))}
@@ -334,6 +341,11 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
 /** §29 — percentage helper for the tally bar (0 when there are no eligible voters). */
 function pct(n: number, d: number): number {
   return d > 0 ? Math.round((n / d) * 100) : 0;
+}
+
+/** §29 — human label for a vote choice. */
+function choiceLabel(c: string, t: (s: string) => string): string {
+  return c === 'YES' ? t('Yes') : c === 'NO' ? t('No') : c === 'ABSTAIN' ? t('Abstain') : c;
 }
 
 /** §29 — who voted, grouped by choice (Yes / No / Abstain), shown under the tally. */

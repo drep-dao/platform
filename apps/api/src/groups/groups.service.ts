@@ -321,28 +321,37 @@ export class GroupsService {
     const nameOf = await this.groupMemberNames(g.id);
     const allVotes = await this.prisma.groupVote.findMany({
       where: { proposalId: { in: fresh.map((p) => p.id) } },
-      select: { proposalId: true, voterUserId: true },
-      distinct: ['proposalId', 'voterUserId'],
+      select: { proposalId: true, voterUserId: true, choice: true },
+      orderBy: { createdAt: 'asc' },
     });
-    const votersByProposal = new Map<string, string[]>();
+    // proposalId → (voterUserId → their choice(s)); a poll voter may pick several options.
+    const byProposal = new Map<string, Map<string, string[]>>();
     for (const v of allVotes) {
-      const arr = votersByProposal.get(v.proposalId) ?? [];
-      arr.push(v.voterUserId);
-      votersByProposal.set(v.proposalId, arr);
+      let m = byProposal.get(v.proposalId);
+      if (!m) { m = new Map(); byProposal.set(v.proposalId, m); }
+      const arr = m.get(v.voterUserId) ?? [];
+      arr.push(v.choice);
+      m.set(v.voterUserId, arr);
     }
+    // §29 — per-proposal tally so the list shows YES% / threshold / passing without opening.
+    const tallies = await Promise.all(fresh.map((p) => this.tally(p)));
     return {
       group: this.config(g),
       canSubmit,
       submitBlockedReason,
-      proposals: fresh.map((p) => {
-        const voterIds = votersByProposal.get(p.id) ?? [];
+      proposals: fresh.map((p, i) => {
+        const vmap = byProposal.get(p.id) ?? new Map<string, string[]>();
+        const tv = tallies[i];
         return {
           id: p.id, title: p.title, type: p.type, status: p.status,
           author: nameOf.get(p.authorUserId) ?? p.author.displayName ?? 'Member',
           votingEndAt: p.votingEndAt.toISOString(), createdAt: p.createdAt.toISOString(),
-          votedCount: voterIds.length,
+          votedCount: vmap.size,
           eligible: memberCount,
-          voters: voterIds.map((uid) => nameOf.get(uid) ?? 'Member'),
+          voters: [...vmap.entries()].map(([uid, choices]) => ({ voter: nameOf.get(uid) ?? 'Member', choice: choices.join('/') })),
+          result: tv.kind === 'THRESHOLD'
+            ? { ratioPct: tv.ratioPct, thresholdPct: tv.thresholdPct, approved: tv.approved }
+            : null,
         };
       }),
     };

@@ -212,12 +212,23 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
       {/* tally */}
       <div className="mt-3 rounded-md border border-neutral-200 p-3 text-sm dark:border-neutral-800">
         {p.tally.kind === 'THRESHOLD' ? (
-          <div>
+          <div className="space-y-2">
             <div>
               <span className="font-medium">YES</span> {p.tally.yes}/{p.tally.denominator} ({p.tally.ratioPct}%) · {t('threshold')} {p.tally.thresholdPct}% ·{' '}
               <span className={p.tally.approved ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>{p.tally.approved ? t('passing') : t('not passing')}</span>
             </div>
-            <div className="mt-0.5 text-xs text-neutral-500">{p.tally.voted} {t('of')} {p.tally.eligible} {t('members voted')} · {t('abstain')} {p.tally.abstain}</div>
+            <div className="flex h-3 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
+              <div className="bg-emerald-500" style={{ width: `${pct(p.tally.yes, p.tally.eligible)}%` }} />
+              <div className="bg-rose-500" style={{ width: `${pct(p.tally.no, p.tally.eligible)}%` }} />
+              <div className="bg-neutral-400" style={{ width: `${pct(p.tally.abstain, p.tally.eligible)}%` }} />
+            </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
+              <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-emerald-500" /> {t('Yes')} {p.tally.yes}</span>
+              <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-rose-500" /> {t('No')} {p.tally.no}</span>
+              <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-neutral-400" /> {t('Abstain')} {p.tally.abstain}</span>
+              <span className="text-neutral-500">· {p.tally.voted} {t('of')} {p.tally.eligible} {t('members voted')}</span>
+            </div>
+            <VoterBreakdown voters={p.voters} t={t} />
           </div>
         ) : (
           <div>
@@ -225,10 +236,12 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
             <div className="mt-1 space-y-1">
               {p.tally.options.map((o) => {
                 const max = Math.max(1, ...(p.tally.kind === 'POLL' ? p.tally.options.map((x) => x.voters) : [1]));
+                const names = p.voters.filter((v) => v.choice === o.option).map((v) => v.voter);
                 return (
                   <div key={o.option}>
                     <div className="flex justify-between text-xs"><span>{o.option}</span><span className="tabular-nums">{o.voters} {o.voters === 1 ? t('vote') : t('votes')}</span></div>
                     <div className="mt-0.5 h-2 w-full overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800"><div className="h-full bg-emerald-500" style={{ width: `${Math.round((o.voters / max) * 100)}%` }} /></div>
+                    {names.length ? <div className="mt-0.5 text-[11px] text-neutral-400">{names.join(', ')}</div> : null}
                   </div>
                 );
               })}
@@ -241,9 +254,7 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
       {/* vote */}
       {p.canVote ? (
         <div className="mt-3 space-y-2">
-          <label className="block text-sm">{t('Rationale')} <span className="text-xs text-neutral-400">{t('(optional)')}</span>
-            <textarea value={rationale} onChange={(e) => setRationale(e.target.value)} rows={2} className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900" placeholder={t('Why are you voting this way?')} />
-          </label>
+          <MarkdownEditor value={rationale} onChange={setRationale} title={t('Rationale')} hint={t('optional — Markdown supported')} minRows={2} placeholder={t('Why are you voting this way? (optional)')} />
           {p.type === 'POLL' ? (
           <div className="mt-3 space-y-2">
             <div className="space-y-1">
@@ -257,10 +268,25 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
             <button disabled={busy || picks.length === 0} onClick={castPoll} className="rounded bg-emerald-600 px-3 py-1 text-sm font-medium text-white disabled:opacity-40">{p.myVotes.length ? t('Change vote') : t('Cast vote')}</button>
           </div>
         ) : (
-          <div className="mt-3 flex gap-2">
-            {['YES', 'NO', 'ABSTAIN'].map((c) => (
-              <button key={c} disabled={busy} onClick={() => castThreshold(c)} className={`rounded px-3 py-1 text-sm font-medium disabled:opacity-40 ${p.myVotes.includes(c) ? 'bg-emerald-600 text-white' : 'border border-neutral-300 hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800'}`}>{t(c === 'YES' ? 'Yes' : c === 'NO' ? 'No' : 'Abstain')}</button>
-            ))}
+          <div className="space-y-1.5">
+            <div className="flex gap-2">
+              {(['YES', 'NO', 'ABSTAIN'] as const).map((c) => {
+                const on = p.myVotes.includes(c);
+                const palette = c === 'YES'
+                  ? (on ? 'bg-emerald-600 text-white border-emerald-600' : 'border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950')
+                  : c === 'NO'
+                    ? (on ? 'bg-rose-600 text-white border-rose-600' : 'border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950')
+                    : (on ? 'bg-neutral-600 text-white border-neutral-600' : 'border-neutral-300 text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800');
+                return (
+                  <button key={c} disabled={busy} onClick={() => castThreshold(c)} className={`rounded border px-3 py-1 text-sm font-medium disabled:opacity-40 ${palette}`}>
+                    {on ? '✓ ' : ''}{t(c === 'YES' ? 'Yes' : c === 'NO' ? 'No' : 'Abstain')}
+                  </button>
+                );
+              })}
+            </div>
+            {p.myVotes.length ? (
+              <p className="text-xs text-emerald-700 dark:text-emerald-400">{t('You voted')} {t(p.myVotes[0] === 'YES' ? 'Yes' : p.myVotes[0] === 'NO' ? 'No' : 'Abstain')} — {t('click another option to change your vote.')}</p>
+            ) : null}
           </div>
         )}
         </div>
@@ -297,5 +323,25 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
         />
       </div>
     </section>
+  );
+}
+
+/** §29 — percentage helper for the tally bar (0 when there are no eligible voters). */
+function pct(n: number, d: number): number {
+  return d > 0 ? Math.round((n / d) * 100) : 0;
+}
+
+/** §29 — who voted, grouped by choice (Yes / No / Abstain), shown under the tally. */
+function VoterBreakdown({ voters, t }: { voters: { voter: string; choice: string }[]; t: (s: string) => string }) {
+  if (!voters.length) return null;
+  const groups: Record<string, string[]> = {};
+  for (const v of voters) { if (!groups[v.choice]) groups[v.choice] = []; groups[v.choice].push(v.voter); }
+  const label = (c: string) => (c === 'YES' ? t('Yes') : c === 'NO' ? t('No') : c === 'ABSTAIN' ? t('Abstain') : c);
+  return (
+    <div className="space-y-0.5">
+      {['YES', 'NO', 'ABSTAIN'].map((c) => (groups[c]?.length ? (
+        <div key={c} className="text-xs"><span className="font-medium">{label(c)}:</span> <span className="text-neutral-600 dark:text-neutral-300">{groups[c].join(', ')}</span></div>
+      ) : null))}
+    </div>
   );
 }

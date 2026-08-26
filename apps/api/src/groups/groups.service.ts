@@ -355,6 +355,13 @@ export class GroupsService {
     const myRationale = userId
       ? (await this.prisma.groupVote.findFirst({ where: { proposalId: id, voterUserId: userId }, select: { rationale: true } }))?.rationale ?? null
       : null;
+    // §29 — every vote row with the voter's name + choice, so the detail can show who voted what.
+    const voterRows = await this.prisma.groupVote.findMany({
+      where: { proposalId: id },
+      select: { choice: true, voter: { select: { displayName: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+    const voters = voterRows.map((v) => ({ voter: v.voter.displayName ?? 'Member', choice: v.choice }));
     return {
       id: fresh.id,
       groupKey: g.key,
@@ -374,6 +381,7 @@ export class GroupsService {
       myVotes,
       myRationale,
       rationales,
+      voters,
       canComment: await this.canComment(userId, g),
       canModerate: await this.canManageMembers(userId, g),
       comments: await this.loadComments(id, userId, g),

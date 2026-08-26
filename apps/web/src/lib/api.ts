@@ -2406,6 +2406,7 @@ export interface GroupProposalDetail {
   myVotes: string[];
   myRationale: string | null;
   rationales: { voter: string; choice: string; rationale: string }[];
+  voters: { voter: string; choice: string }[];
   canComment: boolean;
   canModerate: boolean;
   comments: GroupComment[];

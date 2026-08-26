@@ -6,6 +6,7 @@ import { usePrefs } from '@/lib/prefs-context';
 import { useUrlNav } from '@/lib/use-url-nav';
 import { NavIcon } from './nav-icons';
 import { ConnectWallet } from './connect-wallet';
+import { DrepVerifyPrompt } from './drep-verify-prompt';
 import { PublicLanding } from './public-landing';
 import { brand } from '@/lib/brand';
 import { MemberArea } from './member-area';
@@ -195,6 +196,7 @@ export function HomeShell() {
 
   return (
     <div className="flex flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row">
+      <DrepVerifyPrompt />
       {/* Left: title + menu only. On mobile the menu is a horizontal scroll strip so content
           isn't pushed below a tall vertical list; on lg it's the usual vertical sidebar. */}
       <aside className="lg:w-56 lg:shrink-0">

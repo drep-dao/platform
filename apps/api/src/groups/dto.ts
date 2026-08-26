@@ -25,6 +25,7 @@ export class AdminUpdateGroupDto {
   @IsOptional() @IsIn(GROUP_VOTING_TYPES) votingType?: string;
   @IsOptional() @IsInt() @Min(1) @Max(100) thresholdPct?: number;
   @IsOptional() @IsIn(['ACTIVE', 'HIDDEN']) status?: string;
+  @IsOptional() @IsBoolean() membersCanApprove?: boolean; // §29 OG self-governance
 }
 
 /** A wallet-authenticated user applies to join a group. Fields are stored per the group's profileFields. */
@@ -61,4 +62,10 @@ export class GroupVoteDto {
 export class GroupCommentDto {
   @IsString() @MinLength(1) @MaxLength(4000) contentMd!: string;
   @IsOptional() @IsString() parentId?: string;
+}
+
+/** §29 OG — a member sets the group's voting quorum (self-governed). */
+export class GroupVotingSettingsDto {
+  @IsIn(['OPEN', 'EXACT', 'MINIMUM']) quorumMode!: string;
+  @IsOptional() @IsInt() @Min(1) @Max(100000) quorumCount?: number;
 }

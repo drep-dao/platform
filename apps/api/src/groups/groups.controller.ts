@@ -3,7 +3,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { CurrentUser, type AuthContext } from '../auth/current-user.decorator';
 import { GroupsService } from './groups.service';
-import { GroupCommentDto, GroupVoteDto, RegisterGroupDto, SubmitGroupProposalDto } from './dto';
+import { GroupCommentDto, GroupVoteDto, GroupVotingSettingsDto, RegisterGroupDto, SubmitGroupProposalDto } from './dto';
 
 /** §29 — configurable groups (e.g. OG): membership, member-submitted proposals + voting, comments. */
 @Controller('groups')
@@ -65,6 +65,20 @@ export class GroupsController {
   @UseGuards(JwtAuthGuard)
   updateProfile(@CurrentUser() ctx: AuthContext, @Param('key') key: string, @Body() dto: RegisterGroupDto) {
     return this.svc.updateProfile(ctx.userId, key, dto);
+  }
+
+  // §29 OG — leave the group.
+  @Post(':key/leave')
+  @UseGuards(JwtAuthGuard)
+  leave(@CurrentUser() ctx: AuthContext, @Param('key') key: string) {
+    return this.svc.leaveGroup(ctx.userId, key);
+  }
+
+  // §29 OG — set the group's voting quorum (self-governed; any admitted member).
+  @Patch(':key/voting')
+  @UseGuards(JwtAuthGuard)
+  updateVoting(@CurrentUser() ctx: AuthContext, @Param('key') key: string, @Body() dto: GroupVotingSettingsDto) {
+    return this.svc.updateVotingSettings(ctx.userId, key, dto);
   }
 
   @Get(':key/members')

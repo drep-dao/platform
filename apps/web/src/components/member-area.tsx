@@ -121,7 +121,7 @@ export function MemberArea() {
 
   // §29 — an admitted group member manages their group profile + proposals from a dedicated tab.
   for (const mg of myGroups) {
-    tabs.push({ key: `grp-${mg.groupKey}`, label: mg.groupName, node: <GroupMemberArea groupKey={mg.groupKey} /> });
+    tabs.push({ key: `grp-${mg.groupKey}`, label: `${mg.groupName} proposals`, node: <GroupMemberArea groupKey={mg.groupKey} /> });
   }
 
   // §27 — a DRep's own rule documents: draft privately, publish, edit until an approval vote opens.

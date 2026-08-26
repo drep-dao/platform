@@ -1724,6 +1724,12 @@ model Group {
   commenters     String[] @map("commenters") // members | dreps | experts | submitters | viewers
   votingType     String   @default("ONE_PERSON_ONE_VOTE") @map("voting_type") // ONE_PERSON_ONE_VOTE (only wired) | DREP_POWER | ADJUSTED_POWER
   thresholdPct   Int      @default(67) @map("threshold_pct")
+  // §29 OG — self-governance: when true, admitted members can approve new applicants (not just the approver).
+  membersCanApprove Boolean @default(false) @map("members_can_approve")
+  // §29 OG — voting quorum by member count. OPEN = no limit; EXACT = only when member count == quorumCount;
+  // MINIMUM = only when member count >= quorumCount. Gates whether a proposal can be submitted.
+  quorumMode     String   @default("OPEN") @map("quorum_mode") // OPEN | EXACT | MINIMUM
+  quorumCount    Int?     @map("quorum_count")
   sortIdx        Int      @default(0) @map("sort_idx")
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)

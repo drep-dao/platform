@@ -112,6 +112,7 @@ function GroupEditor({ group, dreps, busy, onSave, onReload }: {
   const [commenters, setCommenters] = useState<string[]>(group.commenters);
   const [votingType, setVotingType] = useState(group.voting.votingType);
   const [thresholdPct, setThresholdPct] = useState(group.voting.thresholdPct);
+  const [membersCanApprove, setMembersCanApprove] = useState(!!group.membersCanApprove);
   const [members, setMembers] = useState<AdminGroupMember[] | null>(null);
   const [justSaved, setJustSaved] = useState(false);
   const arrEq = (a: string[], b: string[]) => a.length === b.length && [...a].sort().join('|') === [...b].sort().join('|');
@@ -123,14 +124,15 @@ function GroupEditor({ group, dreps, busy, onSave, onReload }: {
     (approverUserId || null) !== (group.approverUserId ?? null) ||
     !arrEq(commenters, group.commenters) ||
     votingType !== group.voting.votingType ||
-    thresholdPct !== group.voting.thresholdPct;
+    thresholdPct !== group.voting.thresholdPct ||
+    membersCanApprove !== !!group.membersCanApprove;
 
   const toggle = (list: string[], set: (v: string[]) => void, key: string) => (on: boolean) => set(on ? [...new Set([...list, key])] : list.filter((x) => x !== key));
 
   const loadMembers = useCallback(async () => { setMembers(await adminApi.groups.members(group.id).catch(() => [])); }, [group.id]);
   useEffect(() => { void loadMembers(); }, [loadMembers]);
 
-  const save = async () => { await onSave({ name: name.trim(), profileFields, proposalTypes, admissionType, approverUserId: approverUserId || null, commenters, votingType, thresholdPct }); setJustSaved(true); };
+  const save = async () => { await onSave({ name: name.trim(), profileFields, proposalTypes, admissionType, approverUserId: approverUserId || null, commenters, votingType, thresholdPct, membersCanApprove }); setJustSaved(true); };
 
   return (
     <div className="mt-3 space-y-3 border-t border-slate-800 pt-3 text-sm">
@@ -167,6 +169,10 @@ function GroupEditor({ group, dreps, busy, onSave, onReload }: {
             </select>
           </label>
         ) : null}
+        <label className="flex items-center gap-2 text-xs text-slate-300">
+          <input type="checkbox" checked={membersCanApprove} onChange={(e) => setMembersCanApprove(e.target.checked)} />
+          Members can approve new applicants (self-governance)
+        </label>
       </div>
 
       <div className="flex flex-wrap items-end gap-3">

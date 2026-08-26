@@ -2363,6 +2363,9 @@ export interface GroupConfig {
   approverName: string | null;
   commenters: string[];
   voting: { voters: string; votingType: string; thresholdPct: number };
+  membersCanApprove: boolean; // §29 OG self-governance
+  quorumMode: string; // OPEN | EXACT | MINIMUM
+  quorumCount: number | null;
 }
 export interface GroupMembershipMine { groupKey: string; groupName: string; status: string }
 export interface GroupMemberView { id: string; status: string; displayName: string; bio: string | null; photo: string | null; country: string | null; conflictOfInterest: string | null; address: string | null; subcategoryIds: string[]; socials: Record<string, string> | null; preferences: Record<string, boolean> | null; since: string | null }
@@ -2416,6 +2419,8 @@ export const groupsApi = {
   membership: (key: string) => request<GroupMembershipResult>(`/groups/${key}/membership`),
   register: (key: string, input: RegisterGroupInput) => request<GroupMembershipResult>(`/groups/${key}/register`, { method: 'POST', body: JSON.stringify(input) }),
   updateProfile: (key: string, input: RegisterGroupInput) => request<GroupMembershipResult>(`/groups/${key}/profile`, { method: 'PATCH', body: JSON.stringify(input) }),
+  leave: (key: string) => request<{ left: true }>(`/groups/${key}/leave`, { method: 'POST' }),
+  updateVoting: (key: string, input: { quorumMode: string; quorumCount?: number | null }) => request<GroupMembershipResult>(`/groups/${key}/voting`, { method: 'PATCH', body: JSON.stringify(input) }),
   members: (key: string) => request<GroupMembersResult>(`/groups/${key}/members`),
   approveMember: (key: string, memberId: string) => request<GroupMembersResult>(`/groups/${key}/members/${memberId}/approve`, { method: 'POST' }),
   rejectMember: (key: string, memberId: string) => request<GroupMembersResult>(`/groups/${key}/members/${memberId}/reject`, { method: 'POST' }),

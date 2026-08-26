@@ -8,6 +8,7 @@ import { useT } from '@/lib/prefs-context';
 import { MarkdownEditor } from './markdown';
 import { PhotoUpload } from './photo-upload';
 import { useSubcategories } from '@/lib/subcategories';
+import { ConfirmDialog } from './confirm-dialog';
 
 const field = 'w-full rounded-md border border-neutral-300 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900';
 
@@ -178,13 +179,146 @@ export function GroupMemberArea({ groupKey }: { groupKey: string }) {
   const load = useCallback(() => { groupsApi.membership(groupKey).then(setData).catch(() => setData(null)); }, [groupKey]);
   useEffect(load, [load]);
   if (!data || !data.membership) return null;
+  const admitted = data.membership.status === 'ADMITTED';
   return (
     <div className="space-y-4">
       <section className={card}>
         <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">{t('Your')} {data.group.name} {t('membership')}</div>
         <GroupRegisterForm group={data.group} initial={data.membership} onDone={load} />
+        {admitted ? <GroupLeaveButton groupKey={groupKey} groupName={data.group.name} /> : null}
       </section>
+      {/* §29 OG — self-governed voting quorum; any admitted member may set it (applies to everyone). */}
+      {admitted ? <GroupVotingSettings group={data.group} onSaved={load} /> : null}
+      {/* §29 OG — when the group self-governs, admitted members approve new applicants here. */}
+      {data.canManage ? <GroupPendingApprovals groupKey={groupKey} groupName={data.group.name} /> : null}
       <GroupProposals groupKey={groupKey} />
     </div>
+  );
+}
+
+/** §29 OG — leave the group (confirmed). Reloads so the My-area tab + nav reflect the departure. */
+function GroupLeaveButton({ groupKey, groupName }: { groupKey: string; groupName: string }) {
+  const t = useT();
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="mt-3 border-t border-neutral-200 pt-3 dark:border-neutral-800">
+      <button
+        onClick={() => setConfirming(true)}
+        className="rounded border border-rose-300 px-3 py-1.5 text-sm font-medium text-rose-700 hover:bg-rose-50 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950"
+      >
+        {t('Leave')} {groupName}
+      </button>
+      <ConfirmDialog
+        open={confirming}
+        title={`${t('Leave')} ${groupName}?`}
+        message={t('You will no longer be a member and cannot submit or vote on its proposals. You can re-apply later.')}
+        confirmLabel={t('Leave')}
+        cancelLabel={t('Cancel')}
+        tone="danger"
+        onCancel={() => setConfirming(false)}
+        onConfirm={async () => {
+          setBusy(true);
+          try {
+            await groupsApi.leave(groupKey);
+            if (typeof window !== 'undefined') window.location.reload();
+          } finally {
+            setBusy(false);
+            setConfirming(false);
+          }
+        }}
+      />
+      {busy ? <span className="ml-2 text-xs text-neutral-500">{t('Leaving…')}</span> : null}
+    </div>
+  );
+}
+
+/** §29 OG — the group's member-count voting quorum. OPEN = no limit; EXACT = only when the member
+ *  count equals N; MINIMUM = only when it is at least N. Gates whether proposals can be submitted. */
+function GroupVotingSettings({ group, onSaved }: { group: GroupConfig; onSaved: () => void }) {
+  const t = useT();
+  const [mode, setMode] = useState(group.quorumMode || 'OPEN');
+  const [count, setCount] = useState<number>(group.quorumCount ?? 1);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const save = async () => {
+    setMsg(null);
+    setBusy(true);
+    try {
+      await groupsApi.updateVoting(group.key, { quorumMode: mode, quorumCount: mode === 'OPEN' ? null : count });
+      setMsg(t('Saved'));
+      onSaved();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : t('Could not save.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const modes: { key: string; label: string; hint: string }[] = [
+    { key: 'OPEN', label: t('Open'), hint: t('No limit — the group can vote with any number of members.') },
+    { key: 'EXACT', label: t('Exact number of members'), hint: t('The group can vote only when it has exactly this many members.') },
+    { key: 'MINIMUM', label: t('Minimum'), hint: t('The group can vote only with at least this many members.') },
+  ];
+  return (
+    <section className={card}>
+      <h3 className="text-base font-semibold">{group.name} · {t('voting settings')}</h3>
+      <p className="mt-1 text-sm text-neutral-500">{t('Applies to the whole group. Set the member count required to submit and vote on proposals.')}</p>
+      <div className="mt-3 space-y-2">
+        {modes.map((m) => (
+          <label key={m.key} className="flex items-start gap-2 text-sm">
+            <input type="radio" name="quorum" className="mt-1" checked={mode === m.key} onChange={() => setMode(m.key)} />
+            <span>
+              <span className="font-medium">{m.label}</span>
+              <span className="block text-xs text-neutral-500">{m.hint}</span>
+            </span>
+          </label>
+        ))}
+        {mode !== 'OPEN' ? (
+          <div className="flex items-center gap-2 pl-6 text-sm">
+            <span className="text-neutral-500">{t('Number of members')}:</span>
+            <input
+              type="number"
+              min={1}
+              value={count}
+              onChange={(e) => setCount(Math.max(1, Number(e.target.value) || 1))}
+              className="w-24 rounded-md border border-neutral-300 px-2 py-1 dark:border-neutral-700 dark:bg-neutral-900"
+            />
+          </div>
+        ) : null}
+      </div>
+      <div className="mt-3 flex items-center gap-2">
+        <button onClick={save} disabled={busy} className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
+          {busy ? t('Saving…') : t('Save voting settings')}
+        </button>
+        {msg ? <span className="text-xs text-neutral-500">{msg}</span> : null}
+      </div>
+    </section>
+  );
+}
+
+/** §29 OG — pending applicants an admitted member may approve/reject (self-governance). */
+function GroupPendingApprovals({ groupKey, groupName }: { groupKey: string; groupName: string }) {
+  const t = useT();
+  const [data, setData] = useState<import('@/lib/api').GroupMembersResult | null>(null);
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(() => { groupsApi.members(groupKey).then(setData).catch(() => setData(null)); }, [groupKey]);
+  useEffect(load, [load]);
+  const act = async (fn: () => Promise<unknown>) => { setBusy(true); try { await fn(); await load(); } finally { setBusy(false); } };
+  if (!data || !data.canManage || data.pending.length === 0) return null;
+  return (
+    <section className={card}>
+      <h3 className="text-base font-semibold">{groupName} · {t('applications')} <span className="text-sm font-normal text-neutral-500">({data.pending.length} {t('pending')})</span></h3>
+      <ul className="mt-2 space-y-2">
+        {data.pending.map((m) => (
+          <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-neutral-200 p-2 text-sm dark:border-neutral-800">
+            <span className="font-medium">{m.displayName}</span>
+            <span className="flex gap-2">
+              <button disabled={busy} onClick={() => act(() => groupsApi.approveMember(groupKey, m.id))} className="rounded bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50">{t('Approve')}</button>
+              <button disabled={busy} onClick={() => act(() => groupsApi.rejectMember(groupKey, m.id))} className="rounded border border-neutral-300 px-2.5 py-1 text-xs hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800">{t('Reject')}</button>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

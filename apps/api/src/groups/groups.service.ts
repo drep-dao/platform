@@ -7,6 +7,7 @@ type GroupRow = {
   id: string; key: string; name: string; status: string;
   profileFields: string[]; proposalTypes: string[]; admissionType: string;
   approverUserId: string | null; commenters: string[]; votingType: string; thresholdPct: number; sortIdx: number;
+  membersCanApprove: boolean; quorumMode: string; quorumCount: number | null;
 };
 
 @Injectable()
@@ -31,6 +32,10 @@ export class GroupsService {
       commenters: g.commenters,
       // Voters are always the group's members; votingType + thresholdPct are configurable.
       voting: { voters: 'members', votingType: g.votingType, thresholdPct: g.thresholdPct },
+      // §29 OG — self-governance + member-count quorum for submitting proposals.
+      membersCanApprove: g.membersCanApprove,
+      quorumMode: g.quorumMode, // OPEN | EXACT | MINIMUM
+      quorumCount: g.quorumCount ?? null,
     };
   }
 
@@ -82,6 +87,7 @@ export class GroupsService {
         ...(dto.votingType !== undefined ? { votingType: dto.votingType } : {}),
         ...(dto.thresholdPct !== undefined ? { thresholdPct: dto.thresholdPct } : {}),
         ...(dto.status !== undefined ? { status: dto.status } : {}),
+        ...(dto.membersCanApprove !== undefined ? { membersCanApprove: dto.membersCanApprove } : {}),
       },
     });
     return this.adminList().then((l) => l.find((x) => x.id === id));
@@ -112,6 +118,8 @@ export class GroupsService {
   /** Who may admit/kick members, per the group's admission type. */
   private async canManageMembers(userId: string | null | undefined, g: GroupRow): Promise<boolean> {
     if (!userId) return false;
+    // §29 OG self-governance — once seeded, any admitted member may approve/reject applicants.
+    if (g.membersCanApprove && (await this.admittedMember(g.id, userId))) return true;
     switch (g.admissionType) {
       case 'BOARD': return this.board.isBoardMember(userId);
       case 'DREPS': return this.admittedDrep(userId);
@@ -199,6 +207,30 @@ export class GroupsService {
         preferences: has('preferences') && dto.preferences ? (dto.preferences as object) : (m.preferences ?? undefined),
       },
     });
+    return this.myMembership(userId, key);
+  }
+
+  /** §29 OG — a member leaves the group (their membership is marked REMOVED; they can re-apply later). */
+  async leaveGroup(userId: string, key: string) {
+    const g = await this.activeGroupByKey(key);
+    const m = await this.prisma.groupMember.findUnique({ where: { groupId_userId: { groupId: g.id, userId } } });
+    if (!m || m.status === 'REMOVED') throw new NotFoundException('you are not a member of this group');
+    await this.prisma.groupMember.update({ where: { id: m.id }, data: { status: 'REMOVED', removedAt: new Date() } });
+    return { left: true };
+  }
+
+  /** §29 OG — an admitted member sets the group's voting quorum (self-governed; applies to everyone). */
+  async updateVotingSettings(userId: string, key: string, dto: { quorumMode: string; quorumCount?: number | null }) {
+    const g = await this.activeGroupByKey(key);
+    if (!(await this.admittedMember(g.id, userId))) throw new ForbiddenException('only admitted members can change the voting settings');
+    const mode = dto.quorumMode;
+    if (!['OPEN', 'EXACT', 'MINIMUM'].includes(mode)) throw new BadRequestException('invalid quorum mode');
+    let count: number | null = null;
+    if (mode !== 'OPEN') {
+      count = Number(dto.quorumCount);
+      if (!Number.isInteger(count) || count < 1) throw new BadRequestException('a member count of at least 1 is required');
+    }
+    await this.prisma.group.update({ where: { id: g.id }, data: { quorumMode: mode, quorumCount: count } });
     return this.myMembership(userId, key);
   }
 
@@ -316,6 +348,17 @@ export class GroupsService {
   async submitProposal(userId: string, key: string, dto: SubmitGroupProposalDto) {
     const g = await this.activeGroupByKey(key);
     if (!(await this.admittedMember(g.id, userId))) throw new ForbiddenException('only admitted members can submit proposals');
+    // §29 OG — member-count quorum gate. EXACT: count must equal quorumCount; MINIMUM: count >= quorumCount.
+    if (g.quorumMode && g.quorumMode !== 'OPEN') {
+      const memberCount = await this.prisma.groupMember.count({ where: { groupId: g.id, status: 'ADMITTED' } });
+      const need = g.quorumCount ?? 0;
+      if (g.quorumMode === 'EXACT' && memberCount !== need) {
+        throw new BadRequestException(`this group can vote only with exactly ${need} member(s); it currently has ${memberCount}`);
+      }
+      if (g.quorumMode === 'MINIMUM' && memberCount < need) {
+        throw new BadRequestException(`this group needs at least ${need} member(s) to vote; it currently has ${memberCount}`);
+      }
+    }
     if (!g.proposalTypes.includes(dto.type)) throw new BadRequestException('this group does not allow that proposal type');
     const end = new Date(dto.votingEndAt);
     if (Number.isNaN(end.getTime()) || end.getTime() <= Date.now()) throw new BadRequestException('the voting end must be a date in the future');

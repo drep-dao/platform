@@ -8,6 +8,7 @@ import { GroupRegisterForm, GroupApply, GroupMemberArea } from './group-register
 import { GroupApprovals } from './group-members';
 import { useAuth } from '@/lib/auth-context';
 import { useT } from '@/lib/prefs-context';
+import { DrepVerifyControl } from './drep-verify-control';
 import { useUrlNav } from '@/lib/use-url-nav';
 import { useTodoCounts } from '@/lib/use-todo-counts';
 import { expertApi, drepApi, submitterApi, configApi, groupsApi, type MyExpert, type MySubmitter, type EntryEligibility, type ReviewMode, type GroupConfig, type GroupMembershipMine } from '@/lib/api';
@@ -163,7 +164,20 @@ export function MemberArea() {
     tabs.push({ key: 'apps', label: 'Applications', node: <CouncilApplicationsTab /> });
   }
 
-  return <MemberTabs tabs={tabs} />;
+  // SEC-01 — always-available DRep-key verification for governance users (a permanent home for the
+  // action beyond the login popup + account card).
+  const showVerify = isDrep || isBoard || isMember || isRegisteredDRep || profile.onchainDrep.proven;
+  return (
+    <div className="space-y-4">
+      {showVerify ? (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-neutral-200 bg-white p-3 text-sm dark:border-neutral-800 dark:bg-neutral-900">
+          <span className="font-medium">{t('DRep key')}</span>
+          <DrepVerifyControl />
+        </div>
+      ) : null}
+      <MemberTabs tabs={tabs} />
+    </div>
+  );
 }
 
 /**

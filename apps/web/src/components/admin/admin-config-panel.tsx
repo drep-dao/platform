@@ -47,35 +47,35 @@ export function AdminConfigPanel({ nonce }: { nonce?: number }) {
   };
 
   return (
-    <section className="rounded-lg border border-slate-800 bg-slate-900/50 p-4">
-      <h2 className="text-sm font-semibold text-slate-200">Platform configuration (break-glass)</h2>
-      <p className="mt-1 text-xs text-slate-400">
+    <section className="rounded-lg border border-neutral-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 p-4">
+      <h2 className="text-sm font-semibold text-neutral-800 dark:text-slate-200">Platform configuration (break-glass)</h2>
+      <p className="mt-1 text-xs text-neutral-500 dark:text-slate-400">
         The board normally owns these settings. Until DReps elect a board, you (admin) can configure the platform here.
         Every change is written to the admin audit log.
       </p>
       {order ? (
-        <p className="mt-2 text-xs text-slate-400">
-          On-chain data source order: <span className="font-mono text-slate-300">{order.join(' → ')}</span>
+        <p className="mt-2 text-xs text-neutral-500 dark:text-slate-400">
+          On-chain data source order: <span className="font-mono text-neutral-700 dark:text-slate-300">{order.join(' → ')}</span>
         </p>
       ) : null}
       {error ? <p className="mt-2 text-xs text-red-400">{error}</p> : null}
       {msg ? <p className="mt-2 text-xs text-emerald-400">{msg}</p> : null}
 
-      <div className="mt-3 divide-y divide-slate-800">
+      <div className="mt-3 divide-y divide-neutral-200 dark:divide-slate-800">
         {(params ?? []).map((p) => {
           const changed = edits[p.key] !== String(p.value);
           return (
             <div key={p.key} className="flex flex-wrap items-center gap-3 py-2.5">
               <div className="min-w-[200px] flex-1">
-                <div className="font-mono text-xs text-slate-200">{p.key}</div>
-                {p.description ? <div className="mt-0.5 text-[11px] text-slate-500">{p.description}</div> : null}
+                <div className="font-mono text-xs text-neutral-800 dark:text-slate-200">{p.key}</div>
+                {p.description ? <div className="mt-0.5 text-[11px] text-neutral-400 dark:text-slate-500">{p.description}</div> : null}
               </div>
               <div className="flex items-center gap-2">
                 {p.type === 'boolean' ? (
                   <select
                     value={edits[p.key] ?? 'false'}
                     onChange={(e) => setEdits({ ...edits, [p.key]: e.target.value })}
-                    className="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-200"
+                    className="rounded border border-neutral-300 dark:border-slate-700 bg-neutral-100 dark:bg-slate-800 px-2 py-1 text-xs text-neutral-800 dark:text-slate-200"
                   >
                     <option value="true">true</option>
                     <option value="false">false</option>
@@ -85,7 +85,7 @@ export function AdminConfigPanel({ nonce }: { nonce?: number }) {
                     value={edits[p.key] ?? ''}
                     onChange={(e) => setEdits({ ...edits, [p.key]: e.target.value })}
                     type={p.type === 'number' ? 'number' : 'text'}
-                    className="w-40 rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-200"
+                    className="w-40 rounded border border-neutral-300 dark:border-slate-700 bg-neutral-100 dark:bg-slate-800 px-2 py-1 text-xs text-neutral-800 dark:text-slate-200"
                   />
                 )}
                 <button
@@ -99,8 +99,8 @@ export function AdminConfigPanel({ nonce }: { nonce?: number }) {
             </div>
           );
         })}
-        {params && params.length === 0 ? <p className="py-2 text-xs text-slate-500">No parameters.</p> : null}
-        {!params && !error ? <p className="py-2 text-xs text-slate-500">Loading…</p> : null}
+        {params && params.length === 0 ? <p className="py-2 text-xs text-neutral-400 dark:text-slate-500">No parameters.</p> : null}
+        {!params && !error ? <p className="py-2 text-xs text-neutral-400 dark:text-slate-500">Loading…</p> : null}
       </div>
     </section>
   );

@@ -47,14 +47,19 @@ export function GroupProposals({ groupKey }: { groupKey: string }) {
       <div className="mt-4 space-y-2">
         {data.proposals.length === 0 ? <p className="text-sm text-neutral-400">{t('No proposals yet.')}</p> : null}
         {data.proposals.map((p) => (
-          <button key={p.id} onClick={() => setOpenId(p.id)} className="flex w-full flex-wrap items-center justify-between gap-2 rounded-md border border-neutral-200 p-3 text-left hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900">
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="truncate font-medium">{p.title}</span>
-              <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">{p.type === 'POLL' ? t('Poll') : p.type === 'INSTRUCTIVE' ? t('Instructive') : t('Informative')}</span>
+          <button key={p.id} onClick={() => setOpenId(p.id)} className="flex w-full flex-col gap-1 rounded-md border border-neutral-200 p-3 text-left hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900">
+            <span className="flex w-full flex-wrap items-center justify-between gap-2">
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="truncate font-medium">{p.title}</span>
+                <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">{p.type === 'POLL' ? t('Poll') : p.type === 'INSTRUCTIVE' ? t('Instructive') : t('Informative')}</span>
+              </span>
+              <span className="flex items-center gap-2 text-xs text-neutral-500">
+                <span>{p.author}</span>
+                <StatusChip status={p.status} />
+              </span>
             </span>
-            <span className="flex items-center gap-2 text-xs text-neutral-500">
-              <span>{p.author}</span>
-              <StatusChip status={p.status} />
+            <span className="text-xs text-neutral-500">
+              {p.votedCount} {t('of')} {p.eligible} {t('members voted')}{p.voters.length ? ` · ${p.voters.join(', ')}` : ''}
             </span>
           </button>
         ))}

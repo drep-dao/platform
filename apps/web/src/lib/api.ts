@@ -2372,7 +2372,7 @@ export interface GroupMemberView { id: string; status: string; displayName: stri
 export interface GroupMembersResult { group: GroupConfig; canManage: boolean; members: GroupMemberView[]; pending: GroupMemberView[] }
 export interface GroupMembership { status: string; displayName: string | null; bio: string | null; photo: string | null; country: string | null; conflictOfInterest: string | null; noSelfVote: boolean; address: string | null; subcategoryIds: string[]; socials: Record<string, string> | null; preferences: Record<string, boolean> | null; since: string | null }
 export interface GroupMembershipResult { group: GroupConfig; membership: GroupMembership | null; canManage: boolean }
-export interface GroupProposalSummary { id: string; title: string; type: string; status: string; author: string; votingEndAt: string; createdAt: string }
+export interface GroupProposalSummary { id: string; title: string; type: string; status: string; author: string; votingEndAt: string; createdAt: string; votedCount: number; eligible: number; voters: string[] }
 export interface GroupProposalsResult { group: GroupConfig; canSubmit: boolean; submitBlockedReason: string | null; proposals: GroupProposalSummary[] }
 export type GroupTally =
   | { kind: 'THRESHOLD'; eligible: number; voted: number; yes: number; no: number; abstain: number; denominator: number; ratioPct: number; thresholdPct: number; approved: boolean }

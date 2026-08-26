@@ -317,16 +317,44 @@ export class GroupsService {
     const submitBlockedReason = isMember ? this.quorumBlockReason(g, memberCount) : null;
     const canSubmit = isMember && !submitBlockedReason;
     const fresh = await this.prisma.groupProposal.findMany({ where: { groupId: g.id }, orderBy: { createdAt: 'desc' }, include: { author: { select: { displayName: true } } } });
+    // §29 — per-proposal vote summary (count + voter names) so the list shows "who voted / how many".
+    const nameOf = await this.groupMemberNames(g.id);
+    const allVotes = await this.prisma.groupVote.findMany({
+      where: { proposalId: { in: fresh.map((p) => p.id) } },
+      select: { proposalId: true, voterUserId: true },
+      distinct: ['proposalId', 'voterUserId'],
+    });
+    const votersByProposal = new Map<string, string[]>();
+    for (const v of allVotes) {
+      const arr = votersByProposal.get(v.proposalId) ?? [];
+      arr.push(v.voterUserId);
+      votersByProposal.set(v.proposalId, arr);
+    }
     return {
       group: this.config(g),
       canSubmit,
       submitBlockedReason,
-      proposals: fresh.map((p) => ({
-        id: p.id, title: p.title, type: p.type, status: p.status,
-        author: p.author.displayName ?? 'Member',
-        votingEndAt: p.votingEndAt.toISOString(), createdAt: p.createdAt.toISOString(),
-      })),
+      proposals: fresh.map((p) => {
+        const voterIds = votersByProposal.get(p.id) ?? [];
+        return {
+          id: p.id, title: p.title, type: p.type, status: p.status,
+          author: nameOf.get(p.authorUserId) ?? p.author.displayName ?? 'Member',
+          votingEndAt: p.votingEndAt.toISOString(), createdAt: p.createdAt.toISOString(),
+          votedCount: voterIds.length,
+          eligible: memberCount,
+          voters: voterIds.map((uid) => nameOf.get(uid) ?? 'Member'),
+        };
+      }),
     };
+  }
+
+  /** §29 — map each group member's userId to their display name (group profile, then account, then "Member"). */
+  private async groupMemberNames(groupId: string): Promise<Map<string, string>> {
+    const members = await this.prisma.groupMember.findMany({
+      where: { groupId },
+      select: { userId: true, displayName: true, user: { select: { displayName: true } } },
+    });
+    return new Map(members.map((m) => [m.userId, m.displayName || m.user.displayName || 'Member']));
   }
 
   async getProposal(userId: string | null | undefined, id: string) {
@@ -342,26 +370,27 @@ export class GroupsService {
       ? (await this.prisma.groupVote.findMany({ where: { proposalId: id, voterUserId: userId }, select: { choice: true } })).map((v) => v.choice)
       : [];
     const poll = fresh.pollOptions as { multiple?: boolean; options?: string[] } | null;
-    // §29 — voters' rationales (one per voter) + this member's own, so the UI can list them + prefill.
+    // §29 — resolve voter names from their GROUP profile (account displayName is often empty for
+    // non-council members), so the detail shows real names (e.g. "Ivan the OG") not "Member".
+    const nameOf = await this.groupMemberNames(g.id);
     const rationaleRows = await this.prisma.groupVote.findMany({
       where: { proposalId: id, NOT: { rationale: null } },
-      select: { voterUserId: true, choice: true, rationale: true, voter: { select: { displayName: true } } },
+      select: { voterUserId: true, choice: true, rationale: true },
       distinct: ['voterUserId'],
       orderBy: { createdAt: 'asc' },
     });
     const rationales = rationaleRows
       .filter((r) => r.rationale?.trim())
-      .map((r) => ({ voter: r.voter.displayName ?? 'Member', choice: r.choice, rationale: r.rationale as string }));
+      .map((r) => ({ voter: nameOf.get(r.voterUserId) ?? 'Member', choice: r.choice, rationale: r.rationale as string }));
     const myRationale = userId
       ? (await this.prisma.groupVote.findFirst({ where: { proposalId: id, voterUserId: userId }, select: { rationale: true } }))?.rationale ?? null
       : null;
-    // §29 — every vote row with the voter's name + choice, so the detail can show who voted what.
     const voterRows = await this.prisma.groupVote.findMany({
       where: { proposalId: id },
-      select: { choice: true, voter: { select: { displayName: true } } },
+      select: { voterUserId: true, choice: true },
       orderBy: { createdAt: 'asc' },
     });
-    const voters = voterRows.map((v) => ({ voter: v.voter.displayName ?? 'Member', choice: v.choice }));
+    const voters = voterRows.map((v) => ({ voter: nameOf.get(v.voterUserId) ?? 'Member', choice: v.choice }));
     return {
       id: fresh.id,
       groupKey: g.key,

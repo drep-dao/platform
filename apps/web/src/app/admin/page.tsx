@@ -10,7 +10,6 @@ import { AdminsPanel } from '@/components/admin/admins-panel';
 import { WalletPanel } from '@/components/admin/wallet-panel';
 import { ResetPanel } from '@/components/admin/reset-panel';
 import { MaintenancePanel } from '@/components/admin/maintenance-panel';
-import { GroupsPanel } from '@/components/admin/groups-panel';
 import { fmtDateTime } from '@/components/round-ui';
 import { StepUpProvider } from '@/components/admin/step-up-provider';
 import { Enable2FA } from '@/components/admin/enable-2fa';
@@ -85,7 +84,6 @@ export default function AdminDashboard() {
       </section>
 
       <MaintenancePanel />
-        <GroupsPanel />
 
       <AdminGenesis key={`genesis-${resetGen}`} onBoardChange={refreshOverview} />
 

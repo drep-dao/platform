@@ -5,6 +5,8 @@ import { groupsApi, type GroupProposalDetail, type GroupProposalsResult } from '
 import { card } from '@/lib/ui';
 import { useT } from '@/lib/prefs-context';
 import { Markdown, MarkdownEditor } from './markdown';
+import { useUrlNav } from '@/lib/use-url-nav';
+import { ShareLinkButton } from './share-link-button';
 import { DiscussionThread } from './discussion-thread';
 import { DateField, toLocalInput } from './round-ui';
 
@@ -15,13 +17,14 @@ const field = 'w-full rounded-md border border-neutral-300 px-3 py-2 text-sm dar
 export function GroupProposals({ groupKey }: { groupKey: string }) {
   const t = useT();
   const [data, setData] = useState<GroupProposalsResult | null>(null);
-  const [openId, setOpenId] = useState<string | null>(null);
+  const { get, setParams } = useUrlNav();
+  const openId = get('gp');
   const [creating, setCreating] = useState(false);
   const load = useCallback(() => { groupsApi.proposals(groupKey).then(setData).catch(() => setData(null)); }, [groupKey]);
   useEffect(load, [load]);
 
   if (!data) return <section className={card}><p className="text-sm text-neutral-500">{t('Loading…')}</p></section>;
-  if (openId) return <GroupProposalView id={openId} onBack={() => { setOpenId(null); load(); }} />;
+  if (openId) return <GroupProposalView id={openId} onBack={() => { setParams({ gp: null }); load(); }} />;
 
   return (
     <section className={card}>
@@ -47,7 +50,7 @@ export function GroupProposals({ groupKey }: { groupKey: string }) {
       <div className="mt-4 space-y-2">
         {data.proposals.length === 0 ? <p className="text-sm text-neutral-400">{t('No proposals yet.')}</p> : null}
         {data.proposals.map((p) => (
-          <button key={p.id} onClick={() => setOpenId(p.id)} className="flex w-full flex-col gap-1 rounded-md border border-neutral-200 p-3 text-left hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900">
+          <button key={p.id} onClick={() => setParams({ gp: p.id })} className="flex w-full flex-col gap-1 rounded-md border border-neutral-200 p-3 text-left hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900">
             <span className="flex w-full flex-wrap items-center justify-between gap-2">
               <span className="flex min-w-0 items-center gap-2">
                 <span className="truncate font-medium">{p.title}</span>
@@ -203,7 +206,10 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
 
   return (
     <section className={card}>
-      <button onClick={onBack} className="text-sm text-emerald-700 hover:underline dark:text-emerald-400">← {t('Back')}</button>
+      <div className="flex items-center justify-between gap-2">
+        <button onClick={onBack} className="text-sm text-emerald-700 hover:underline dark:text-emerald-400">← {t('Back')}</button>
+        <ShareLinkButton />
+      </div>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">{p.title}</h2>
         <span className="flex items-center gap-2 text-xs text-neutral-500"><span>{p.author}</span><StatusChip status={p.status} /></span>

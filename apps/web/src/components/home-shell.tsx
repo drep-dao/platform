@@ -68,13 +68,13 @@ export function HomeShell() {
   useEffect(() => { if (GROUPS_ENABLED) groupsApi.listActive().then(setGroups).catch(() => setGroups([])); }, []);
   const rawView = get('view') ?? 'overview';
   const groupMatch = /^g:([a-z0-9-]+):(members|proposals)$/.exec(rawView);
-  const openGroupView = (key: string) => setParams({ view: key, tab: null, round: null, proposal: null, ip: null, expert: null, doc: null });
+  const openGroupView = (key: string) => setParams({ view: key, tab: null, round: null, proposal: null, ip: null, expert: null, doc: null, gp: null });
   // Switching the menu (or signing in as a different user) clears all sub-navigation —
   // tab inside My-area, opened round / funding proposal, opened internal proposal (`ip`).
   const [viewNonce, setViewNonce] = useState(0);
   const setView = (v: View) => {
     if (v === view) setViewNonce((n) => n + 1); // same item → reset to its overview
-    setParams({ view: v, tab: null, round: null, proposal: null, ip: null, expert: null, doc: null });
+    setParams({ view: v, tab: null, round: null, proposal: null, ip: null, expert: null, doc: null, gp: null });
   };
 
   // Reset sub-navigation whenever the signed-in user changes (login / logout / switch wallet) so
@@ -83,10 +83,14 @@ export function HomeShell() {
   const prevUserIdRef = useRef<string | null>(null);
   useEffect(() => {
     const id = profile?.user?.id ?? null;
-    if (prevUserIdRef.current !== id) {
-      prevUserIdRef.current = id;
-      setParams({ tab: null, round: null, proposal: null, ip: null });
+    const prev = prevUserIdRef.current;
+    // Clear only on a real switch/logout (prev was a signed-in user); NOT on the first anonymous→login
+    // transition — otherwise a shared ?proposal=/?ip=/?gp= link would be dropped the moment the
+    // visitor logs in to view or vote.
+    if (prev !== null && prev !== id) {
+      setParams({ tab: null, round: null, proposal: null, ip: null, gp: null });
     }
+    prevUserIdRef.current = id;
   }, [profile, setParams]);
 
   // §20 — left-nav My-area to-do badge. Computed for every render (even

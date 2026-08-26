@@ -9,7 +9,7 @@ import {
 import { AdminAuditService } from './admin-audit.service';
 import { AdminGuard } from './admin.guard';
 import { CurrentAdmin } from './current-admin.decorator';
-import { Admin2faDto, AdminLoginDto } from './dto';
+import { Admin2faDto, AdminLoginDto, TwoFaCodeDto } from './dto';
 import { RateLimit } from '../common/rate-limit/rate-limit.decorator';
 
 function adminCookieOptions(secure: boolean) {
@@ -81,8 +81,23 @@ export class SysadminAuthController {
 
   @UseGuards(AdminGuard)
   @Get('me')
-  me(@CurrentAdmin() admin: AdminIdentity) {
-    return admin;
+  async me(@CurrentAdmin() admin: AdminIdentity) {
+    return { ...admin, twoFaEnabled: await this.auth.adminHasTwoFa(admin.adminId) };
+  }
+
+  // SEC-03 — self-service 2FA enrollment (needed for step-up on privileged actions).
+  @UseGuards(AdminGuard)
+  @RateLimit({ points: 10, durationSec: 60, by: 'ip' })
+  @Post('2fa/setup')
+  twoFaSetup(@CurrentAdmin() admin: AdminIdentity) {
+    return this.auth.beginTwoFaSetup(admin.adminId, admin.username);
+  }
+
+  @UseGuards(AdminGuard)
+  @RateLimit({ points: 10, durationSec: 60, by: 'ip' })
+  @Post('2fa/enable')
+  twoFaEnable(@CurrentAdmin() admin: AdminIdentity, @Body() dto: TwoFaCodeDto) {
+    return this.auth.enableTwoFa(admin.adminId, dto.code);
   }
 
   private setSession(res: Response, token: string) {

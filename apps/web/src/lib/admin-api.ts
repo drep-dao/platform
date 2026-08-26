@@ -8,6 +8,7 @@ export interface AdminMe {
   adminId: string;
   username: string;
   email: string;
+  twoFaEnabled?: boolean;
 }
 
 export interface AdminHealth {
@@ -69,29 +70,59 @@ export type LoginResult =
   | { status: 'ok'; admin: AdminMe }
   | { status: '2fa_required'; pendingToken: string };
 
+// SEC-03 — step-up: privileged actions answer 401 {error:"step_up_required"} (or invalid/replay).
+// A registered handler collects a fresh TOTP code and the request is retried with x-stepup-totp.
+// "step_up_2fa_not_enrolled" surfaces as StepUpEnrollError so the UI can send the admin to enable 2FA.
+export class StepUpEnrollError extends Error {}
+type StepUpHandler = (retryMessage?: string) => Promise<string | null>;
+let stepUpHandler: StepUpHandler | null = null;
+export function setStepUpHandler(fn: StepUpHandler | null): void {
+  stepUpHandler = fn;
+}
+const STEP_UP_ERRORS = new Set(['step_up_required', 'step_up_invalid', 'step_up_replay']);
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  let res: Response;
-  try {
-    res = await fetch(`${API_BASE}${path}`, {
-      ...init,
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
-      signal: init?.signal ?? AbortSignal.timeout(10000),
-    });
-  } catch {
-    throw new Error(`Cannot reach the admin API at ${API_BASE}.`);
-  }
-  if (!res.ok) {
-    let detail = res.statusText;
+  let stepUpCode: string | undefined;
+  let attempts = 0;
+  // Loop only to re-prompt for a step-up code; a normal request runs once.
+  for (;;) {
+    let res: Response;
     try {
-      const body = await res.json();
-      detail = body.message ?? detail;
+      res = await fetch(`${API_BASE}${path}`, {
+        ...init,
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(init?.headers ?? {}),
+          ...(stepUpCode ? { 'x-stepup-totp': stepUpCode } : {}),
+        },
+        signal: init?.signal ?? AbortSignal.timeout(10000),
+      });
+    } catch {
+      throw new Error(`Cannot reach the admin API at ${API_BASE}.`);
+    }
+    if (res.ok) return (res.status === 204 ? undefined : await res.json()) as T;
+
+    let body: { error?: string; message?: string } | null = null;
+    try {
+      body = await res.json();
     } catch {
       /* non-JSON */
     }
+    const err = body?.error;
+    if (err === 'step_up_2fa_not_enrolled') {
+      throw new StepUpEnrollError(body?.message ?? 'Enable two-factor authentication to perform this action.');
+    }
+    if (err && STEP_UP_ERRORS.has(err) && stepUpHandler && attempts < 3) {
+      attempts++;
+      const code = await stepUpHandler(attempts > 1 ? (body?.message ?? 'Invalid code') : undefined);
+      if (!code) throw new Error('Action cancelled.');
+      stepUpCode = code;
+      continue;
+    }
+    const detail = body?.message ?? res.statusText;
     throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
   }
-  return (res.status === 204 ? undefined : await res.json()) as T;
 }
 
 // §29 — configurable groups.
@@ -136,6 +167,14 @@ export const adminApi = {
     }),
   logout: () => request<{ ok: boolean }>('/logout', { method: 'POST' }),
   me: () => request<AdminMe>('/me'),
+  // SEC-03 — self-service 2FA enrollment.
+  twoFa: {
+    setup: () =>
+      request<{ totpUri: string; totpBase32: string; totpQrDataUrl: string; recoveryCodes: string[] }>('/2fa/setup', {
+        method: 'POST',
+      }),
+    enable: (code: string) => request<{ enabled: true }>('/2fa/enable', { method: 'POST', body: JSON.stringify({ code }) }),
+  },
   health: () => request<AdminHealth>('/health'),
   admins: () => request<AdminRow[]>('/admins'),
   auditLog: () => request<AuditRow[]>('/audit-log'),

@@ -12,6 +12,8 @@ import { ResetPanel } from '@/components/admin/reset-panel';
 import { MaintenancePanel } from '@/components/admin/maintenance-panel';
 import { GroupsPanel } from '@/components/admin/groups-panel';
 import { fmtDateTime } from '@/components/round-ui';
+import { StepUpProvider } from '@/components/admin/step-up-provider';
+import { Enable2FA } from '@/components/admin/enable-2fa';
 
 export default function AdminDashboard() {
   const { admin, loading, logout } = useAdminAuth();
@@ -22,6 +24,7 @@ export default function AdminDashboard() {
   // re-mount + re-fetch (otherwise they keep showing pre-reset state until
   // the user hard-refreshes the page).
   const [resetGen, setResetGen] = useState(0);
+  const [twoFaEnabled, setTwoFaEnabled] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (!loading && !admin) router.replace('/admin/login');
@@ -30,6 +33,7 @@ export default function AdminDashboard() {
   const refreshOverview = useCallback(() => {
     adminApi.health().then(setHealth).catch(() => undefined);
     adminApi.auditLog().then(setAudit).catch(() => undefined);
+    adminApi.me().then((m) => setTwoFaEnabled(!!m.twoFaEnabled)).catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -44,6 +48,7 @@ export default function AdminDashboard() {
   const dot = (s: string) => (s === 'up' ? 'text-emerald-400' : 'text-red-400');
 
   return (
+    <StepUpProvider>
     <div className="space-y-6">
       <header className="flex items-center justify-between">
         <div>
@@ -59,6 +64,8 @@ export default function AdminDashboard() {
           Log out
         </button>
       </header>
+
+      {twoFaEnabled === false ? <Enable2FA onEnabled={refreshOverview} /> : null}
 
       <section className="rounded-lg border border-slate-800 bg-slate-900/50 p-4">
         <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-400">Overview</h2>
@@ -104,6 +111,7 @@ export default function AdminDashboard() {
         </ul>
       </section>
     </div>
+    </StepUpProvider>
   );
 }
 

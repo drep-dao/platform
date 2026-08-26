@@ -9,6 +9,10 @@ export class Admin2faDto {
   @IsString() @IsNotEmpty() @MaxLength(100) pendingToken!: string;
   @IsString() @IsNotEmpty() @MaxLength(20) code!: string;
 }
+/** SEC-03 — confirm a self-service 2FA enrollment (or step-up). */
+export class TwoFaCodeDto {
+  @IsString() @IsNotEmpty() @MaxLength(20) code!: string;
+}
 
 export class GenesisUploadDto {
   /** Parsed genesis.json — array OR object. Validated structurally in GenesisService. */

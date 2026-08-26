@@ -4,6 +4,7 @@ import { AdminAuditService } from './admin-audit.service';
 import { AdminService } from './admin.service';
 import { GenesisService } from './genesis.service';
 import { AdminGuard } from './admin.guard';
+import { StepUpGuard } from './step-up.guard';
 import { SysadminAuthController } from './sysadmin-auth.controller';
 import { SysadminGenesisController } from './sysadmin-genesis.controller';
 import { SysadminOpsController } from './sysadmin-ops.controller';
@@ -30,7 +31,7 @@ import { GovernanceModule } from '../governance/governance.module';
     SysadminMaintenanceController,
     SysadminGroupsController,
   ],
-  providers: [AdminAuthService, AdminAuditService, AdminService, GenesisService, AdminGuard, ResetService],
+  providers: [AdminAuthService, AdminAuditService, AdminService, GenesisService, AdminGuard, StepUpGuard, ResetService],
   exports: [AdminAuthService],
 })
 export class AdminModule {}

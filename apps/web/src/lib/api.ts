@@ -2404,6 +2404,8 @@ export interface GroupProposalDetail {
   deliveryDate: string | null;
   canVote: boolean;
   myVotes: string[];
+  myRationale: string | null;
+  rationales: { voter: string; choice: string; rationale: string }[];
   canComment: boolean;
   canModerate: boolean;
   comments: GroupComment[];
@@ -2411,7 +2413,7 @@ export interface GroupProposalDetail {
 }
 export interface RegisterGroupInput { displayName?: string; bio?: string; photo?: string; country?: string; conflictOfInterest?: string; noSelfVote?: boolean; address?: string; subcategoryIds?: string[]; socials?: Record<string, string>; preferences?: Record<string, boolean> }
 export interface SubmitGroupProposalInput { title: string; contentMd: string; type: string; votingEndAt: string; pollOptions?: string[]; pollMultiple?: boolean; actors?: string[]; deliveryDate?: string }
-export interface GroupVoteInput { choice?: string; options?: string[] }
+export interface GroupVoteInput { choice?: string; options?: string[]; rationale?: string }
 
 export const groupsApi = {
   listActive: () => request<GroupConfig[]>('/groups'),

@@ -342,6 +342,19 @@ export class GroupsService {
       ? (await this.prisma.groupVote.findMany({ where: { proposalId: id, voterUserId: userId }, select: { choice: true } })).map((v) => v.choice)
       : [];
     const poll = fresh.pollOptions as { multiple?: boolean; options?: string[] } | null;
+    // §29 — voters' rationales (one per voter) + this member's own, so the UI can list them + prefill.
+    const rationaleRows = await this.prisma.groupVote.findMany({
+      where: { proposalId: id, NOT: { rationale: null } },
+      select: { voterUserId: true, choice: true, rationale: true, voter: { select: { displayName: true } } },
+      distinct: ['voterUserId'],
+      orderBy: { createdAt: 'asc' },
+    });
+    const rationales = rationaleRows
+      .filter((r) => r.rationale?.trim())
+      .map((r) => ({ voter: r.voter.displayName ?? 'Member', choice: r.choice, rationale: r.rationale as string }));
+    const myRationale = userId
+      ? (await this.prisma.groupVote.findFirst({ where: { proposalId: id, voterUserId: userId }, select: { rationale: true } }))?.rationale ?? null
+      : null;
     return {
       id: fresh.id,
       groupKey: g.key,
@@ -359,6 +372,8 @@ export class GroupsService {
       deliveryDate: fresh.deliveryDate?.toISOString() ?? null,
       canVote: isMember && fresh.status === 'ACTIVE',
       myVotes,
+      myRationale,
+      rationales,
       canComment: await this.canComment(userId, g),
       canModerate: await this.canManageMembers(userId, g),
       comments: await this.loadComments(id, userId, g),
@@ -433,7 +448,8 @@ export class GroupsService {
     }
     // Re-vote replaces the member's prior votes (no on-chain history needed here).
     await this.prisma.groupVote.deleteMany({ where: { proposalId, voterUserId: userId } });
-    await this.prisma.groupVote.createMany({ data: rows.map((r) => ({ proposalId, voterUserId: userId, choice: r.choice })) });
+    const rationale = dto.rationale?.trim() || null;
+    await this.prisma.groupVote.createMany({ data: rows.map((r) => ({ proposalId, voterUserId: userId, choice: r.choice, rationale })) });
     return this.getProposal(userId, proposalId);
   }
 

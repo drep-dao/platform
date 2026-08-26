@@ -58,6 +58,7 @@ export class SubmitGroupProposalDto {
 export class GroupVoteDto {
   @IsOptional() @IsIn(['YES', 'NO', 'ABSTAIN']) choice?: string;
   @IsOptional() @IsArray() @IsString({ each: true }) options?: string[];
+  @IsOptional() @IsString() @MaxLength(4000) rationale?: string;
 }
 
 export class GroupCommentDto {

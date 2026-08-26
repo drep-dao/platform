@@ -1797,6 +1797,7 @@ model GroupVote {
   proposalId  String   @map("proposal_id") @db.Uuid
   voterUserId String   @map("voter_user_id") @db.Uuid
   choice      String // INFORMATIVE: YES | NO | ABSTAIN. POLL: the option label (one row per chosen option).
+  rationale   String? // §29 — optional reason the member gives for their vote
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   proposal GroupProposal @relation(fields: [proposalId], references: [id])

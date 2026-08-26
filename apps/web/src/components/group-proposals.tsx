@@ -89,6 +89,17 @@ function SubmitForm({ group, onDone }: { group: GroupProposalsResult['group']; o
   const [error, setError] = useState<string | null>(null);
   const isPoll = type === 'POLL';
   const isInstructive = type === 'INSTRUCTIVE';
+  // §29 — show how long voting will run (mirrors internal proposals) so the picked time is obvious.
+  const votingDuration = (() => {
+    const mins = Math.floor((new Date(votingEnd).getTime() - Date.now()) / 60_000);
+    if (mins < 1) return null;
+    const d = Math.floor(mins / 1440), h = Math.floor((mins % 1440) / 60), m = mins % 60;
+    const parts: string[] = [];
+    if (d) parts.push(`${d} ${d === 1 ? t('day') : t('days')}`);
+    if (h) parts.push(`${h} ${h === 1 ? t('hour') : t('hours')}`);
+    if (m) parts.push(`${m} ${m === 1 ? t('minute') : t('minutes')}`);
+    return parts.slice(0, 2).join(' ');
+  })();
 
   const submit = async () => {
     setError(null);
@@ -144,6 +155,7 @@ function SubmitForm({ group, onDone }: { group: GroupProposalsResult['group']; o
       ) : null}
       <label className="block text-sm">{t('Voting ends')}
         <DateField value={votingEnd} onChange={setVotingEnd} min={toLocalInput(new Date().toISOString())} required />
+        {votingDuration ? <span className="mt-1 block text-xs text-neutral-500">{t('Voting will last')} {votingDuration}.</span> : null}
       </label>
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
       <button disabled={busy} onClick={submit} className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">{busy ? t('Submitting…') : t('Submit proposal')}</button>
@@ -156,15 +168,16 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
   const [p, setP] = useState<GroupProposalDetail | null>(null);
   const [busy, setBusy] = useState(false);
   const [picks, setPicks] = useState<string[]>([]);
-  const load = useCallback(() => { groupsApi.proposal(id).then((d) => { setP(d); setPicks(d.myVotes); }).catch(() => setP(null)); }, [id]);
+  const [rationale, setRationale] = useState('');
+  const load = useCallback(() => { groupsApi.proposal(id).then((d) => { setP(d); setPicks(d.myVotes); setRationale(d.myRationale ?? ''); }).catch(() => setP(null)); }, [id]);
   useEffect(load, [load]);
 
   if (!p) return <section className={card}><button onClick={onBack} className="text-sm text-emerald-700 hover:underline dark:text-emerald-400">← {t('Back')}</button><p className="mt-2 text-sm text-neutral-500">{t('Loading…')}</p></section>;
 
-  const castThreshold = async (choice: string) => { setBusy(true); try { setP(await groupsApi.vote(id, { choice })); } finally { setBusy(false); } };
+  const castThreshold = async (choice: string) => { setBusy(true); try { setP(await groupsApi.vote(id, { choice, rationale: rationale.trim() || undefined })); } finally { setBusy(false); } };
   const castPoll = async () => {
     setBusy(true);
-    try { setP(await groupsApi.vote(id, picks.includes('ABSTAIN') ? { choice: 'ABSTAIN' } : { options: picks })); } finally { setBusy(false); }
+    try { setP(await groupsApi.vote(id, picks.includes('ABSTAIN') ? { choice: 'ABSTAIN', rationale: rationale.trim() || undefined } : { options: picks, rationale: rationale.trim() || undefined })); } finally { setBusy(false); }
   };
   const togglePick = (opt: string) => {
     if (!p.poll) return;
@@ -227,7 +240,11 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
 
       {/* vote */}
       {p.canVote ? (
-        p.type === 'POLL' ? (
+        <div className="mt-3 space-y-2">
+          <label className="block text-sm">{t('Rationale')} <span className="text-xs text-neutral-400">{t('(optional)')}</span>
+            <textarea value={rationale} onChange={(e) => setRationale(e.target.value)} rows={2} className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900" placeholder={t('Why are you voting this way?')} />
+          </label>
+          {p.type === 'POLL' ? (
           <div className="mt-3 space-y-2">
             <div className="space-y-1">
               {p.poll?.options.map((o) => (
@@ -245,8 +262,25 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
               <button key={c} disabled={busy} onClick={() => castThreshold(c)} className={`rounded px-3 py-1 text-sm font-medium disabled:opacity-40 ${p.myVotes.includes(c) ? 'bg-emerald-600 text-white' : 'border border-neutral-300 hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800'}`}>{t(c === 'YES' ? 'Yes' : c === 'NO' ? 'No' : 'Abstain')}</button>
             ))}
           </div>
-        )
+        )}
+        </div>
       ) : p.status === 'ACTIVE' ? <p className="mt-3 text-xs text-neutral-500">{t('Only group members can vote.')}</p> : null}
+
+      {/* §29 — voters' rationales */}
+      {p.rationales.length > 0 ? (
+        <div className="mt-4">
+          <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{t('Rationales')}</div>
+          <ul className="mt-1 space-y-1">
+            {p.rationales.map((r, i) => (
+              <li key={i} className="text-sm">
+                <span className="font-medium">{r.voter}</span>{' '}
+                <span className="text-xs text-neutral-400">({t(r.choice === 'YES' ? 'Yes' : r.choice === 'NO' ? 'No' : r.choice === 'ABSTAIN' ? 'Abstain' : r.choice)})</span>:{' '}
+                <span className="text-neutral-600 dark:text-neutral-300">{r.rationale}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       {/* comments */}
       <div className="mt-4">

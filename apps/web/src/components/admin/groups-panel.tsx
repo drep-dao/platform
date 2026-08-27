@@ -53,7 +53,7 @@ export function GroupsPanel() {
       </div>
       <p className="mt-2 text-xs text-neutral-700 dark:text-slate-300">
         Create a group, configure it, then <strong>Activate</strong> to turn it on (it starts hidden). Hiding pauses a group without deleting it.
-        Voting is fixed for every group: <em>members only · 1 member = 1 vote · 67% threshold</em>.
+        Voting is members-only, 1 member = 1 vote; the <em>pass threshold is configurable per group</em> below.
       </p>
 
       {error ? <p className="mt-2 rounded bg-red-500/15 px-2 py-1 text-xs text-red-300">{error}</p> : null}
@@ -152,7 +152,7 @@ function GroupEditor({ group, dreps, busy, onSave, onReload }: {
         <div className="mt-1 flex flex-wrap gap-4">
           {PROPOSAL_TYPES.map(([k, l]) => <Check key={k} checked={proposalTypes.includes(k)} onChange={toggle(proposalTypes, setProposalTypes, k)} label={l} />)}
         </div>
-        <p className="mt-1 text-xs text-neutral-400 dark:text-slate-500">Fixed for all proposals: title, content (edit/preview), voting-ends date · voters = members only · 1 member = 1 vote · 67% threshold.</p>
+        <p className="mt-1 text-xs text-neutral-400 dark:text-slate-500">Fixed for all proposals: title, content (edit/preview), voting-ends date · voters = members only · 1 member = 1 vote. The pass threshold is set below.</p>
       </div>
 
       <div className="flex flex-wrap items-end gap-3">

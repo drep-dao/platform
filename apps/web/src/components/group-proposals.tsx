@@ -38,7 +38,7 @@ export function GroupProposals({ groupKey }: { groupKey: string }) {
           </button>
         ) : null}
       </div>
-      <p className="mt-1 text-sm text-neutral-500">{t('Members only · 1 member = 1 vote · 67% threshold.')}</p>
+      <p className="mt-1 text-sm text-neutral-500">{t('Members only · 1 member = 1 vote')} · {data.group.voting.thresholdPct}% {t('threshold')}.</p>
 
       {/* §29 OG — member-count quorum not met: submitting is blocked until it is. */}
       {!data.canSubmit && data.submitBlockedReason ? (

@@ -2364,14 +2364,17 @@ export interface GroupConfig {
   approverName: string | null;
   commenters: string[];
   voting: { voters: string; votingType: string; thresholdPct: number };
+  membersCanApprove: boolean; // §29 OG self-governance
+  quorumMode: string; // OPEN | EXACT | MINIMUM
+  quorumCount: number | null;
 }
-export interface GroupMembershipMine { groupKey: string; groupName: string; status: string }
-export interface GroupMemberView { id: string; status: string; displayName: string; bio: string | null; photo: string | null; country: string | null; conflictOfInterest: string | null; address: string | null; subcategoryIds: string[]; socials: Record<string, string> | null; preferences: Record<string, boolean> | null; since: string | null }
+export interface GroupMembershipMine { groupKey: string; groupName: string; status: string; displayName: string | null; canManage: boolean }
+export interface GroupMemberView { id: string; status: string; displayName: string; bio: string | null; photo: string | null; country: string | null; conflictOfInterest: string | null; noSelfVote: boolean | null; address: string | null; subcategoryIds: string[]; socials: Record<string, string> | null; preferences: Record<string, boolean> | null; since: string | null }
 export interface GroupMembersResult { group: GroupConfig; canManage: boolean; members: GroupMemberView[]; pending: GroupMemberView[] }
-export interface GroupMembership { status: string; displayName: string | null; bio: string | null; photo: string | null; country: string | null; conflictOfInterest: string | null; address: string | null; subcategoryIds: string[]; socials: Record<string, string> | null; preferences: Record<string, boolean> | null; since: string | null }
+export interface GroupMembership { status: string; displayName: string | null; bio: string | null; photo: string | null; country: string | null; conflictOfInterest: string | null; noSelfVote: boolean; address: string | null; subcategoryIds: string[]; socials: Record<string, string> | null; preferences: Record<string, boolean> | null; since: string | null }
 export interface GroupMembershipResult { group: GroupConfig; membership: GroupMembership | null; canManage: boolean }
-export interface GroupProposalSummary { id: string; title: string; type: string; status: string; author: string; votingEndAt: string; createdAt: string }
-export interface GroupProposalsResult { group: GroupConfig; canSubmit: boolean; proposals: GroupProposalSummary[] }
+export interface GroupProposalSummary { id: string; title: string; type: string; status: string; author: string; votingEndAt: string; createdAt: string; votedCount: number; eligible: number; voters: { voter: string; choice: string }[]; result: { ratioPct: number; thresholdPct: number; approved: boolean } | null }
+export interface GroupProposalsResult { group: GroupConfig; canSubmit: boolean; submitBlockedReason: string | null; proposals: GroupProposalSummary[] }
 export type GroupTally =
   | { kind: 'THRESHOLD'; eligible: number; voted: number; yes: number; no: number; abstain: number; denominator: number; ratioPct: number; thresholdPct: number; approved: boolean }
   | { kind: 'POLL'; eligible: number; voted: number; abstain: number; options: { option: string; voters: number }[] };
@@ -2402,21 +2405,30 @@ export interface GroupProposalDetail {
   deliveryDate: string | null;
   canVote: boolean;
   myVotes: string[];
+  myRationale: string | null;
+  rationales: { voter: string; choice: string; rationale: string }[];
+  voters: { voter: string; choice: string }[];
   canComment: boolean;
   canModerate: boolean;
   comments: GroupComment[];
+  docHash: string; // §3 — SHA-256 of title+content; matches the on-chain anchor
+  anchorTxHash: string | null;
   tally: GroupTally;
 }
-export interface RegisterGroupInput { displayName?: string; bio?: string; photo?: string; country?: string; conflictOfInterest?: string; address?: string; subcategoryIds?: string[]; socials?: Record<string, string>; preferences?: Record<string, boolean> }
+export interface RegisterGroupInput { displayName?: string; bio?: string; photo?: string; country?: string; conflictOfInterest?: string; noSelfVote?: boolean; address?: string; subcategoryIds?: string[]; socials?: Record<string, string>; preferences?: Record<string, boolean> }
 export interface SubmitGroupProposalInput { title: string; contentMd: string; type: string; votingEndAt: string; pollOptions?: string[]; pollMultiple?: boolean; actors?: string[]; deliveryDate?: string }
-export interface GroupVoteInput { choice?: string; options?: string[] }
+export interface GroupVoteInput { choice?: string; options?: string[]; rationale?: string }
 
 export const groupsApi = {
   listActive: () => request<GroupConfig[]>('/groups'),
   mine: () => request<GroupMembershipMine[]>('/groups/mine'),
+  pendingApprovalsCount: () => request<{ count: number }>('/groups/pending-approvals-count'),
+  pendingVotesCount: () => request<{ count: number }>('/groups/pending-votes-count'),
   membership: (key: string) => request<GroupMembershipResult>(`/groups/${key}/membership`),
   register: (key: string, input: RegisterGroupInput) => request<GroupMembershipResult>(`/groups/${key}/register`, { method: 'POST', body: JSON.stringify(input) }),
   updateProfile: (key: string, input: RegisterGroupInput) => request<GroupMembershipResult>(`/groups/${key}/profile`, { method: 'PATCH', body: JSON.stringify(input) }),
+  leave: (key: string) => request<{ left: true }>(`/groups/${key}/leave`, { method: 'POST' }),
+  updateVoting: (key: string, input: { quorumMode: string; quorumCount?: number | null }) => request<GroupMembershipResult>(`/groups/${key}/voting`, { method: 'PATCH', body: JSON.stringify(input) }),
   members: (key: string) => request<GroupMembersResult>(`/groups/${key}/members`),
   approveMember: (key: string, memberId: string) => request<GroupMembersResult>(`/groups/${key}/members/${memberId}/approve`, { method: 'POST' }),
   rejectMember: (key: string, memberId: string) => request<GroupMembersResult>(`/groups/${key}/members/${memberId}/reject`, { method: 'POST' }),

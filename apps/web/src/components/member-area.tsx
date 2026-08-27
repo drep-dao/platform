@@ -132,7 +132,7 @@ export function MemberArea() {
   // §29 OG self-governance — a top-menu "Applications" item for members who may approve applicants,
   // unless they are a council member (whose own Applications tab already shows group approvals).
   if (GROUPS_ENABLED && !isMember && !isBoard && myGroups.some((g) => g.canManage)) {
-    tabs.push({ key: 'group-apps', label: 'Applications', node: <GroupApprovals showWhenEmpty /> });
+    tabs.push({ key: 'group-apps', label: 'Applications', badge: todo.groupApplications, node: <GroupApprovals showWhenEmpty /> });
   }
 
   // §27 — a DRep's own rule documents: draft privately, publish, edit until an approval vote opens.

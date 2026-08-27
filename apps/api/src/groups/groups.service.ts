@@ -171,6 +171,20 @@ export class GroupsService {
     })));
   }
 
+  /** §29 — total pending applicants across every ACTIVE group this member may approve. Feeds the
+   *  to-do badge so a self-governing group's approver (e.g. an OG member) is notified without
+   *  opening the Applications tab. */
+  async pendingApprovalsCount(userId: string | null | undefined): Promise<number> {
+    if (!userId) return 0;
+    const groups = await this.prisma.group.findMany({ where: { status: 'ACTIVE' } });
+    let count = 0;
+    for (const g of groups) {
+      if (!(await this.canManageMembers(userId, g as unknown as GroupRow))) continue;
+      count += await this.prisma.groupMember.count({ where: { groupId: g.id, status: 'PENDING' } });
+    }
+    return count;
+  }
+
   async register(userId: string, key: string, dto: RegisterGroupDto) {
     const g = await this.activeGroupByKey(key);
     const existing = await this.prisma.groupMember.findUnique({ where: { groupId_userId: { groupId: g.id, userId } } });
@@ -338,7 +352,8 @@ export class GroupsService {
       m.set(v.voterUserId, arr);
     }
     // §29 — per-proposal tally so the list shows YES% / threshold / passing without opening.
-    const tallies = await Promise.all(fresh.map((p) => this.tally(p)));
+    // Decided proposals use their FROZEN snapshot (membership changes never rewrite history).
+    const tallies = await Promise.all(fresh.map((p) => this.resolveTally(p)));
     return {
       group: this.config(g),
       canSubmit,
@@ -350,8 +365,9 @@ export class GroupsService {
           id: p.id, title: p.title, type: p.type, status: p.status,
           author: nameOf.get(p.authorUserId) ?? p.author.displayName ?? 'Member',
           votingEndAt: p.votingEndAt.toISOString(), createdAt: p.createdAt.toISOString(),
-          votedCount: vmap.size,
-          eligible: memberCount,
+          // frozen for decided proposals (tv comes from resolveTally), live while ACTIVE
+          votedCount: tv.voted,
+          eligible: tv.eligible,
           voters: [...vmap.entries()].map(([uid, choices]) => ({ voter: nameOf.get(uid) ?? 'Member', choice: choices.join('/') })),
           result: tv.kind === 'THRESHOLD'
             ? { ratioPct: tv.ratioPct, thresholdPct: tv.thresholdPct, approved: tv.approved }
@@ -378,7 +394,7 @@ export class GroupsService {
     if (!fresh) throw new NotFoundException('proposal not found');
     const g = fresh.group as unknown as GroupRow;
     const isMember = !!userId && (await this.admittedMember(g.id, userId));
-    const tally = await this.tally(fresh);
+    const tally = await this.resolveTally(fresh);
     const myVotes = userId
       ? (await this.prisma.groupVote.findMany({ where: { proposalId: id, voterUserId: userId }, select: { choice: true } })).map((v) => v.choice)
       : [];
@@ -513,9 +529,15 @@ export class GroupsService {
   }
 
   private async tally(p: { id: string; groupId: string; type: string; pollOptions: unknown }) {
+    return this.tallyWith(p, await this.admittedMemberIds(p.groupId));
+  }
+
+  /** §29 — the LIVE tally against a given eligible-member set. `tally()` passes the group's current
+   *  members; at finalization the result is frozen into `decidedTally` so later membership changes
+   *  (a new OG member joining) can never alter a closed proposal's outcome. */
+  private async tallyWith(p: { id: string; groupId: string; type: string; pollOptions: unknown }, memberIds: Set<string>) {
     const group = await this.prisma.group.findUnique({ where: { id: p.groupId }, select: { thresholdPct: true } });
     const thresholdPct = group?.thresholdPct ?? 67;
-    const memberIds = await this.admittedMemberIds(p.groupId);
     const eligible = memberIds.size;
     const votes = (await this.prisma.groupVote.findMany({ where: { proposalId: p.id } })).filter((v) => memberIds.has(v.voterUserId));
     if (p.type === 'POLL') {
@@ -546,12 +568,44 @@ export class GroupsService {
     return { kind: 'THRESHOLD' as const, eligible, voted: yes + no + abstain, yes, no, abstain, denominator, ratioPct, thresholdPct, approved: ratioPct >= thresholdPct };
   }
 
+  /** §29 — members admitted as of `at` (and not yet removed): the eligible set at decision time,
+   *  used to reconstruct the frozen tally for proposals that were decided before it was stored. */
+  private async admittedMemberIdsAsOf(groupId: string, at: Date): Promise<Set<string>> {
+    const rows = await this.prisma.groupMember.findMany({
+      where: { groupId, admittedAt: { lte: at }, OR: [{ removedAt: null }, { removedAt: { gt: at } }] },
+      select: { userId: true },
+    });
+    return new Set(rows.map((r) => r.userId));
+  }
+
+  /** §29 — the tally to DISPLAY: the FROZEN snapshot for a decided proposal (so a later membership
+   *  change never rewrites a closed proposal's result), or the live tally while still ACTIVE. */
+  private async resolveTally(p: { id: string; groupId: string; type: string; pollOptions: unknown; status: string; decidedTally: unknown }): Promise<Awaited<ReturnType<GroupsService['tallyWith']>>> {
+    if (p.status !== 'ACTIVE' && p.decidedTally) return p.decidedTally as Awaited<ReturnType<GroupsService['tallyWith']>>;
+    return this.tally(p);
+  }
+
+  /** §29 — one-off: freeze the tally of proposals decided before `decidedTally` existed, using the
+   *  membership as it was at their decision time. Idempotent — skips proposals already frozen. */
+  async backfillDecidedTallies(): Promise<number> {
+    const decided = await this.prisma.groupProposal.findMany({ where: { status: { in: ['PASSED', 'FAILED', 'CLOSED'] } } });
+    let n = 0;
+    for (const p of decided) {
+      if (p.decidedTally) continue;
+      const at = p.decidedAt ?? p.votingEndAt;
+      const t = await this.tallyWith(p, await this.admittedMemberIdsAsOf(p.groupId, at));
+      await this.prisma.groupProposal.update({ where: { id: p.id }, data: { decidedTally: t as unknown as object } });
+      n++;
+    }
+    return n;
+  }
+
   private async maybeFinalize(p: { id: string; status: string; votingEndAt: Date; type: string; groupId: string; pollOptions: unknown }) {
     if (p.status !== 'ACTIVE' || p.votingEndAt.getTime() > Date.now()) return;
     const t = await this.tally(p);
     const status = p.type === 'POLL' ? 'CLOSED' : t.kind === 'THRESHOLD' && t.approved ? 'PASSED' : 'FAILED';
     // Atomic: only the first finalizer (count === 1) anchors, so concurrent views can't double-anchor.
-    const res = await this.prisma.groupProposal.updateMany({ where: { id: p.id, status: 'ACTIVE' }, data: { status, decidedAt: new Date() } });
+    const res = await this.prisma.groupProposal.updateMany({ where: { id: p.id, status: 'ACTIVE' }, data: { status, decidedAt: new Date(), decidedTally: t as unknown as object } });
     if (res.count === 1) await this.anchorGroupResult(p.id, status).catch(() => undefined); // anchoring never blocks finalization
   }
 
@@ -597,6 +651,7 @@ export class GroupsService {
     });
     for (const p of due) await this.maybeFinalize(p).catch(() => undefined);
     await this.backfillDecidedAnchors().catch(() => undefined);
+    await this.backfillDecidedTallies().catch(() => undefined);
     return due.length;
   }
 

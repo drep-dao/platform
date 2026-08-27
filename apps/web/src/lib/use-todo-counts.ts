@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import {
-  boardApi, boardExpertsApi, boardSubmittersApi, expertApi, internalProposalsApi,
+  boardApi, boardExpertsApi, boardSubmittersApi, expertApi, groupsApi, internalProposalsApi,
   removalApi, rewardAddressApi, treasuryApi,
   type BoardAction,
 } from './api';
+import { GROUPS_ENABLED } from './features';
 
 /**
  * §20 — the SINGLE source of truth for "items awaiting this member", split by My-area tab.
@@ -23,17 +24,18 @@ export interface TodoCounts {
   treasury: number;
   actions: number;
   applications: number;
+  groupApplications: number; // §29 — pending applicants across groups this member may approve
   internal: number;
   profile: number;
 }
 
 export const EMPTY_TODO_COUNTS: TodoCounts = {
-  treasury: 0, actions: 0, applications: 0, internal: 0, profile: 0,
+  treasury: 0, actions: 0, applications: 0, groupApplications: 0, internal: 0, profile: 0,
 };
 
 /** Total to-dos awaiting the member across every tab — used for the left-nav + login-box badges. */
 export function todoTotal(c: TodoCounts): number {
-  return c.treasury + c.actions + c.applications + c.internal + c.profile;
+  return c.treasury + c.actions + c.applications + c.groupApplications + c.internal + c.profile;
 }
 
 /** Fire after an action that may change the to-do counts (e.g. signing/clearing a board action)
@@ -88,6 +90,10 @@ export function useTodoCounts(isBoard: boolean, canVote: boolean, enabled = true
       if (canVote || isApprovedExpert) {
         try { const r = await rewardAddressApi.get(); if (!r.rewardPaymentAddress) next.profile += 1; } catch { /* 0 */ }
       }
+      // §29 — pending applicants across self-governing groups this member approves (e.g. an OG member).
+      if (GROUPS_ENABLED) {
+        try { next.groupApplications = (await groupsApi.pendingApprovalsCount()).count; } catch { /* 0 */ }
+      }
       if (alive) setCounts(next);
     };
     poll();
@@ -113,6 +119,7 @@ export function firstTodoTab(c: TodoCounts): { tab: string; label: string } | nu
     { key: 'actions', tab: 'sign', label: 'Actions' },
     { key: 'treasury', tab: 'treasury', label: 'Treasury' },
     { key: 'applications', tab: 'apps', label: 'Applications' },
+    { key: 'groupApplications', tab: 'group-apps', label: 'Applications' },
     { key: 'internal', tab: 'internal', label: 'Internal proposals' },
     { key: 'profile', tab: 'profile', label: 'Profile' },
   ];

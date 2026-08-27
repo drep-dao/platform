@@ -23,6 +23,13 @@ export class GroupsController {
     return this.svc.myMemberships(ctx.userId);
   }
 
+  // §29 — count of pending applicants across groups this member may approve (for the to-do badge).
+  @Get('pending-approvals-count')
+  @UseGuards(JwtAuthGuard)
+  async pendingApprovalsCount(@CurrentUser() ctx: AuthContext) {
+    return { count: await this.svc.pendingApprovalsCount(ctx.userId) };
+  }
+
   // ── proposals (by id — declared before /:key to keep 'proposal' unambiguous) ──
   @Get('proposal/:id')
   @UseGuards(OptionalJwtAuthGuard)

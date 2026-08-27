@@ -1781,6 +1781,7 @@ model GroupProposal {
   status       String    @default("ACTIVE") // ACTIVE | PASSED | FAILED | CLOSED
   votingEndAt  DateTime  @map("voting_end_at") @db.Timestamptz(6)
   decidedAt    DateTime? @map("decided_at") @db.Timestamptz(6)
+  decidedTally Json?     @map("decided_tally") // §29 — tally frozen at decision so membership changes can't rewrite a closed result
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
   group    Group          @relation(fields: [groupId], references: [id])

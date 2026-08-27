@@ -95,11 +95,19 @@ function MemberFields({ m, fields, t }: { m: GroupMemberView; fields: string[]; 
           {fields.includes('memberSince') && m.since ? <div className="text-xs text-neutral-500">{t('Member since')} {new Date(m.since).toLocaleDateString()}</div> : null}
         </div>
       </div>
-      {fields.includes('bio') && m.bio ? <div className="prose prose-sm mt-2 max-w-none text-sm dark:prose-invert"><Markdown>{m.bio}</Markdown></div> : null}
-      {fields.includes('country') && m.country ? <div className="mt-1 text-xs text-neutral-500">{t('Country')}: {m.country}</div> : null}
+      {fields.includes('bio') && m.bio ? (
+        <div className="mt-2">
+          <div className="text-xs font-medium text-neutral-500">{t('Bio')}</div>
+          <div className="prose prose-sm mt-0.5 max-w-none text-sm dark:prose-invert"><Markdown>{m.bio}</Markdown></div>
+        </div>
+      ) : null}
+      {fields.includes('country') && m.country ? <div className="mt-2 text-xs text-neutral-500"><span className="font-medium">{t('Country')}:</span> {m.country}</div> : null}
       {fields.includes('expertise') && m.subcategoryIds.length ? (
-        <div className="mt-1 flex flex-wrap gap-1">
-          {m.subcategoryIds.map((id) => <span key={id} className="rounded-full border border-emerald-300 px-2 py-0.5 text-[11px] text-emerald-700 dark:border-emerald-800 dark:text-emerald-300">{labelOf(id)}</span>)}
+        <div className="mt-2">
+          <div className="text-xs font-medium text-neutral-500">{t('Expertise')}</div>
+          <div className="mt-0.5 flex flex-wrap gap-1">
+            {m.subcategoryIds.map((id) => <span key={id} className="rounded-full border border-emerald-300 px-2 py-0.5 text-[11px] text-emerald-700 dark:border-emerald-800 dark:text-emerald-300">{labelOf(id)}</span>)}
+          </div>
         </div>
       ) : null}
       {fields.includes('conflictOfInterest') && m.conflictOfInterest ? <div className="mt-1 text-xs text-neutral-500"><span className="font-medium">{t('Conflict of interest')}:</span> {m.conflictOfInterest}</div> : null}
@@ -108,10 +116,18 @@ function MemberFields({ m, fields, t }: { m: GroupMemberView; fields: string[]; 
           {m.noSelfVote ? t('✓ Pledged not to vote on own proposals') : t('Has not pledged to abstain from own proposals')}
         </div>
       ) : null}
-      {fields.includes('blockchainAddress') && m.address ? <div className="mt-1 break-all font-mono text-[11px] text-neutral-500">{m.address}</div> : null}
+      {fields.includes('blockchainAddress') && m.address ? (
+        <div className="mt-2">
+          <div className="text-xs font-medium text-neutral-500">{t('Blockchain address')}</div>
+          <div className="mt-0.5 break-all font-mono text-[11px] text-neutral-500">{m.address}</div>
+        </div>
+      ) : null}
       {fields.includes('links') && m.socials && Object.keys(m.socials).length ? (
-        <div className="mt-1 flex flex-wrap gap-2 text-xs">
-          {Object.entries(m.socials).map(([k, v]) => <a key={k} href={memberLinkHref(k, v)} target="_blank" rel="noreferrer" className="text-emerald-700 hover:underline dark:text-emerald-400">{k === 'x' ? 'X' : k}</a>)}
+        <div className="mt-2">
+          <div className="text-xs font-medium text-neutral-500">{t('Links')}</div>
+          <div className="mt-0.5 flex flex-wrap gap-2 text-xs">
+            {Object.entries(m.socials).map(([k, v]) => <a key={k} href={memberLinkHref(k, v)} target="_blank" rel="noreferrer" className="text-emerald-700 hover:underline dark:text-emerald-400">{k === 'x' ? 'X' : k}</a>)}
+          </div>
         </div>
       ) : null}
       {fields.includes('preferences') && m.preferences && (m.preferences.contact || m.preferences.notifications) ? (

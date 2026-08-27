@@ -10,6 +10,7 @@ import { ShareLinkButton } from './share-link-button';
 import { DiscussionThread } from './discussion-thread';
 import { DateField, toLocalInput } from './round-ui';
 import { useExplorer } from '@/lib/explorer';
+import { DocHashRow } from './doc-hash-row';
 
 const field = 'w-full rounded-md border border-neutral-300 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900';
 
@@ -275,6 +276,7 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
             </div>
           </div>
         )}
+        <DocHashRow hash={p.docHash} />
         {p.anchorTxHash ? (
           <div className="mt-2 text-xs"><a href={txUrl(p.anchorTxHash)} target="_blank" rel="noreferrer" className="text-emerald-700 underline dark:text-emerald-400">{t('on-chain record ↗')}</a></div>
         ) : p.status !== 'ACTIVE' ? (

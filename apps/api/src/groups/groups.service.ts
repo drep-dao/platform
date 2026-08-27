@@ -429,6 +429,7 @@ export class GroupsService {
       canComment: await this.canComment(userId, g),
       canModerate: await this.canManageMembers(userId, g),
       comments: await this.loadComments(id, userId, g),
+      docHash: this.groupDocHash(fresh),
       anchorTxHash: anchorRow?.txHash ?? null,
       tally,
     };
@@ -554,6 +555,12 @@ export class GroupsService {
     if (res.count === 1) await this.anchorGroupResult(p.id, status).catch(() => undefined); // anchoring never blocks finalization
   }
 
+  /** §29/§3 — the canonical document hash of a group proposal: SHA-256 of its `title\ncontent`.
+   *  The detail view shows this SAME value so anyone can confirm it matches the on-chain anchor. */
+  private groupDocHash(p: { title: string; contentMd: string }): string {
+    return createHash('sha256').update(`${p.title}\n${p.contentMd}`).digest('hex');
+  }
+
   /** §29/§3 — anchor a finalized group proposal on-chain (pending until a board member submits it).
    *  The self-describing JSON carries the GROUP identity (key + name) + every member's vote + the tally,
    *  so anyone can verify which group decided what. Never throws (anchoring must not block finalization). */
@@ -570,7 +577,7 @@ export class GroupsService {
       ref: p.title,
       proposalId: p.id,
       publicId: `${p.group.key.toUpperCase()} · ${p.title}`,
-      docHash: createHash('sha256').update(`${p.title}\n${p.contentMd}`).digest('hex'),
+      docHash: this.groupDocHash(p),
       votes: voteRows.map((v) => ({ drep: nameOf.get(v.voterUserId) ?? 'Member', vote: v.choice })),
       outcome,
       yes: t.kind === 'THRESHOLD' ? t.yes : 0,

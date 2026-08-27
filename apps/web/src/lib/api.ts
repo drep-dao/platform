@@ -1934,6 +1934,7 @@ export interface InternalProposalDetail extends InternalProposalSummary {
   votingStartAt: string | null;
   resultFinalizedAt: string | null;
   voters: InternalProposalVoter[]; // who voted how + their rationales
+  docHash: string; // §3 — SHA-256 of title+content (or the frozen rule/decision hash); matches the on-chain anchor
   anchorTxHash: string | null;
   anchorHash: string | null;
   /** §27 — set for RULE_APPROVAL proposals: the targeted rule document + frozen content hash. */
@@ -2410,6 +2411,7 @@ export interface GroupProposalDetail {
   canComment: boolean;
   canModerate: boolean;
   comments: GroupComment[];
+  docHash: string; // §3 — SHA-256 of title+content; matches the on-chain anchor
   anchorTxHash: string | null;
   tally: GroupTally;
 }

@@ -30,6 +30,13 @@ export class GroupsController {
     return { count: await this.svc.pendingApprovalsCount(ctx.userId) };
   }
 
+  // §29 — count of active group proposals this member still has to vote on (for the to-do badge).
+  @Get('pending-votes-count')
+  @UseGuards(JwtAuthGuard)
+  async pendingVotesCount(@CurrentUser() ctx: AuthContext) {
+    return { count: await this.svc.pendingVotesCount(ctx.userId) };
+  }
+
   // ── proposals (by id — declared before /:key to keep 'proposal' unambiguous) ──
   @Get('proposal/:id')
   @UseGuards(OptionalJwtAuthGuard)

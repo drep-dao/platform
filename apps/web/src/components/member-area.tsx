@@ -127,7 +127,7 @@ export function MemberArea() {
   for (const mg of myGroups) {
     // §29 OG — a profile/membership tab and a separate proposals tab (like a DRep's Profile + Internal proposals).
     tabs.push({ key: `grp-${mg.groupKey}`, label: `${mg.groupName} profile`, node: <GroupMemberArea groupKey={mg.groupKey} /> });
-    tabs.push({ key: `grp-${mg.groupKey}-proposals`, label: `${mg.groupName} proposals`, node: <GroupProposals groupKey={mg.groupKey} /> });
+    tabs.push({ key: `grp-${mg.groupKey}-proposals`, label: `${mg.groupName} proposals`, badge: todo.groupProposals, node: <GroupProposals groupKey={mg.groupKey} /> });
   }
   // §29 OG self-governance — a top-menu "Applications" item for members who may approve applicants,
   // unless they are a council member (whose own Applications tab already shows group approvals).
@@ -520,7 +520,12 @@ function MemberTabs({ tabs }: { tabs: { key: string; label: string; node: React.
   const { get, setParams } = useUrlNav();
   const tr = useT();
   const fromUrl = get('tab');
-  const active = tabs.some((t) => t.key === fromUrl) ? fromUrl : tabs[0]?.key;
+  // The to-do badge jumps to a generic 'group-proposals' target; resolve it to the first group's
+  // per-group proposals tab (whose key is `grp-<key>-proposals`) so the jump lands correctly.
+  const resolved = fromUrl === 'group-proposals'
+    ? tabs.find((t) => t.key.startsWith('grp-') && t.key.endsWith('-proposals'))?.key ?? fromUrl
+    : fromUrl;
+  const active = tabs.some((t) => t.key === resolved) ? resolved : tabs[0]?.key;
   const current = tabs.find((t) => t.key === active) ?? tabs[0];
   // Re-clicking the active tab should reset its view (e.g. close an opened proposal in
   // "My proposals", whose detail lives in component-local state). Bumping this remounts the

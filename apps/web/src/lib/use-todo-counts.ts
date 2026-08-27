@@ -25,17 +25,18 @@ export interface TodoCounts {
   actions: number;
   applications: number;
   groupApplications: number; // §29 — pending applicants across groups this member may approve
+  groupProposals: number; // §29 — active group proposals this member still has to vote on
   internal: number;
   profile: number;
 }
 
 export const EMPTY_TODO_COUNTS: TodoCounts = {
-  treasury: 0, actions: 0, applications: 0, groupApplications: 0, internal: 0, profile: 0,
+  treasury: 0, actions: 0, applications: 0, groupApplications: 0, groupProposals: 0, internal: 0, profile: 0,
 };
 
 /** Total to-dos awaiting the member across every tab — used for the left-nav + login-box badges. */
 export function todoTotal(c: TodoCounts): number {
-  return c.treasury + c.actions + c.applications + c.groupApplications + c.internal + c.profile;
+  return c.treasury + c.actions + c.applications + c.groupApplications + c.groupProposals + c.internal + c.profile;
 }
 
 /** Fire after an action that may change the to-do counts (e.g. signing/clearing a board action)
@@ -93,6 +94,7 @@ export function useTodoCounts(isBoard: boolean, canVote: boolean, enabled = true
       // §29 — pending applicants across self-governing groups this member approves (e.g. an OG member).
       if (GROUPS_ENABLED) {
         try { next.groupApplications = (await groupsApi.pendingApprovalsCount()).count; } catch { /* 0 */ }
+        try { next.groupProposals = (await groupsApi.pendingVotesCount()).count; } catch { /* 0 */ }
       }
       if (alive) setCounts(next);
     };
@@ -120,6 +122,7 @@ export function firstTodoTab(c: TodoCounts): { tab: string; label: string } | nu
     { key: 'treasury', tab: 'treasury', label: 'Treasury' },
     { key: 'applications', tab: 'apps', label: 'Applications' },
     { key: 'groupApplications', tab: 'group-apps', label: 'Applications' },
+    { key: 'groupProposals', tab: 'group-proposals', label: 'Proposals' },
     { key: 'internal', tab: 'internal', label: 'Internal proposals' },
     { key: 'profile', tab: 'profile', label: 'Profile' },
   ];

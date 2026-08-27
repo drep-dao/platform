@@ -8,7 +8,7 @@ import { Markdown, MarkdownEditor } from './markdown';
 import { useUrlNav } from '@/lib/use-url-nav';
 import { ShareLinkButton } from './share-link-button';
 import { DiscussionThread } from './discussion-thread';
-import { DateField, toLocalInput } from './round-ui';
+import { DateField, toLocalInput, RationaleText } from './round-ui';
 import { useExplorer } from '@/lib/explorer';
 import { DocHashRow } from './doc-hash-row';
 
@@ -193,15 +193,19 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
   const [busy, setBusy] = useState(false);
   const [picks, setPicks] = useState<string[]>([]);
   const [rationale, setRationale] = useState('');
-  const load = useCallback(() => { groupsApi.proposal(id).then((d) => { setP(d); setPicks(d.myVotes); setRationale(d.myRationale ?? ''); }).catch(() => setP(null)); }, [id]);
+  // §29 — once a member has voted the ballot is LOCKED (buttons + rationale disabled); editing a
+  // rationale alone does nothing. They must click "Change my vote" to re-open it, and only clicking
+  // a vote button then persists the new vote + rationale — otherwise the old vote stands.
+  const [editing, setEditing] = useState(false);
+  const load = useCallback(() => { groupsApi.proposal(id).then((d) => { setP(d); setPicks(d.myVotes); setRationale(d.myRationale ?? ''); setEditing(false); }).catch(() => setP(null)); }, [id]);
   useEffect(load, [load]);
 
   if (!p) return <section className={card}><button onClick={onBack} className="text-sm text-emerald-700 hover:underline dark:text-emerald-400">← {t('Back')}</button><p className="mt-2 text-sm text-neutral-500">{t('Loading…')}</p></section>;
 
-  const castThreshold = async (choice: string) => { setBusy(true); try { setP(await groupsApi.vote(id, { choice, rationale: rationale.trim() || undefined })); } finally { setBusy(false); } };
+  const castThreshold = async (choice: string) => { setBusy(true); try { setP(await groupsApi.vote(id, { choice, rationale: rationale.trim() || undefined })); setEditing(false); } finally { setBusy(false); } };
   const castPoll = async () => {
     setBusy(true);
-    try { setP(await groupsApi.vote(id, picks.includes('ABSTAIN') ? { choice: 'ABSTAIN', rationale: rationale.trim() || undefined } : { options: picks, rationale: rationale.trim() || undefined })); } finally { setBusy(false); }
+    try { setP(await groupsApi.vote(id, picks.includes('ABSTAIN') ? { choice: 'ABSTAIN', rationale: rationale.trim() || undefined } : { options: picks, rationale: rationale.trim() || undefined })); setEditing(false); } finally { setBusy(false); }
   };
   const togglePick = (opt: string) => {
     if (!p.poll) return;
@@ -285,7 +289,24 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
       </div>
 
       {/* vote */}
-      {p.canVote ? (
+      {p.canVote && p.myVotes.length > 0 && !editing ? (
+        // LOCKED — the member has voted; show it read-only until they explicitly choose to change.
+        <div className="mt-3 space-y-2 rounded-md border border-neutral-200 p-3 dark:border-neutral-800">
+          <div className="text-sm">
+            <span className="text-neutral-500">{t('You voted')}</span>{' '}
+            {p.type === 'POLL'
+              ? <span className="font-semibold">{p.myVotes.join(', ')}</span>
+              : <span className={`font-semibold ${CHOICE_TONE[p.myVotes[0]] ?? ''}`}>{choiceLabel(p.myVotes[0], t)}</span>}
+          </div>
+          {p.myRationale ? (
+            <div>
+              <div className="text-xs text-neutral-500">{t('Your rationale')}</div>
+              <RationaleText text={p.myRationale} />
+            </div>
+          ) : null}
+          <button onClick={() => { setPicks(p.myVotes); setRationale(p.myRationale ?? ''); setEditing(true); }} className="rounded border border-emerald-300 px-3 py-1 text-sm font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950">{t('Change my vote')}</button>
+        </div>
+      ) : p.canVote ? (
         <div className="mt-3 space-y-2">
           <MarkdownEditor value={rationale} onChange={setRationale} title={t('Rationale')} hint={t('optional — Markdown supported')} minRows={2} placeholder={t('Why are you voting this way? (optional)')} />
           {p.type === 'POLL' ? (
@@ -298,7 +319,10 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
               ))}
               <label className="flex items-center gap-2 text-sm text-neutral-500"><input type="radio" checked={picks.includes('ABSTAIN')} onChange={() => togglePick('ABSTAIN')} /> {t('Abstain')}</label>
             </div>
-            <button disabled={busy || picks.length === 0} onClick={castPoll} className="rounded bg-emerald-600 px-3 py-1 text-sm font-medium text-white disabled:opacity-40">{p.myVotes.length ? t('Change vote') : t('Cast vote')}</button>
+            <div className="flex items-center gap-2">
+              <button disabled={busy || picks.length === 0} onClick={castPoll} className="rounded bg-emerald-600 px-3 py-1 text-sm font-medium text-white disabled:opacity-40">{p.myVotes.length ? t('Save new vote') : t('Cast vote')}</button>
+              {editing ? <button disabled={busy} onClick={() => { setPicks(p.myVotes); setRationale(p.myRationale ?? ''); setEditing(false); }} className="text-xs text-neutral-500 hover:underline">{t('Cancel')}</button> : null}
+            </div>
           </div>
         ) : (
           <div className="space-y-1.5">
@@ -317,9 +341,8 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
                 );
               })}
             </div>
-            {p.myVotes.length ? (
-              <p className="text-xs text-emerald-700 dark:text-emerald-400">{t('You voted')} {t(p.myVotes[0] === 'YES' ? 'Yes' : p.myVotes[0] === 'NO' ? 'No' : 'Abstain')} — {t('click another option to change your vote.')}</p>
-            ) : null}
+            <p className="text-xs text-neutral-500">{editing ? t('Pick an option to save your new vote — your rationale is saved with it.') : t('Click an option to cast your vote.')}</p>
+            {editing ? <button disabled={busy} onClick={() => { setPicks(p.myVotes); setRationale(p.myRationale ?? ''); setEditing(false); }} className="text-xs text-neutral-500 hover:underline">{t('Cancel')}</button> : null}
           </div>
         )}
         </div>
@@ -329,12 +352,13 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
       {p.rationales.length > 0 ? (
         <div className="mt-4">
           <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{t('Rationales')}</div>
-          <ul className="mt-1 space-y-1">
+          <ul className="mt-1 space-y-2">
             {p.rationales.map((r, i) => (
               <li key={i} className="text-sm">
                 <span className="font-medium">{r.voter}</span>{' '}
-                <span className="text-xs text-neutral-400">({t(r.choice === 'YES' ? 'Yes' : r.choice === 'NO' ? 'No' : r.choice === 'ABSTAIN' ? 'Abstain' : r.choice)})</span>:{' '}
-                <span className="text-neutral-600 dark:text-neutral-300">{r.rationale}</span>
+                <span className={`text-xs font-medium ${CHOICE_TONE[r.choice] ?? 'text-neutral-400'}`}>({choiceLabel(r.choice, t)})</span>
+                {/* long rationales are shrinkable — the member can collapse/expand each one */}
+                <RationaleText text={r.rationale} />
               </li>
             ))}
           </ul>

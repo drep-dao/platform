@@ -185,6 +185,29 @@ export class GroupsService {
     return count;
   }
 
+  /** §29 — active proposals still open for voting, in groups this member belongs to, that they have
+   *  NOT voted on yet. Feeds the My-area to-do badge so a member is nudged to vote before it closes. */
+  async pendingVotesCount(userId: string | null | undefined): Promise<number> {
+    if (!userId) return 0;
+    const memberships = await this.prisma.groupMember.findMany({
+      where: { userId, status: 'ADMITTED', group: { status: 'ACTIVE' } },
+      select: { groupId: true },
+    });
+    if (!memberships.length) return 0;
+    const active = await this.prisma.groupProposal.findMany({
+      where: { groupId: { in: memberships.map((m) => m.groupId) }, status: 'ACTIVE', votingEndAt: { gt: new Date() } },
+      select: { id: true },
+    });
+    if (!active.length) return 0;
+    const voted = new Set(
+      (await this.prisma.groupVote.findMany({
+        where: { proposalId: { in: active.map((p) => p.id) }, voterUserId: userId },
+        select: { proposalId: true }, distinct: ['proposalId'],
+      })).map((v) => v.proposalId),
+    );
+    return active.filter((p) => !voted.has(p.id)).length;
+  }
+
   async register(userId: string, key: string, dto: RegisterGroupDto) {
     const g = await this.activeGroupByKey(key);
     const existing = await this.prisma.groupMember.findUnique({ where: { groupId_userId: { groupId: g.id, userId } } });

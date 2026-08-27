@@ -2423,6 +2423,7 @@ export const groupsApi = {
   listActive: () => request<GroupConfig[]>('/groups'),
   mine: () => request<GroupMembershipMine[]>('/groups/mine'),
   pendingApprovalsCount: () => request<{ count: number }>('/groups/pending-approvals-count'),
+  pendingVotesCount: () => request<{ count: number }>('/groups/pending-votes-count'),
   membership: (key: string) => request<GroupMembershipResult>(`/groups/${key}/membership`),
   register: (key: string, input: RegisterGroupInput) => request<GroupMembershipResult>(`/groups/${key}/register`, { method: 'POST', body: JSON.stringify(input) }),
   updateProfile: (key: string, input: RegisterGroupInput) => request<GroupMembershipResult>(`/groups/${key}/profile`, { method: 'PATCH', body: JSON.stringify(input) }),

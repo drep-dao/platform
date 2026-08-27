@@ -220,7 +220,7 @@ function GroupLeaveButton({ groupKey, groupName }: { groupKey: string; groupName
       </button>
       <ConfirmDialog
         open={confirming}
-        title={`${t('Leave')} ${groupName}?`}
+        title={`${t('Do you really want to leave')} ${groupName}?`}
         message={t('You will no longer be a member and cannot submit or vote on its proposals. You can re-apply later.')}
         confirmLabel={t('Leave')}
         cancelLabel={t('Cancel')}

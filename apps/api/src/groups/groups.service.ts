@@ -404,6 +404,8 @@ export class GroupsService {
       orderBy: { createdAt: 'asc' },
     });
     const voters = voterRows.map((v) => ({ voter: nameOf.get(v.voterUserId) ?? 'Member', choice: v.choice }));
+    // §29/§3 — the on-chain anchor of this group's decision, so the detail can link to the explorer.
+    const anchorRow = await this.prisma.anchor.findFirst({ where: { kind: 'group', proposalId: id }, select: { txHash: true }, orderBy: { createdAt: 'desc' } });
     return {
       id: fresh.id,
       groupKey: g.key,
@@ -412,7 +414,7 @@ export class GroupsService {
       contentMd: fresh.contentMd,
       type: fresh.type,
       status: fresh.status,
-      author: fresh.author.displayName ?? 'Member',
+      author: nameOf.get(fresh.authorUserId) ?? fresh.author.displayName ?? 'Member',
       votingEndAt: fresh.votingEndAt.toISOString(),
       decidedAt: fresh.decidedAt?.toISOString() ?? null,
       createdAt: fresh.createdAt.toISOString(),
@@ -427,6 +429,7 @@ export class GroupsService {
       canComment: await this.canComment(userId, g),
       canModerate: await this.canManageMembers(userId, g),
       comments: await this.loadComments(id, userId, g),
+      anchorTxHash: anchorRow?.txHash ?? null,
       tally,
     };
   }

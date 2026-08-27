@@ -9,6 +9,7 @@ import { useUrlNav } from '@/lib/use-url-nav';
 import { ShareLinkButton } from './share-link-button';
 import { DiscussionThread } from './discussion-thread';
 import { DateField, toLocalInput } from './round-ui';
+import { useExplorer } from '@/lib/explorer';
 
 const field = 'w-full rounded-md border border-neutral-300 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900';
 
@@ -69,7 +70,13 @@ export function GroupProposals({ groupKey }: { groupKey: string }) {
                   <span className={p.result.approved ? 'font-medium text-emerald-600 dark:text-emerald-400' : 'font-medium text-rose-600 dark:text-rose-400'}>{p.result.approved ? t('passing') : t('not passing')}</span>
                 </>
               ) : null}
-              {p.voters.length ? <span>· {p.voters.map((v) => `${v.voter} (${choiceLabel(v.choice, t)})`).join(', ')}</span> : null}
+              {p.voters.length ? (
+                <span className="flex flex-wrap items-center gap-x-1">·{' '}
+                  {p.voters.map((v, i) => (
+                    <span key={i}>{v.voter} (<span className={`font-medium ${CHOICE_TONE[v.choice] ?? ''}`}>{choiceLabel(v.choice, t)}</span>){i < p.voters.length - 1 ? ',' : ''}</span>
+                  ))}
+                </span>
+              ) : null}
             </span>
           </button>
         ))}
@@ -180,6 +187,7 @@ function SubmitForm({ group, onDone }: { group: GroupProposalsResult['group']; o
 
 function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
   const t = useT();
+  const { txUrl } = useExplorer();
   const [p, setP] = useState<GroupProposalDetail | null>(null);
   const [busy, setBusy] = useState(false);
   const [picks, setPicks] = useState<string[]>([]);
@@ -238,12 +246,12 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
             <div className="flex h-3 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
               <div className="bg-emerald-500" style={{ width: `${pct(p.tally.yes, p.tally.eligible)}%` }} />
               <div className="bg-rose-500" style={{ width: `${pct(p.tally.no, p.tally.eligible)}%` }} />
-              <div className="bg-neutral-400" style={{ width: `${pct(p.tally.abstain, p.tally.eligible)}%` }} />
+              <div className="bg-amber-400" style={{ width: `${pct(p.tally.abstain, p.tally.eligible)}%` }} />
             </div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
               <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-emerald-500" /> {t('Yes')} {p.tally.yes}</span>
               <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-rose-500" /> {t('No')} {p.tally.no}</span>
-              <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-neutral-400" /> {t('Abstain')} {p.tally.abstain}</span>
+              <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-amber-400" /> {t('Abstain')} {p.tally.abstain}</span>
               <span className="text-neutral-500">· {p.tally.voted} {t('of')} {p.tally.eligible} {t('members voted')}</span>
             </div>
             <VoterBreakdown voters={p.voters} t={t} />
@@ -263,10 +271,15 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
                   </div>
                 );
               })}
-              {p.tally.abstain > 0 ? <div className="text-xs text-neutral-400">{t('abstain')} {p.tally.abstain}</div> : null}
+              {p.tally.abstain > 0 ? <div className="text-xs text-amber-600 dark:text-amber-400">{t('Abstain')} {p.tally.abstain}</div> : null}
             </div>
           </div>
         )}
+        {p.anchorTxHash ? (
+          <div className="mt-2 text-xs"><a href={txUrl(p.anchorTxHash)} target="_blank" rel="noreferrer" className="text-emerald-700 underline dark:text-emerald-400">{t('on-chain record ↗')}</a></div>
+        ) : p.status !== 'ACTIVE' ? (
+          <div className="mt-2 text-xs text-neutral-400">{t('on-chain anchor recorded (pending submission)')}</div>
+        ) : null}
       </div>
 
       {/* vote */}
@@ -355,6 +368,12 @@ function choiceLabel(c: string, t: (s: string) => string): string {
 }
 
 /** §29 — who voted, grouped by choice (Yes / No / Abstain), shown under the tally. */
+const CHOICE_TONE: Record<string, string> = {
+  YES: 'text-emerald-600 dark:text-emerald-400',
+  NO: 'text-rose-600 dark:text-rose-400',
+  ABSTAIN: 'text-amber-600 dark:text-amber-400',
+};
+
 function VoterBreakdown({ voters, t }: { voters: { voter: string; choice: string }[]; t: (s: string) => string }) {
   if (!voters.length) return null;
   const groups: Record<string, string[]> = {};
@@ -363,7 +382,7 @@ function VoterBreakdown({ voters, t }: { voters: { voter: string; choice: string
   return (
     <div className="space-y-0.5">
       {['YES', 'NO', 'ABSTAIN'].map((c) => (groups[c]?.length ? (
-        <div key={c} className="text-xs"><span className="font-medium">{label(c)}:</span> <span className="text-neutral-600 dark:text-neutral-300">{groups[c].join(', ')}</span></div>
+        <div key={c} className="text-xs"><span className={`font-semibold ${CHOICE_TONE[c] ?? ''}`}>{label(c)}:</span> <span className="text-neutral-600 dark:text-neutral-300">{groups[c].join(', ')}</span></div>
       ) : null))}
     </div>
   );

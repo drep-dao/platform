@@ -2410,6 +2410,7 @@ export interface GroupProposalDetail {
   canComment: boolean;
   canModerate: boolean;
   comments: GroupComment[];
+  anchorTxHash: string | null;
   tally: GroupTally;
 }
 export interface RegisterGroupInput { displayName?: string; bio?: string; photo?: string; country?: string; conflictOfInterest?: string; noSelfVote?: boolean; address?: string; subcategoryIds?: string[]; socials?: Record<string, string>; preferences?: Record<string, boolean> }

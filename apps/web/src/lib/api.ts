@@ -1454,6 +1454,7 @@ export interface ActiveVote {
 export interface PublicOverview {
   network: string;
   admissionOpen: boolean;
+  telegramUrl: string | null; // community Telegram invite; null → the landing hides the invite
   treasuryBalanceAda: number | null;
   members: { votingDReps: number; experts: number };
   board: { seats: number; elected: boolean };

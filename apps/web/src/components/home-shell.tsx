@@ -33,7 +33,7 @@ import { WalletStatusBanner } from './wallet-status-banner';
 import { useTodoCounts, todoTotal } from '@/lib/use-todo-counts';
 import { HealthBadge } from '@/app/health-badge';
 
-type View = 'overview' | 'members' | 'votingpower' | 'submitters' | 'experts' | 'me' | 'requests' | 'internal' | 'rules' | 'decisions' | 'proofs' | 'treasury' | 'setup';
+type View = 'overview' | 'members' | 'votingpower' | 'submitters' | 'experts' | 'me' | 'requests' | 'internal' | 'rules' | 'decisions' | 'proofs' | 'treasury' | 'setup' | 'landing';
 const NAV: { key: View; label: string; icon: string; boardOnly?: boolean; publicOnly?: boolean }[] = [
   // §2 — "My area" first: it is the member's home (to-dos, profile, proposals).
   { key: 'me', label: 'My area', icon: 'user' },
@@ -62,7 +62,9 @@ export function HomeShell() {
   const { get, setParams } = useUrlNav();
   // The active menu view + an optionally-open proposal come from the URL, so every screen
   // (and any open proposal) has its own shareable link. Switching the menu clears submenu state.
-  const view = (NAV.some((n) => n.key === get('view')) ? get('view') : 'overview') as View;
+  // 'landing' is a valid view (the public front page, reachable while logged in) even though it is
+  // not a left-nav item, so accept it explicitly alongside the NAV keys.
+  const view = (NAV.some((n) => n.key === get('view')) || get('view') === 'landing' ? get('view') : 'overview') as View;
   // §29 — configurable groups add dynamic left-nav items ("<Name> members" / "<Name> proposals").
   const [groups, setGroups] = useState<GroupConfig[]>([]);
   useEffect(() => { if (GROUPS_ENABLED) groupsApi.listActive().then(setGroups).catch(() => setGroups([])); }, []);
@@ -206,7 +208,15 @@ export function HomeShell() {
       {/* Left: title + menu only. On mobile the menu is a horizontal scroll strip so content
           isn't pushed below a tall vertical list; on lg it's the usual vertical sidebar. */}
       <aside className="lg:w-56 lg:shrink-0">
-        <h1 className="mb-3 text-xl font-bold tracking-tight lg:mb-4">{brand.name}</h1>
+        {/* Brand → the public landing page (a way back to the front page once logged in). */}
+        <button
+          onClick={() => setView('landing')}
+          title={t('Landing page')}
+          className="mb-3 flex items-center gap-2 text-xl font-bold tracking-tight hover:opacity-80 lg:mb-4"
+        >
+          <img src={brand.icon} alt="" className="h-6 w-6" />
+          {brand.name}
+        </button>
         <nav className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 lg:mx-0 lg:flex-col lg:gap-0 lg:space-y-1 lg:overflow-visible lg:px-0 lg:pb-0">
           {nav.map((n) => {
             // §20 — mirror the in-area to-do count next to "My area" so users
@@ -270,6 +280,8 @@ export function HomeShell() {
       <main key={`${rawView}-${viewNonce}`} className="order-last min-w-0 flex-1 lg:order-none">
         {groupMatch ? (
           groupMatch[2] === 'members' ? <GroupMembers groupKey={groupMatch[1]} /> : <GroupProposals groupKey={groupMatch[1]} />
+        ) : view === 'landing' ? (
+          <PublicLanding onConnect={() => setView('me')} onExplore={() => setView('members')} />
         ) : view === 'overview' ? (
           <DaoOverview />
         ) : view === 'submitters' ? (

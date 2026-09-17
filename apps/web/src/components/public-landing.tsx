@@ -168,6 +168,23 @@ export function PublicLanding({ onConnect, onExplore }: { onConnect: () => void;
         </a>
       ) : null}
 
+      {/* ---- Regular meetings (Google Calendar) — governance only, only when a link is configured ---- */}
+      {governance && data?.meetingUrl ? (
+        <a href={data.meetingUrl} target="_blank" rel="noreferrer"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 transition hover:bg-emerald-100 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:hover:bg-emerald-950/50">
+          <span className="flex items-center gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-emerald-600 text-white">
+              <CalendarIcon />
+            </span>
+            <span className="min-w-0">
+              <span className="block font-semibold text-emerald-900 dark:text-emerald-100">{t('Join our regular meetings')}</span>
+              <span className="block text-[13px] text-emerald-800/70 dark:text-emerald-200/60">{t('Add our recurring DRep Council call to your calendar.')}</span>
+            </span>
+          </span>
+          <span className="shrink-0 rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white hover:brightness-105">{t('Add to calendar')}</span>
+        </a>
+      ) : null}
+
       {/* ---- Votes in progress: live internal votes with end date + a result chart ---- */}
       {governance && data && data.activeVotes.length > 0 ? (
         <div className="rounded-2xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
@@ -227,6 +244,15 @@ function VoteBar({ v, t }: { v: ActiveVote; t: (s: string) => string }) {
         </div>
       ) : null}
     </div>
+  );
+}
+
+function CalendarIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="4.5" width="18" height="16" rx="2.5" />
+      <path d="M3 9h18M8 2.5v4M16 2.5v4" />
+    </svg>
   );
 }
 

@@ -35,7 +35,7 @@ export class PublicOverviewController {
 
   private async build() {
     const network = this.config.get<string>('CARDANO_NETWORK') ?? 'Preprod';
-    const [votingDReps, experts, propGroups, internalGroups, boardSeats, activeRound, admissionRow, requestGroups, telegramRow] = await Promise.all([
+    const [votingDReps, experts, propGroups, internalGroups, boardSeats, activeRound, admissionRow, requestGroups, telegramRow, meetingRow] = await Promise.all([
       this.prisma.drep.count({ where: { status: 'ADMITTED' } }),
       this.prisma.expert.count({ where: { approvedByBoard: true } }),
       this.prisma.proposal.groupBy({ by: ['status'], where: { type: 'FUNDING' }, _count: { _all: true } }),
@@ -47,8 +47,11 @@ export class PublicOverviewController {
       this.prisma.request.groupBy({ by: ['status'], _count: { _all: true } }),
       // Optional community Telegram invite (empty/unset → not shown on the landing).
       this.prisma.platformConfig.findUnique({ where: { key: 'TELEGRAM_GROUP_URL' } }),
+      // Optional recurring-meeting Google Calendar link (empty/unset → not shown on the landing).
+      this.prisma.platformConfig.findUnique({ where: { key: 'MEETING_CALENDAR_URL' } }),
     ]);
     const telegramUrl = typeof telegramRow?.value === 'string' && telegramRow.value.trim() ? telegramRow.value.trim() : null;
+    const meetingUrl = typeof meetingRow?.value === 'string' && meetingRow.value.trim() ? meetingRow.value.trim() : null;
 
     const count = (s: string) => propGroups.find((g) => g.status === s)?._count._all ?? 0;
     const approved = count('APPROVED') + count('COMPLETE');
@@ -86,6 +89,7 @@ export class PublicOverviewController {
       network,
       admissionOpen,
       telegramUrl,
+      meetingUrl,
       treasuryBalanceAda,
       members: { votingDReps, experts },
       board: { seats: boardSeats, elected: boardSeats > 0 },

@@ -1455,6 +1455,7 @@ export interface PublicOverview {
   network: string;
   admissionOpen: boolean;
   telegramUrl: string | null; // community Telegram invite; null → the landing hides the invite
+  meetingUrl: string | null; // recurring-meeting Google Calendar link; null → hidden
   treasuryBalanceAda: number | null;
   members: { votingDReps: number; experts: number };
   board: { seats: number; elected: boolean };

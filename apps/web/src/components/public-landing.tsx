@@ -182,6 +182,7 @@ export function PublicLanding({ onConnect, onExplore }: { onConnect: () => void;
             </span>
             <span className="min-w-0">
               <span className="block font-semibold text-emerald-900 dark:text-emerald-100">{t('Join our regular meetings')}</span>
+              {data.meetingTime ? <MeetingCountdown m={data.meetingTime} t={t} /> : null}
               <span className="block text-[13px] text-emerald-800/70 dark:text-emerald-200/60">
                 {data.meetingSchedule
                   ? data.meetingSchedule
@@ -255,6 +256,89 @@ function VoteBar({ v, t }: { v: ActiveVote; t: (s: string) => string }) {
         </div>
       ) : null}
     </div>
+  );
+}
+
+type MeetingTimeT = { weekday: number; start: string; end: string; tz: string };
+
+// Offset (ms) of an IANA timezone relative to UTC at a given instant — the standard
+// "format in the zone, reparse as local, take the difference" trick (no tz library).
+function tzOffsetMs(tz: string, at: Date): number {
+  const utc = new Date(at.toLocaleString('en-US', { timeZone: 'UTC' }));
+  const loc = new Date(at.toLocaleString('en-US', { timeZone: tz }));
+  return loc.getTime() - utc.getTime();
+}
+
+// UTC epoch (ms) of the instant whose wall-clock time in `tz` is y-mo(0-based)-d h:mi.
+function zonedToUtc(y: number, mo: number, d: number, h: number, mi: number, tz: string): number {
+  const guess = Date.UTC(y, mo, d, h, mi, 0);
+  const off = tzOffsetMs(tz, new Date(guess));
+  // One refinement so occurrences right at a DST boundary land on the correct instant.
+  return guess - tzOffsetMs(tz, new Date(guess - off));
+}
+
+// Start/end epoch (ms) of the meeting occurrence that is current or next, relative to `now`.
+function nextMeeting(now: number, m: MeetingTimeT): { start: number; end: number } {
+  const [sh, sm] = m.start.split(':').map(Number);
+  const [eh, em] = m.end.split(':').map(Number);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: m.tz, year: 'numeric', month: 'numeric', day: 'numeric', weekday: 'long',
+  }).formatToParts(new Date(now));
+  const val = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
+  const y = Number(val('year')), mo = Number(val('month')) - 1, d = Number(val('day'));
+  const names = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const curWd = names.indexOf(val('weekday').toLowerCase());
+  const delta = (m.weekday - curWd + 7) % 7;
+  let start = zonedToUtc(y, mo, d + delta, sh, sm, m.tz);
+  let end = zonedToUtc(y, mo, d + delta, eh, em, m.tz);
+  if (now >= end) { // this week's occurrence is over → roll to next week
+    start = zonedToUtc(y, mo, d + delta + 7, sh, sm, m.tz);
+    end = zonedToUtc(y, mo, d + delta + 7, eh, em, m.tz);
+  }
+  return { start, end };
+}
+
+function fmtLeft(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const days = Math.floor(s / 86400), hours = Math.floor((s % 86400) / 3600);
+  const mins = Math.floor((s % 3600) / 60), secs = s % 60;
+  if (days > 0) return `${days}d ${hours}h ${mins}m`;
+  if (hours > 0) return `${hours}h ${mins}m ${secs}s`;
+  return `${mins}m ${secs}s`;
+}
+
+// Blue when the meeting is far off, smoothly reddening across the final 24 hours.
+function countdownColor(ms: number): string {
+  const f = Math.max(0, Math.min(1, ms / 86_400_000)); // 1 = ≥24h away, 0 = imminent
+  const red = [239, 68, 68], blue = [59, 130, 246];
+  const c = red.map((rv, i) => Math.round(rv + (blue[i] - rv) * f));
+  return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+}
+
+/** Live countdown to the next meeting; "Live now" while it runs, then rolls to next week. */
+function MeetingCountdown({ m, t }: { m: MeetingTimeT; t: (s: string) => string }) {
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  if (now === null) return null; // render nothing until mounted → no SSR/hydration mismatch
+
+  const { start, end } = nextMeeting(now, m);
+  if (now >= start && now < end) {
+    return (
+      <span className="flex items-center gap-1.5 text-[13px] font-semibold text-emerald-700 dark:text-emerald-300">
+        <span className="h-2 w-2 rounded-full bg-emerald-500 motion-safe:animate-pulse" aria-hidden="true" />
+        {t('Live now — meeting in progress')}
+      </span>
+    );
+  }
+  const ms = start - now;
+  return (
+    <span className="block text-[13px] font-semibold" style={{ color: countdownColor(ms) }}>
+      {t('Next meeting in')} {fmtLeft(ms)}
+    </span>
   );
 }
 

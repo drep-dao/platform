@@ -55,9 +55,15 @@ export const PLATFORM_CONFIG_DEFAULTS = {
   // Invite link to the community/coordination Telegram group, shown on the landing page.
   // Empty (default) → the Telegram invite is not shown at all.
   TELEGRAM_GROUP_URL: '',
-  // Google Calendar "add event" link to the recurring community meeting, shown on the landing page
-  // below the Telegram invite. Empty (default) → the meeting invite is not shown at all.
+  // Link to the recurring community meeting, shown on the landing page below the Telegram invite.
+  // Prefer a permanent Google Meet join link (e.g. https://meet.google.com/xxx-xxxx-xxx) — a
+  // Google Calendar "add event" link is unreliable for a shared standing call (guests get a blank
+  // copy and Google reports "can't find meeting"). Empty (default) → the meeting card is hidden.
   MEETING_CALENDAR_URL: '',
+  // Human-readable schedule shown on the meeting card (e.g. "Every Tuesday · 15:00–15:30
+  // (Europe/Prague)"). Name the timezone rather than a fixed offset so it stays correct across DST.
+  // Empty (default) → only the join button is shown, without a time.
+  MEETING_SCHEDULE: '',
 } as const;
 
 export type PlatformConfigKey = keyof typeof PLATFORM_CONFIG_DEFAULTS;
@@ -75,7 +81,9 @@ export const PLATFORM_CONFIG_META: Record<PlatformConfigKey, string> = {
   TELEGRAM_GROUP_URL:
     'Invite link to the community Telegram group (e.g. https://t.me/+…), shown on the landing page below the Join → Propose → Vote → Act strip. Leave empty to hide the invite entirely.',
   MEETING_CALENDAR_URL:
-    'Google Calendar "add event" link to the recurring meeting (Calendar → the event → ⋮ → Publish event → Link to event), shown on the landing page below the Telegram invite. Leave empty to hide it.',
+    'Link to the recurring meeting, shown on the landing page below the Telegram invite. Use a permanent Google Meet link (e.g. https://meet.google.com/xxx-xxxx-xxx) — a calendar "add event" link is unreliable for a shared call (guests see "can\'t find meeting"). Leave empty to hide the meeting card.',
+  MEETING_SCHEDULE:
+    'When the recurring meeting happens, shown on the meeting card, e.g. "Every Tuesday · 15:00–15:30 (Europe/Prague)". Name the timezone (not a fixed CET/CEST offset) so it stays right across daylight-saving. Leave empty to show just the join button.',
   MILESTONE_MAX_REJECTIONS:
     'After a milestone POA is rejected this many times, the platform automatically opens a stop-funding proposal for the board (0 = disabled).',
   DREP_OPEN_ADMISSION:

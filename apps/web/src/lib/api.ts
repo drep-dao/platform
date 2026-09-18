@@ -1456,7 +1456,8 @@ export interface PublicOverview {
   admissionOpen: boolean;
   telegramUrl: string | null; // community Telegram invite; null → the landing hides the invite
   meetingUrl: string | null; // recurring-meeting join link (Google Meet preferred); null → hidden
-  meetingSchedule: string | null; // human-readable meeting time, e.g. "Every Tuesday · 15:00 (Europe/Prague)"
+  meetingSchedule: string | null; // human-readable meeting time, e.g. "Every Tuesday · 15:00–15:30 (Europe/Prague)"
+  meetingTime: { weekday: number; start: string; end: string; tz: string } | null; // structured schedule → live countdown
   treasuryBalanceAda: number | null;
   members: { votingDReps: number; experts: number };
   board: { seats: number; elected: boolean };

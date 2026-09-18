@@ -5,6 +5,29 @@ import { RoundsService } from '../rounds/rounds.service';
 import { TreasuryService } from '../treasury/treasury.service';
 import { InternalProposalsService } from '../internal-proposals/internal-proposals.service';
 
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
+
+export type MeetingTime = { weekday: number; start: string; end: string; tz: string };
+
+/**
+ * Parse the MEETING_TIME config ("Tuesday 15:00-15:30 Europe/Prague") into structured parts the
+ * landing page can build a live countdown from. Returns null if empty or malformed (→ no countdown).
+ */
+function parseMeetingTime(raw: string): MeetingTime | null {
+  if (!raw) return null;
+  const m = raw.match(/^([A-Za-z]+)\s+(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})\s+(\S+)$/);
+  if (!m) return null;
+  const weekday = WEEKDAY_NAMES.findIndex((n) => n.toLowerCase() === m[1].toLowerCase());
+  if (weekday < 0) return null;
+  try {
+    // Reject an unknown IANA zone up front so the client never has to guess.
+    new Intl.DateTimeFormat('en-US', { timeZone: m[4] });
+  } catch {
+    return null;
+  }
+  return { weekday, start: m[2], end: m[3], tz: m[4] };
+}
+
 /**
  * Public, unauthenticated snapshot for the logged-out landing page. Only aggregate,
  * non-sensitive numbers (all derivable from on-chain data or public directories) —
@@ -35,7 +58,7 @@ export class PublicOverviewController {
 
   private async build() {
     const network = this.config.get<string>('CARDANO_NETWORK') ?? 'Preprod';
-    const [votingDReps, experts, propGroups, internalGroups, boardSeats, activeRound, admissionRow, requestGroups, telegramRow, meetingRow, meetingScheduleRow] = await Promise.all([
+    const [votingDReps, experts, propGroups, internalGroups, boardSeats, activeRound, admissionRow, requestGroups, telegramRow, meetingRow, meetingTimeRow] = await Promise.all([
       this.prisma.drep.count({ where: { status: 'ADMITTED' } }),
       this.prisma.expert.count({ where: { approvedByBoard: true } }),
       this.prisma.proposal.groupBy({ by: ['status'], where: { type: 'FUNDING' }, _count: { _all: true } }),
@@ -49,12 +72,16 @@ export class PublicOverviewController {
       this.prisma.platformConfig.findUnique({ where: { key: 'TELEGRAM_GROUP_URL' } }),
       // Optional recurring-meeting join link — Google Meet preferred (empty/unset → not shown).
       this.prisma.platformConfig.findUnique({ where: { key: 'MEETING_CALENDAR_URL' } }),
-      // Optional human-readable meeting schedule shown alongside the join link.
-      this.prisma.platformConfig.findUnique({ where: { key: 'MEETING_SCHEDULE' } }),
+      // Optional recurring-meeting time ("Tuesday 15:00-15:30 Europe/Prague") → countdown + label.
+      this.prisma.platformConfig.findUnique({ where: { key: 'MEETING_TIME' } }),
     ]);
     const telegramUrl = typeof telegramRow?.value === 'string' && telegramRow.value.trim() ? telegramRow.value.trim() : null;
     const meetingUrl = typeof meetingRow?.value === 'string' && meetingRow.value.trim() ? meetingRow.value.trim() : null;
-    const meetingSchedule = typeof meetingScheduleRow?.value === 'string' && meetingScheduleRow.value.trim() ? meetingScheduleRow.value.trim() : null;
+    const meetingRaw = typeof meetingTimeRow?.value === 'string' ? meetingTimeRow.value.trim() : '';
+    const meetingTime = parseMeetingTime(meetingRaw);
+    const meetingSchedule = meetingTime
+      ? `Every ${WEEKDAY_NAMES[meetingTime.weekday]} · ${meetingTime.start}–${meetingTime.end} (${meetingTime.tz})`
+      : null;
 
     const count = (s: string) => propGroups.find((g) => g.status === s)?._count._all ?? 0;
     const approved = count('APPROVED') + count('COMPLETE');
@@ -94,6 +121,7 @@ export class PublicOverviewController {
       telegramUrl,
       meetingUrl,
       meetingSchedule,
+      meetingTime,
       treasuryBalanceAda,
       members: { votingDReps, experts },
       board: { seats: boardSeats, elected: boardSeats > 0 },

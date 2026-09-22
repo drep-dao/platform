@@ -11,6 +11,7 @@ import { DiscussionThread } from './discussion-thread';
 import { DateField, toLocalInput, RationaleText } from './round-ui';
 import { useExplorer } from '@/lib/explorer';
 import { DocHashRow } from './doc-hash-row';
+import { ConfirmDialog } from './confirm-dialog';
 
 const field = 'w-full rounded-md border border-neutral-300 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900';
 
@@ -66,7 +67,7 @@ export function GroupProposals({ groupKey }: { groupKey: string }) {
             <span className="flex flex-wrap items-center gap-x-1 text-xs text-neutral-500">
               <span>{p.votedCount} {t('of')} {p.eligible} {t('members voted')}</span>
               {p.bulk ? (
-                <span>· {p.bulk.items} {t('items')}{p.bulk.passed != null ? ` · ${p.bulk.passed} ${t('passed')}` : ''}</span>
+                <span>· {p.bulk.items} {t('items')}{p.bulk.passed != null ? <> · <span className="text-emerald-600 dark:text-emerald-400">YES: {p.bulk.passed}</span> · <span className="text-rose-600 dark:text-rose-400">NO: {p.bulk.items - p.bulk.passed}</span></> : null}</span>
               ) : null}
               {p.result ? (
                 <>
@@ -448,6 +449,10 @@ function BulkSection({ p, id, onChange }: { p: GroupProposalDetail; id: string; 
   const [ballot, setBallot] = useState<Record<string, { choice: string; rationale: string }>>(initial);
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState<Record<string, boolean>>({});
+  const [confirming, setConfirming] = useState(false);
+  // The bulk proposal has no single approved/rejected outcome — its result is the summary of item outcomes.
+  const passed = bulk.items.filter((it) => it.tally?.approved).length;
+  const failed = bulk.items.length - passed;
   // Reset the local ballot to the saved votes whenever the proposal reloads (after a save / close).
   useEffect(() => { setBallot(initial()); }, [initial]);
 
@@ -470,9 +475,17 @@ function BulkSection({ p, id, onChange }: { p: GroupProposalDetail; id: string; 
   return (
     <div className="mt-3 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-neutral-200 p-3 text-sm dark:border-neutral-800">
-        <span className="text-neutral-600 dark:text-neutral-300">{bulk.votedMembers} {t('of')} {bulk.eligible} {t('members voted on all items')} · {bulk.items.length} {t('items')}</span>
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="text-neutral-600 dark:text-neutral-300">{bulk.votedMembers} {t('of')} {bulk.eligible} {t('members voted on all items')} · {bulk.items.length} {t('items')}</span>
+          {/* Result = the summary of item outcomes (never a single approved/rejected). */}
+          {p.status !== 'ACTIVE' ? (
+            <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
+              {t('Result')}: <span className="text-emerald-600 dark:text-emerald-400">YES: {passed}</span> · <span className="text-rose-600 dark:text-rose-400">NO: {failed}</span>
+            </span>
+          ) : null}
+        </span>
         <span className="flex items-center gap-2">
-          {p.canCloseEarly ? <button disabled={busy} onClick={closeNow} className="rounded bg-emerald-600 px-3 py-1 text-sm font-medium text-white disabled:opacity-40">{t('Close voting now')}</button> : null}
+          {p.canCloseEarly ? <button disabled={busy} onClick={() => setConfirming(true)} className="rounded bg-emerald-600 px-3 py-1 text-sm font-medium text-white disabled:opacity-40">{t('Close voting now')}</button> : null}
           {p.resultAvailable ? <a href={groupsApi.resultZipUrl(id)} target="_blank" rel="noreferrer" className="rounded border border-emerald-300 px-3 py-1 text-sm font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950">{t('Download result (JSON + hash)')}</a> : null}
         </span>
       </div>
@@ -542,6 +555,15 @@ function BulkSection({ p, id, onChange }: { p: GroupProposalDetail; id: string; 
           <div className="mt-2 text-xs text-neutral-400">{t('on-chain anchor recorded (pending submission)')}</div>
         ) : null}
       </div>
+
+      <ConfirmDialog
+        open={confirming}
+        title={t('Close voting before it expires?')}
+        message={t('This ends voting for all items now, freezes the result and anchors it on-chain. This cannot be undone.')}
+        confirmLabel={t('Yes, close voting')}
+        onCancel={() => setConfirming(false)}
+        onConfirm={async () => { setConfirming(false); await closeNow(); }}
+      />
     </div>
   );
 }

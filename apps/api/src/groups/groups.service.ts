@@ -14,13 +14,15 @@ type GroupRow = {
 };
 
 // §29 BULK — per-item tally shape (also the JSON stored in decidedTally for a closed bulk proposal).
-type BulkItemTally = { id: string; yes: number; no: number; abstain: number; eligible: number; denominator: number; ratioPct: number; thresholdPct: number; approved: boolean; voted: number };
-type BulkTally = { kind: 'BULK'; eligible: number; votedMembers: number; allVoted: boolean; items: BulkItemTally[] };
+// `decided` = the item's pass/fail outcome can no longer change, whatever the not-yet-voted members do.
+type BulkItemTally = { id: string; yes: number; no: number; abstain: number; eligible: number; denominator: number; ratioPct: number; thresholdPct: number; approved: boolean; voted: number; decided: boolean };
+// `allDecided` = every item's outcome is locked (all voted, OR enough votes that the rest can't change it).
+type BulkTally = { kind: 'BULK'; eligible: number; votedMembers: number; allVoted: boolean; allDecided: boolean; items: BulkItemTally[] };
 
 // §29 BULK — the per-item detail shape returned to the client (tally + this member's vote + all votes/rationales).
 type BulkItemTallyView = { yes: number; no: number; abstain: number; eligible: number; denominator: number; ratioPct: number; thresholdPct: number; approved: boolean; voted: number };
 type BulkDetail = {
-  eligible: number; votedMembers: number; allVoted: boolean;
+  eligible: number; votedMembers: number; allVoted: boolean; allDecided: boolean;
   items: {
     id: string; title: string; description: string;
     tally: BulkItemTallyView | null;
@@ -472,6 +474,7 @@ export class GroupsService {
         eligible: bt.eligible,
         votedMembers: bt.votedMembers,
         allVoted: bt.allVoted,
+        allDecided: bt.allDecided,
         items: items.map((it) => {
           const ti = bt.items.find((x) => x.id === it.id) ?? null;
           const ivotes = byItem.get(it.id) ?? [];
@@ -530,7 +533,7 @@ export class GroupsService {
       actors: (fresh.actors as string[] | null) ?? null,
       deliveryDate: fresh.deliveryDate?.toISOString() ?? null,
       canVote: isMember && fresh.status === 'ACTIVE',
-      canCloseEarly: isBulk && isMember && fresh.status === 'ACTIVE' && !!bulk?.allVoted,
+      canCloseEarly: isBulk && isMember && fresh.status === 'ACTIVE' && !!bulk?.allDecided,
       resultAvailable: isBulk && fresh.status !== 'ACTIVE',
       myVotes,
       myRationale,
@@ -733,15 +736,27 @@ export class GroupsService {
         const c = m.get(uid);
         if (c === 'YES') yes++; else if (c === 'NO') no++; else if (c === 'ABSTAIN') abstain++;
       }
+      const voted = yes + no + abstain;
+      const notVoted = eligible - voted;
       const denominator = Math.max(0, eligible - abstain);
       const ratioPct = denominator > 0 ? Math.round((yes / denominator) * 1000) / 10 : 0;
-      return { id: it.id, yes, no, abstain, eligible, denominator, ratioPct, thresholdPct, approved: ratioPct >= thresholdPct, voted: yes + no + abstain };
+      // §29 BULK — the item's outcome is "decided" (can no longer flip) when everyone has voted, or when
+      // the already-cast votes fix it whatever the rest do: even if every remaining member voted NO the
+      // YES ratio still meets the threshold (locked pass), or even if they all voted YES it still can't
+      // (locked fail). Compared with integers to avoid the rounding used for display. Abstaining only
+      // shrinks the denominator (raising the ratio), so all-NO is the true worst case for a pass.
+      let decided: boolean;
+      if (notVoted === 0 || denominator === 0) decided = true;
+      else decided = yes * 100 >= thresholdPct * denominator || (yes + notVoted) * 100 < thresholdPct * denominator;
+      return { id: it.id, yes, no, abstain, eligible, denominator, ratioPct, thresholdPct, approved: ratioPct >= thresholdPct, voted, decided };
     });
     let votedMembers = 0;
     for (const uid of memberIds) {
       if (items.length > 0 && items.every((it) => byItem.get(it.id)?.has(uid))) votedMembers++;
     }
-    return { kind: 'BULK', eligible, votedMembers, allVoted: eligible > 0 && items.length > 0 && votedMembers >= eligible, items: itemTallies };
+    const allVoted = eligible > 0 && items.length > 0 && votedMembers >= eligible;
+    const allDecided = eligible > 0 && items.length > 0 && itemTallies.every((it) => it.decided);
+    return { kind: 'BULK', eligible, votedMembers, allVoted, allDecided, items: itemTallies };
   }
 
   /** §29 BULK — frozen per-item tally for a decided proposal, else the live tally. */
@@ -759,19 +774,29 @@ export class GroupsService {
     const voteRows = await this.prisma.groupVote.findMany({ where: { proposalId: p.id, NOT: { itemId: null } }, select: { voterUserId: true, itemId: true, choice: true, rationale: true }, orderBy: { createdAt: 'asc' } });
     const byItem = new Map<string, typeof voteRows>();
     for (const v of voteRows) { const a = byItem.get(v.itemId as string) ?? []; a.push(v); byItem.set(v.itemId as string, a); }
+    // Every eligible member appears under each item (sorted by name); a member who did not cast a vote
+    // on an item is recorded as "Not voted". Deterministic order keeps the JSON (and its hash) stable.
+    const eligibleSorted = [...memberIds].map((uid) => ({ uid, name: nameOf.get(uid) ?? 'Member' })).sort((a, b) => a.name.localeCompare(b.name));
+    const itemsPassed = tally.items.filter((x) => x.approved).length;
     const doc = {
       group: { key: p.group.key, name: p.group.name },
       proposal: { id: p.id, title: p.title, description: p.contentMd, createdAt: p.createdAt.toISOString(), votingEndAt: p.votingEndAt.toISOString(), closedAt: p.decidedAt?.toISOString() ?? new Date().toISOString() },
       thresholdPct: tally.items[0]?.thresholdPct ?? null,
-      eligibleMembers: [...memberIds].map((uid) => nameOf.get(uid) ?? 'Member').sort(),
+      // The bulk proposal has no single approved/rejected outcome — the result is the summary of item outcomes.
+      summary: { itemsTotal: items.length, itemsPassed, itemsFailed: items.length - itemsPassed },
+      eligibleMembers: eligibleSorted.map((m) => m.name),
       items: items.map((it) => {
         const ti = tally.items.find((x) => x.id === it.id);
-        const rows = byItem.get(it.id) ?? [];
+        const byUid = new Map((byItem.get(it.id) ?? []).map((r) => [r.voterUserId, r]));
         return {
           title: it.title,
           description: it.description,
           result: ti ? { yes: ti.yes, no: ti.no, abstain: ti.abstain, ratioPct: ti.ratioPct, thresholdPct: ti.thresholdPct, approved: ti.approved } : null,
-          votes: rows.map((r) => ({ voter: nameOf.get(r.voterUserId) ?? 'Member', choice: r.choice, ...(r.rationale?.trim() ? { rationale: r.rationale } : {}) })),
+          votes: eligibleSorted.map(({ uid, name }) => {
+            const r = byUid.get(uid);
+            if (!r) return { voter: name, choice: 'Not voted' };
+            return { voter: name, choice: r.choice, ...(r.rationale?.trim() ? { rationale: r.rationale } : {}) };
+          }),
         };
       }),
     };
@@ -876,7 +901,7 @@ export class GroupsService {
     if (p.status !== 'ACTIVE') throw new ConflictException('this proposal is already closed');
     if (!(await this.admittedMember(p.groupId, userId))) throw new ForbiddenException('only admitted members can close a proposal');
     const tally = await this.bulkTally(p, await this.admittedMemberIds(p.groupId));
-    if (!tally.allVoted) throw new BadRequestException('every member must vote on every item before the proposal can be closed early');
+    if (!tally.allDecided) throw new BadRequestException('the result is not final yet — every member must vote, or there must be enough votes that the remaining members cannot change any item’s outcome');
     await this.prisma.groupProposal.update({ where: { id: proposalId }, data: { votingEndAt: new Date() } });
     const fresh = await this.prisma.groupProposal.findUnique({ where: { id: proposalId } });
     if (fresh) await this.maybeFinalize(fresh);

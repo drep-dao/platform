@@ -2391,7 +2391,7 @@ export interface GroupBulkItem {
   voters: { voter: string; choice: string }[];
   rationales: { voter: string; choice: string; rationale: string }[];
 }
-export interface GroupBulkDetail { eligible: number; votedMembers: number; allVoted: boolean; items: GroupBulkItem[] }
+export interface GroupBulkDetail { eligible: number; votedMembers: number; allVoted: boolean; allDecided: boolean; items: GroupBulkItem[] }
 export interface GroupComment {
   id: string;
   authorName: string;

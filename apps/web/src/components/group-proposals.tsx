@@ -474,7 +474,8 @@ function BulkSection({ p, id, onChange }: { p: GroupProposalDetail; id: string; 
 
   return (
     <div className="mt-3 space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-neutral-200 p-3 text-sm dark:border-neutral-800">
+      <div className="rounded-md border border-neutral-200 p-3 text-sm dark:border-neutral-800">
+        <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="text-neutral-600 dark:text-neutral-300">{bulk.votedMembers} {t('of')} {bulk.eligible} {t('members voted on all items')} · {bulk.items.length} {t('items')}</span>
           {/* Result = the summary of item outcomes (never a single approved/rejected). */}
@@ -488,6 +489,20 @@ function BulkSection({ p, id, onChange }: { p: GroupProposalDetail; id: string; 
           {p.canCloseEarly ? <button disabled={busy} onClick={() => setConfirming(true)} className="rounded bg-emerald-600 px-3 py-1 text-sm font-medium text-white disabled:opacity-40">{t('Close voting now')}</button> : null}
           {p.resultAvailable ? <a href={groupsApi.resultZipUrl(id)} target="_blank" rel="noreferrer" className="rounded border border-emerald-300 px-3 py-1 text-sm font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950">{t('Download result (JSON + hash)')}</a> : null}
         </span>
+        </div>
+        {/* §29 BULK — how to independently verify the downloaded result against the on-chain anchor. */}
+        {p.bulk?.resultHash ? (
+          <div className="mt-2 border-t border-neutral-100 pt-2 text-xs text-neutral-500 dark:border-neutral-800">
+            <span className="font-medium">{t('Result hash')}</span>{' '}
+            <span className="text-[10px] text-neutral-400">({t('SHA-256 of result.json — the same hash is stored on-chain')})</span>
+            <div className="mt-0.5 break-all font-mono text-[11px] text-neutral-500 dark:text-neutral-400">{p.bulk.resultHash}</div>
+            <div className="mt-1">
+              {t('To check it yourself: download the zip, then compute the SHA-256 of the raw result.json with an')}{' '}
+              <a href="https://emn178.github.io/online-tools/sha256.html" target="_blank" rel="noreferrer" className="text-emerald-700 underline dark:text-emerald-400">{t('online SHA-256 tool ↗')}</a>{' '}
+              {t('(paste the file’s contents or upload the file) and confirm it matches this hash and the on-chain anchor.')}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <ol className="space-y-3">

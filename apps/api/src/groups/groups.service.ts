@@ -23,6 +23,7 @@ type BulkTally = { kind: 'BULK'; eligible: number; votedMembers: number; allVote
 type BulkItemTallyView = { yes: number; no: number; abstain: number; eligible: number; denominator: number; ratioPct: number; thresholdPct: number; approved: boolean; voted: number };
 type BulkDetail = {
   eligible: number; votedMembers: number; allVoted: boolean; allDecided: boolean;
+  resultHash: string | null; // SHA-256 of the downloadable result.json (once closed); matches the on-chain anchor
   items: {
     id: string; title: string; description: string;
     tally: BulkItemTallyView | null;
@@ -470,11 +471,13 @@ export class GroupsService {
       const rows = await this.prisma.groupVote.findMany({ where: { proposalId: id, NOT: { itemId: null } }, select: { voterUserId: true, itemId: true, choice: true, rationale: true }, orderBy: { createdAt: 'asc' } });
       const byItem = new Map<string, typeof rows>();
       for (const v of rows) { const a = byItem.get(v.itemId as string) ?? []; a.push(v); byItem.set(v.itemId as string, a); }
+      const dt = fresh.decidedTally as { resultHash?: string } | null;
       bulk = {
         eligible: bt.eligible,
         votedMembers: bt.votedMembers,
         allVoted: bt.allVoted,
         allDecided: bt.allDecided,
+        resultHash: fresh.status !== 'ACTIVE' && dt?.resultHash ? dt.resultHash : null,
         items: items.map((it) => {
           const ti = bt.items.find((x) => x.id === it.id) ?? null;
           const ivotes = byItem.get(it.id) ?? [];

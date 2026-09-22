@@ -368,8 +368,9 @@ export class AnchorService implements OnModuleInit {
       eligibleMembers: doc.eligibleMembers ?? [],
       items: (doc.items ?? []).map((it) => ({
         title: it.title ?? '',
+        // Cardano tx metadata has no boolean type — represent `approved` as the string "true"/"false".
         result: it.result
-          ? { yes: it.result.yes ?? 0, no: it.result.no ?? 0, abstain: it.result.abstain ?? 0, approved: !!it.result.approved }
+          ? { yes: it.result.yes ?? 0, no: it.result.no ?? 0, abstain: it.result.abstain ?? 0, approved: it.result.approved ? 'true' : 'false' }
           : null,
       })),
       proofHash: hash,

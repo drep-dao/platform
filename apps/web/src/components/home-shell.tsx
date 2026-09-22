@@ -23,6 +23,7 @@ import { RequestsSection } from './requests-section';
 import { GroupMembers } from './group-members';
 import { GroupProposals } from './group-proposals';
 import { groupsApi, type GroupConfig } from '@/lib/api';
+import { GROUPS_ENABLED } from '@/lib/features';
 import { JoinDaoButton } from './join-dao-button';
 import { NotificationBadge } from './notification-badge';
 import { NotificationBell } from './notification-bell';
@@ -66,16 +67,16 @@ export function HomeShell() {
   const view = (NAV.some((n) => n.key === get('view')) || get('view') === 'landing' ? get('view') : 'overview') as View;
   // §29 — configurable groups add dynamic left-nav items ("<Name> members" / "<Name> proposals").
   const [groups, setGroups] = useState<GroupConfig[]>([]);
-  useEffect(() => { groupsApi.listActive().then(setGroups).catch(() => setGroups([])); }, []);
+  useEffect(() => { if (GROUPS_ENABLED) groupsApi.listActive().then(setGroups).catch(() => setGroups([])); }, []);
   const rawView = get('view') ?? 'overview';
   const groupMatch = /^g:([a-z0-9-]+):(members|proposals)$/.exec(rawView);
-  const openGroupView = (key: string) => setParams({ view: key, tab: null, round: null, proposal: null, ip: null, expert: null, doc: null });
+  const openGroupView = (key: string) => setParams({ view: key, tab: null, round: null, proposal: null, ip: null, expert: null, doc: null, gp: null });
   // Switching the menu (or signing in as a different user) clears all sub-navigation —
   // tab inside My-area, opened round / funding proposal, opened internal proposal (`ip`).
   const [viewNonce, setViewNonce] = useState(0);
   const setView = (v: View) => {
     if (v === view) setViewNonce((n) => n + 1); // same item → reset to its overview
-    setParams({ view: v, tab: null, round: null, proposal: null, ip: null, expert: null, doc: null });
+    setParams({ view: v, tab: null, round: null, proposal: null, ip: null, expert: null, doc: null, gp: null });
   };
 
   // Reset sub-navigation whenever the signed-in user changes (login / logout / switch wallet) so
@@ -86,9 +87,10 @@ export function HomeShell() {
     const id = profile?.user?.id ?? null;
     const prev = prevUserIdRef.current;
     // Clear only on a real switch/logout (prev was a signed-in user); NOT on the first anonymous→login
-    // transition — otherwise a shared ?proposal=/?ip= link would be dropped the moment the visitor logs in.
+    // transition — otherwise a shared ?proposal=/?ip=/?gp= link would be dropped the moment the
+    // visitor logs in to view or vote.
     if (prev !== null && prev !== id) {
-      setParams({ tab: null, round: null, proposal: null, ip: null });
+      setParams({ tab: null, round: null, proposal: null, ip: null, gp: null });
     }
     prevUserIdRef.current = id;
   }, [profile, setParams]);
@@ -100,7 +102,8 @@ export function HomeShell() {
   const isBoard = profile?.roles.includes('BOARD') ?? false;
   // Match member-area's definition (EXPERT handled inside the hook via the reward-address nag)
   // so the left-nav badge, the login-box badge, and the in-area tab badges all agree.
-  const canVote = (profile?.roles.includes('DREP') || profile?.roles.includes('DAO_MEMBER') || profile?.roles.includes('BOARD')) ?? false;
+  // §20 — council voters only (see member-area): registered-but-not-joined DReps aren't nagged.
+  const canVote = (profile?.roles.includes('DAO_MEMBER') || profile?.roles.includes('BOARD')) ?? false;
   // Bumped by the login-box "refresh" button to force an immediate re-check of the to-dos.
   // Top-right "Connect wallet" dropdown on the logged-out public shell. Declared before the
   // logged-out early return so hook order stays stable across both renders.
@@ -167,7 +170,11 @@ export function HomeShell() {
         </header>
 
         <main className="mx-auto max-w-7xl px-4 py-6 sm:px-5">
-          {pubView === 'members' ? (
+          {/* A shared group-proposal deep link (?view=g:<key>:proposals&gp=<id>) must open for anyone,
+              logged in or not — group proposals/results are public (on-chain anchored), read-only here. */}
+          {groupMatch ? (
+            groupMatch[2] === 'members' ? <GroupMembers groupKey={groupMatch[1]} /> : <GroupProposals groupKey={groupMatch[1]} />
+          ) : pubView === 'members' ? (
             <DaoMembersDirectory />
           ) : pubView === 'treasury' ? (
             <TreasuryOverview />
@@ -224,7 +231,7 @@ export function HomeShell() {
                 key={n.key}
                 onClick={() => setView(n.key)}
                 className={`flex w-auto shrink-0 items-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-left text-sm lg:w-full lg:justify-between lg:gap-0 ${
-                  view === n.key
+                  !groupMatch && view === n.key
                     ? 'bg-emerald-600 font-medium text-white'
                     : 'text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800'
                 }`}

@@ -33,6 +33,17 @@ export interface AnchorResult {
   submitted: boolean;
 }
 
+// §29 BULK — the full result document stored as a bulk anchor's preimage (also the downloadable
+// result.json). The on-chain metadata is a trimmed view of this (no per-item votes or descriptions).
+type BulkResultDoc = {
+  group?: { key?: string; name?: string };
+  proposal?: { id?: string; title?: string; description?: string; createdAt?: string; votingEndAt?: string; closedAt?: string };
+  thresholdPct?: number | null;
+  summary?: { itemsTotal?: number; itemsPassed?: number; itemsFailed?: number };
+  eligibleMembers?: string[];
+  items?: { title?: string; description?: string; result?: { yes?: number; no?: number; abstain?: number; ratioPct?: number; thresholdPct?: number; approved?: boolean } | null; votes?: unknown[] }[];
+};
+
 interface Utxo {
   tx_hash: string;
   tx_index: number;
@@ -117,6 +128,7 @@ export class AnchorService implements OnModuleInit {
    * The hot wallet's signing key is an operator secret (env/KMS), never exposed
    * here — the board sees the address + balance for oversight.
    */
+  /** §24 — how often (hours) the automatic on-chain anchor sweep runs. Admin-configurable; default 24h. */
   private readonly DEFAULT_SWEEP_HOURS = 24;
   // §24 — anchoring mode. 'scheduled' (default): decisions are recorded off-chain immediately but
   // submitted on-chain in cheap batches on the sweep interval (many results share one tx fee).
@@ -279,6 +291,7 @@ export class AnchorService implements OnModuleInit {
     threshold: number;
     totalPower?: number; // BAL: total eligible voting power (for the on-chain tally)
     preimageVotes?: unknown; // richer votes (rationale/signature) for the off-chain preimage
+    group?: { key: string; name: string } | null; // §29 — configurable group (e.g. OG) this result belongs to
   }): Promise<AnchorResult> {
     const preimage = {
       subject: params.subject,
@@ -288,6 +301,7 @@ export class AnchorService implements OnModuleInit {
       ...(params.docHash ? { docHash: params.docHash } : {}),
       ...(params.electedBoard?.length ? { electedBoard: params.electedBoard } : {}),
       votes: params.preimageVotes ?? params.votes,
+      ...(params.group ? { group: params.group } : {}),
       result: { outcome: params.outcome, yes: params.yes, no: params.no, threshold: params.threshold },
     };
     const hash = sha256hex(JSON.stringify(preimage));
@@ -307,6 +321,7 @@ export class AnchorService implements OnModuleInit {
       totalPower: params.totalPower,
       outcome: params.outcome,
       proofHash: hash,
+      group: params.group ?? null,
     })[GOVERNANCE_METADATA_LABEL];
 
     let txHash: string | null = null;
@@ -329,6 +344,70 @@ export class AnchorService implements OnModuleInit {
       },
     });
     return { hash, txHash, submitted: !!txHash };
+  }
+
+  /**
+   * §29 BULK — the ON-CHAIN metadata for a closed bulk proposal: a self-describing, human-readable
+   * summary (group, proposal, threshold, per-item results, eligible members) — WITHOUT the individual
+   * votes or item descriptions, which stay in the off-chain preimage/download. `proofHash` (SHA-256 of
+   * the full downloadable result JSON) commits on-chain to that full record so it stays verifiable.
+   * Derived purely from the stored preimage so the inline submit and a later batch rebuild agree.
+   */
+  private bulkResultEvent(doc: BulkResultDoc, hash: string): Record<string, unknown> {
+    return {
+      group: doc.group ?? {},
+      proposal: {
+        id: doc.proposal?.id ?? '',
+        title: doc.proposal?.title ?? '',
+        createdAt: doc.proposal?.createdAt ?? null,
+        votingEndAt: doc.proposal?.votingEndAt ?? null,
+        closedAt: doc.proposal?.closedAt ?? null,
+      },
+      thresholdPct: doc.thresholdPct ?? null,
+      summary: doc.summary ?? {},
+      eligibleMembers: doc.eligibleMembers ?? [],
+      items: (doc.items ?? []).map((it) => ({
+        title: it.title ?? '',
+        // Cardano tx metadata has no boolean type — represent `approved` as the string "true"/"false".
+        result: it.result
+          ? { yes: it.result.yes ?? 0, no: it.result.no ?? 0, abstain: it.result.abstain ?? 0, approved: it.result.approved ? 'true' : 'false' }
+          : null,
+      })),
+      // Self-describing link to the OFF-CHAIN full record: the SHA-256 of the exact JSON a user can
+      // download from the site. This locks that file (any change breaks the hash) and, with proposal.id
+      // above, lets anyone tie proposal → downloadable file → this on-chain anchor together.
+      downloadableJson: {
+        sha256: hash,
+        note: 'SHA-256 of the full result JSON downloadable from the DRep Council site',
+      },
+    };
+  }
+
+  /**
+   * §29 BULK — anchor a closed bulk group proposal on-chain. The metadata carries the readable per-item
+   * summary (see bulkResultEvent); the full result JSON (with every vote + descriptions) is stored as the
+   * preimage so users can download it and re-hash to `proofHash`.
+   */
+  async anchorGroupBulk(params: { proposalRowId: string; doc: object; hash: string }): Promise<AnchorResult> {
+    const event = this.bulkResultEvent(params.doc as BulkResultDoc, params.hash);
+    let txHash: string | null = null;
+    try {
+      txHash = await this.maybeSubmitInline(event);
+    } catch (e) {
+      this.logger.warn(`bulk anchor submit skipped/failed: ${e instanceof Error ? e.message : e}`);
+    }
+    await this.prisma.anchor.create({
+      data: {
+        kind: GovSubject.GROUP,
+        proposalId: params.proposalRowId,
+        hash: params.hash,
+        preimage: params.doc as object,
+        metadataLabel: GOVERNANCE_METADATA_LABEL,
+        txHash,
+        submittedAt: txHash ? new Date() : null,
+      },
+    });
+    return { hash: params.hash, txHash, submitted: !!txHash };
   }
 
   /**
@@ -819,7 +898,13 @@ export class AnchorService implements OnModuleInit {
   }
 
   /** Rebuild the on-chain metadata for an anchor from its stored preimage. */
-  private metadataFromAnchor(a: { kind: string; hash: string; preimage: unknown }): AnchorResultMetadata | AnchorSubmissionMetadata | AnchorPayoutMetadata | AnchorDocHashMetadata {
+  private metadataFromAnchor(a: { kind: string; hash: string; preimage: unknown }): AnchorResultMetadata | AnchorSubmissionMetadata | AnchorPayoutMetadata | AnchorDocHashMetadata | Record<string, unknown> {
+    // §29 BULK — a bulk group result: the preimage is the full doc (group + summary + per-item results).
+    // Rebuild the same trimmed on-chain event so a batched submit matches the inline one.
+    const bulkP = (a.preimage ?? {}) as BulkResultDoc & { summary?: unknown; items?: unknown[] };
+    if (bulkP.summary && Array.isArray(bulkP.items)) {
+      return this.bulkResultEvent(bulkP, a.hash);
+    }
     const p = (a.preimage ?? {}) as {
       subject?: GovSubject;
       style?: VotingStyle;
@@ -1044,13 +1129,15 @@ export class AnchorService implements OnModuleInit {
   private async submitTxHex(hex: string): Promise<void> {
     // Prefer a cardano-submit-api (our own node) when configured — it avoids Koios
     // entirely for the broadcast, so a Koios daily-cap 429 can't block submission.
-    const url = this.submitApiUrl ? `${this.submitApiUrl.replace(/\/$/, '')}/api/submit/tx` : `${this.base}/submittx`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/cbor' },
-      body: Buffer.from(hex, 'hex'),
-    });
-    if (!res.ok) throw new Error(`submittx ${res.status}: ${await res.text()}`);
+    if (this.submitApiUrl) {
+      const url = `${this.submitApiUrl.replace(/\/$/, '')}/api/submit/tx`;
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/cbor' }, body: Buffer.from(hex, 'hex') });
+      if (!res.ok) throw new Error(`submittx ${res.status}: ${await res.text()}`);
+      return;
+    }
+    // Otherwise broadcast via Koios — AUTHENTICATED with the Koios token so it uses the token's tier
+    // budget, not the shared anonymous-IP limit (which 429s "Exceeded Tier Limit" under load).
+    await this.cardano.submitTxViaKoios(hex);
   }
 
   private anchorKeys(mnemonic: string) {

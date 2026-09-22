@@ -41,6 +41,7 @@ export const GovSubject = {
   PROPOSAL_DOC: 'proposal_doc', // §8.1 — content fingerprint taken when Debate ends (proposal frozen)
   MULTISIG_NEW: 'multisig_new', // §15.2 — a new treasury multisig assembled (signers + addresses)
   MULTISIG_MIGRATION: 'multisig_migration', // §15.2 — funds moved from the old multisig to the new one
+  GROUP: 'group', // §29 — a configurable group (e.g. OG) proposal result
 } as const;
 export type GovSubject = (typeof GovSubject)[keyof typeof GovSubject];
 
@@ -101,6 +102,7 @@ export const SUBJECT_TITLE: Record<GovSubject, string> = {
   proposal_doc: 'Proposal content fingerprint (post-debate)',
   multisig_new: 'New multisig prepared',
   multisig_migration: 'Funds moved from old multisig to the new multisig',
+  group: 'Group proposal result',
 };
 export const STYLE_LABEL: Record<VotingStyle, string> = {
   '1P1V': '1 member, 1 vote',
@@ -123,6 +125,7 @@ export interface AnchorVote {
 export interface AnchorResultMetadata {
   title: string;
   subject: GovSubject;
+  group?: { key: string; name: string }; // §29 — the configurable group (e.g. OG) this result belongs to
   proposalId?: string; // structured public id (e.g. "R3-P2" or "Internal 4") when about a proposal
   docHash?: string; // sha256 of the proposal's title+content (internal proposals) — date-independent
   electedBoard?: { drep: string; name: string }[]; // §14 — the elected candidates on a board election
@@ -157,6 +160,7 @@ export function buildResultMetadata(p: {
   outcome: string;
   proofHash?: string;
   verify?: string;
+  group?: { key: string; name: string } | null; // §29 — which configurable group (e.g. OG) this vote belongs to
 }): Record<string, AnchorResultMetadata> {
   const balanced = p.style !== VotingStyle.ONE_PERSON_ONE_VOTE;
   // The unit names the voting method precisely: 1P1V counts heads ("1 vote"); BALANCED is the
@@ -172,8 +176,9 @@ export function buildResultMetadata(p: {
     return balanced ? String(Math.round(x * 100) / 100) : r(x);
   };
   const meta: AnchorResultMetadata = {
-    title: SUBJECT_TITLE[p.subject],
+    title: p.group ? `${p.group.name} — ${SUBJECT_TITLE[p.subject]}` : SUBJECT_TITLE[p.subject],
     subject: p.subject,
+    ...(p.group ? { group: p.group } : {}),
     ...(p.proposalId ? { proposalId: p.proposalId } : {}),
     ...(p.docHash ? { docHash: p.docHash } : {}),
     ...(p.electedBoard && p.electedBoard.length ? { electedBoard: p.electedBoard } : {}),

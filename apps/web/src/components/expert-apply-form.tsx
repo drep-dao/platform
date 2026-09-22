@@ -112,7 +112,7 @@ export function ExpertApplyForm({ onChange }: { onChange?: () => void } = {}) {
       ) : null}
       <p className="text-sm text-neutral-500">
         {t('Experts are non-DRep ADA holders approved by the board to advise on proposals — they can give feedback in the Filtering stage, advise in the Debate & Vote stage, and review milestone deliveries.')}
-        {mine && !approved ? ' ' + t('Your application is under board review — you can update it below.') : ''}
+        {mine && !approved ? ' ' + t('Your registration is awaiting approval. You can still update it below.') : ''}
       </p>
       <label className="block space-y-1">
         <span className="text-sm font-medium">{t('Display name')} <span className="text-red-500">*</span></span>
@@ -214,7 +214,7 @@ export function ExpertApplyForm({ onChange }: { onChange?: () => void } = {}) {
         >
           {busy ? t('Submitting…') : approved ? t('Save profile') : mine ? t('Update application') : t('Submit expert application')}
         </button>
-        {mine && !approved && !saved ? <span className="text-xs text-neutral-500">{t('Your application is under board review — you can update it anytime.')}</span> : null}
+        {mine && !approved && !saved ? <span className="text-xs text-neutral-500">{t('Your registration is awaiting approval. You can still update it anytime.')}</span> : null}
         {saved && !dirty ? <span className="text-xs font-medium text-emerald-600">✓ {saved}</span> : null}
       </div>
 

@@ -1,9 +1,11 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Res, UseGuards } from '@nestjs/common';
+import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { CurrentUser, type AuthContext } from '../auth/current-user.decorator';
 import { GroupsService } from './groups.service';
-import { GroupCommentDto, GroupVoteDto, RegisterGroupDto, SubmitGroupProposalDto } from './dto';
+import { makeStoredZip } from './zip.util';
+import { GroupCommentDto, GroupVoteDto, GroupVotingSettingsDto, RegisterGroupDto, SubmitGroupProposalDto } from './dto';
 
 /** §29 — configurable groups (e.g. OG): membership, member-submitted proposals + voting, comments. */
 @Controller('groups')
@@ -23,6 +25,20 @@ export class GroupsController {
     return this.svc.myMemberships(ctx.userId);
   }
 
+  // §29 — count of pending applicants across groups this member may approve (for the to-do badge).
+  @Get('pending-approvals-count')
+  @UseGuards(JwtAuthGuard)
+  async pendingApprovalsCount(@CurrentUser() ctx: AuthContext) {
+    return { count: await this.svc.pendingApprovalsCount(ctx.userId) };
+  }
+
+  // §29 — count of active group proposals this member still has to vote on (for the to-do badge).
+  @Get('pending-votes-count')
+  @UseGuards(JwtAuthGuard)
+  async pendingVotesCount(@CurrentUser() ctx: AuthContext) {
+    return { count: await this.svc.pendingVotesCount(ctx.userId) };
+  }
+
   // ── proposals (by id — declared before /:key to keep 'proposal' unambiguous) ──
   @Get('proposal/:id')
   @UseGuards(OptionalJwtAuthGuard)
@@ -34,6 +50,37 @@ export class GroupsController {
   @UseGuards(JwtAuthGuard)
   vote(@CurrentUser() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: GroupVoteDto) {
     return this.svc.vote(ctx.userId, id, dto);
+  }
+
+  // §29 BULK — a member closes voting early once every member has voted on every item.
+  @Post('proposal/:id/close')
+  @UseGuards(JwtAuthGuard)
+  closeEarly(@CurrentUser() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.closeEarly(ctx.userId, id);
+  }
+
+  // §29 — a member discards an active proposal before voting ends (kept as DISCARDED, not deleted).
+  @Post('proposal/:id/discard')
+  @UseGuards(JwtAuthGuard)
+  discard(@CurrentUser() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.discardProposal(ctx.userId, id);
+  }
+
+  // §29 BULK — download the closed proposal's result JSON + its SHA-256 as a zip (public; re-verifiable).
+  @Get('proposal/:id/result.zip')
+  @UseGuards(OptionalJwtAuthGuard)
+  async resultZip(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
+    const { base, json, hash } = await this.svc.bulkResult(id);
+    const zip = makeStoredZip([
+      { name: `${base}.json`, data: json },
+      { name: `${base}.sha256.txt`, data: `${hash}  ${base}.json\n` },
+    ]);
+    res.set({
+      'Content-Type': 'application/zip',
+      'Content-Disposition': `attachment; filename="${base}.zip"`,
+      'Content-Length': String(zip.length),
+    });
+    res.end(zip);
   }
 
   @Post('proposal/:id/comments')
@@ -65,6 +112,20 @@ export class GroupsController {
   @UseGuards(JwtAuthGuard)
   updateProfile(@CurrentUser() ctx: AuthContext, @Param('key') key: string, @Body() dto: RegisterGroupDto) {
     return this.svc.updateProfile(ctx.userId, key, dto);
+  }
+
+  // §29 OG — leave the group.
+  @Post(':key/leave')
+  @UseGuards(JwtAuthGuard)
+  leave(@CurrentUser() ctx: AuthContext, @Param('key') key: string) {
+    return this.svc.leaveGroup(ctx.userId, key);
+  }
+
+  // §29 OG — set the group's voting quorum (self-governed; any admitted member).
+  @Patch(':key/voting')
+  @UseGuards(JwtAuthGuard)
+  updateVoting(@CurrentUser() ctx: AuthContext, @Param('key') key: string, @Body() dto: GroupVotingSettingsDto) {
+    return this.svc.updateVotingSettings(ctx.userId, key, dto);
   }
 
   @Get(':key/members')

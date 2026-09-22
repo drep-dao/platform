@@ -6,8 +6,11 @@ import { MyRuleDocuments } from './rule-documents';
 import { MyDecisions } from './decisions';
 import { GroupRegisterForm, GroupApply, GroupMemberArea } from './group-register';
 import { GroupApprovals } from './group-members';
+import { GroupProposals } from './group-proposals';
+import { PendingNotice } from './pending-notice';
 import { useAuth } from '@/lib/auth-context';
 import { useT } from '@/lib/prefs-context';
+import { GROUPS_ENABLED } from '@/lib/features';
 import { DrepVerifyControl } from './drep-verify-control';
 import { useUrlNav } from '@/lib/use-url-nav';
 import { useTodoCounts } from '@/lib/use-todo-counts';
@@ -74,10 +77,12 @@ export function MemberArea() {
   useEffect(() => { submitterApi.pendingCount().then((r) => setBoardSeated(r.boardElected)).catch(() => setBoardSeated(null)); }, []);
   // §29 — groups the viewer is an admitted member of get their own My-area tab (profile + proposals).
   const [myGroups, setMyGroups] = useState<GroupMembershipMine[]>([]);
-  useEffect(() => { groupsApi.mine().then((r) => setMyGroups(r.filter((m) => m.status === 'ADMITTED'))).catch(() => setMyGroups([])); }, []);
+  useEffect(() => { if (GROUPS_ENABLED) groupsApi.mine().then((r) => setMyGroups(r.filter((m) => m.status === 'ADMITTED'))).catch(() => setMyGroups([])); }, []);
 
   const isBoard = !!profile?.roles.includes('BOARD');
-  const canVote = !!profile && (profile.roles.includes('DREP') || profile.roles.includes('DAO_MEMBER') || profile.roles.includes('BOARD'));
+  // §20 — only COUNCIL members (joined DReps + board) vote on internal proposals / earn rewards. A
+  // registered DRep who hasn't joined does NOT, so they must not be nagged (reward-address to-do).
+  const canVote = !!profile && (profile.roles.includes('DAO_MEMBER') || profile.roles.includes('BOARD'));
   // §20 — red-circle to-do counts (shared with the left-nav + login-box badges).
   const todo = useTodoCounts(isBoard, canVote);
 
@@ -120,7 +125,14 @@ export function MemberArea() {
 
   // §29 — an admitted group member manages their group profile + proposals from a dedicated tab.
   for (const mg of myGroups) {
-    tabs.push({ key: `grp-${mg.groupKey}`, label: mg.groupName, node: <GroupMemberArea groupKey={mg.groupKey} /> });
+    // §29 OG — a profile/membership tab and a separate proposals tab (like a DRep's Profile + Internal proposals).
+    tabs.push({ key: `grp-${mg.groupKey}`, label: `${mg.groupName} profile`, node: <GroupMemberArea groupKey={mg.groupKey} /> });
+    tabs.push({ key: `grp-${mg.groupKey}-proposals`, label: `${mg.groupName} proposals`, badge: todo.groupProposals, node: <GroupProposals groupKey={mg.groupKey} /> });
+  }
+  // §29 OG self-governance — a top-menu "Applications" item for members who may approve applicants,
+  // unless they are a council member (whose own Applications tab already shows group approvals).
+  if (GROUPS_ENABLED && !isMember && !isBoard && myGroups.some((g) => g.canManage)) {
+    tabs.push({ key: 'group-apps', label: 'Applications', badge: todo.groupApplications, node: <GroupApprovals showWhenEmpty /> });
   }
 
   // §27 — a DRep's own rule documents: draft privately, publish, edit until an approval vote opens.
@@ -136,8 +148,9 @@ export function MemberArea() {
     tabs.push({ key: 'requests', label: 'My Requests', node: <RequestsSection scope="mine" /> });
   }
 
-  if (isMember || isDrep || expertApproved) {
-    // §10 — internal proposals (Council governance): submit + browse + vote. Same component as
+  if (isMember || isBoard) {
+    // §10 — internal proposals (Council governance): submit + browse + vote. Council members only —
+    // a registered DRep who hasn't joined can't act here (SEC/UX: no Internal-proposals tab for them). Same component as
     // the left-nav "Internal proposals" view; the tab adds a notification badge for items
     // awaiting THIS DRep's vote.
     tabs.push({
@@ -158,7 +171,7 @@ export function MemberArea() {
     tabs.push({ key: 'sign', label: 'Actions', badge: todo.actions, node: <ActionsTab /> });
     tabs.push({ key: 'rewards', label: 'Rewards', node: <RewardsTab /> });
     tabs.push({ key: 'apps', label: 'Applications', badge: todo.applications, node: <ApplicationsTab /> });
-  } else if ((isMember || isDrep) && boardSeated === false) {
+  } else if (isMember && boardSeated === false) {
     // §14 bootstrap: no board seated → a Council member approves Expert + Submitter applications
     // (open admission only auto-admits DReps; those two roles always need a human approval).
     tabs.push({ key: 'apps', label: 'Applications', node: <CouncilApplicationsTab /> });
@@ -238,6 +251,7 @@ function ProfileTab({ isMember, isBoard, daoPending, expertApproved, expertPendi
     if (daoPending) {
       return (
         <div className="space-y-6">
+          <PendingNotice title={t('Council membership')} canUpdate={false} />
           <section className={card}><MyDrepStatus /></section>
           <section className={card}><PreferencesPanel /></section>
         </div>
@@ -255,13 +269,14 @@ function ProfileTab({ isMember, isBoard, daoPending, expertApproved, expertPendi
             <section className={card}><SubmitterApplyForm onChange={onSubmitterChange} /></section>
           ) : (
             <div className="space-y-6">
+              {expertPending && !expertApproved ? <PendingNotice title={t('Expert application')} /> : null}
               <section className={card}><ExpertApplyForm onChange={loadExpert} /></section>
               {/* §15.4 — approved experts earn ADA rewards, so they need a reward
                   payment address. This is what the My-area to-do badge points at
                   (the panel amber-nags until it's set). */}
               {expertApproved ? <RewardAddressPanel /> : null}
               {submitterRoleCard}
-              <GroupApply />
+              {GROUPS_ENABLED ? <GroupApply /> : null}
               <section className={card}><PreferencesPanel /></section>
             </div>
           )}
@@ -320,7 +335,7 @@ function ProfileTab({ isMember, isBoard, daoPending, expertApproved, expertPendi
               </button>
             </section>
           ) : null}
-          <GroupApply />
+          {GROUPS_ENABLED ? <GroupApply /> : null}
           {/* §15.4 — payment address for rewards. Amber-nags when empty. */}
           <RewardAddressPanel />
           {/* §13 — merit points + ledger + avoid-period (vacancy) signalling. Hidden when merit is off. */}
@@ -472,7 +487,7 @@ function ApplicationsTab() {
       <section className={card}><BoardReviewPanel history={showHistory} /></section>
       <section className={card}><ExpertReviewPanel history={showHistory} /></section>
       <SubmitterReviewPanel history={showHistory} />
-      <GroupApprovals />
+      {GROUPS_ENABLED ? <GroupApprovals /> : null}
       <section className={card}><RemovalPanel history={showHistory} /></section>
     </div>
   );
@@ -494,7 +509,7 @@ function CouncilApplicationsTab() {
       </div>
       <section className={card}><ExpertReviewPanel history={showHistory} /></section>
       <SubmitterReviewPanel history={showHistory} />
-      <GroupApprovals />
+      {GROUPS_ENABLED ? <GroupApprovals /> : null}
     </div>
   );
 }
@@ -505,7 +520,12 @@ function MemberTabs({ tabs }: { tabs: { key: string; label: string; node: React.
   const { get, setParams } = useUrlNav();
   const tr = useT();
   const fromUrl = get('tab');
-  const active = tabs.some((t) => t.key === fromUrl) ? fromUrl : tabs[0]?.key;
+  // The to-do badge jumps to a generic 'group-proposals' target; resolve it to the first group's
+  // per-group proposals tab (whose key is `grp-<key>-proposals`) so the jump lands correctly.
+  const resolved = fromUrl === 'group-proposals'
+    ? tabs.find((t) => t.key.startsWith('grp-') && t.key.endsWith('-proposals'))?.key ?? fromUrl
+    : fromUrl;
+  const active = tabs.some((t) => t.key === resolved) ? resolved : tabs[0]?.key;
   const current = tabs.find((t) => t.key === active) ?? tabs[0];
   // Re-clicking the active tab should reset its view (e.g. close an opened proposal in
   // "My proposals", whose detail lives in component-local state). Bumping this remounts the

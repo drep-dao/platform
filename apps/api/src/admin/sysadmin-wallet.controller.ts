@@ -41,6 +41,7 @@ export class SysadminWalletController {
     return r;
   }
 
+  // §24 — set how often the automatic on-chain anchor sweep runs (hours). Admin-only.
   @Patch('anchor-config')
   async setAnchorConfig(@CurrentAdmin() admin: AdminIdentity, @Body() dto: { mode?: 'scheduled' | 'immediate'; sweepHours?: number }) {
     const mode = dto.mode !== undefined ? await this.anchor.setAnchorMode(dto.mode) : await this.anchor.getAnchorMode();
@@ -49,6 +50,7 @@ export class SysadminWalletController {
     return { mode, sweepHours };
   }
 
+  // §24 — force-submit all pending anchors on-chain right now (step-up gated). No board needed.
   @UseGuards(StepUpGuard)
   @Post('submit-anchors')
   async submitAnchors(@CurrentAdmin() admin: AdminIdentity) {

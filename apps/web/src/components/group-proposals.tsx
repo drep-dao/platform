@@ -539,8 +539,8 @@ function BulkSection({ p, id, onChange }: { p: GroupProposalDetail; id: string; 
         {/* §29 BULK — how to independently verify the downloaded result against the on-chain anchor. */}
         {p.bulk?.resultHash ? (
           <div className="mt-2 border-t border-neutral-100 pt-2 text-xs text-neutral-500 dark:border-neutral-800">
-            <span className="font-medium">{t('Result hash')}</span>{' '}
-            <span className="text-[10px] text-neutral-400">({t('SHA-256 of result.json — the same hash is stored on-chain')})</span>
+            <span className="font-medium">{t('Document hash')}</span>{' '}
+            <span className="text-[10px] text-neutral-400">({t('SHA-256 of the downloaded result.json — the same hash is anchored on-chain')})</span>
             <div className="mt-0.5 break-all font-mono text-[11px] text-neutral-500 dark:text-neutral-400">{p.bulk.resultHash}</div>
             <div className="mt-1">
               {t('To check it yourself: download the zip, then compute the SHA-256 of the raw result.json with an')}{' '}
@@ -608,14 +608,17 @@ function BulkSection({ p, id, onChange }: { p: GroupProposalDetail; id: string; 
         </div>
       ) : p.status === 'ACTIVE' ? <p className="text-xs text-neutral-500">{t('Only group members can vote.')}</p> : null}
 
-      <div className="rounded-md border border-neutral-200 p-3 text-sm dark:border-neutral-800">
-        <DocHashRow hash={p.docHash} />
-        {p.anchorTxHash ? (
-          <div className="mt-2 text-xs"><a href={txUrl(p.anchorTxHash)} target="_blank" rel="noreferrer" className="text-emerald-700 underline dark:text-emerald-400">{t('on-chain record ↗')}</a></div>
-        ) : p.status !== 'ACTIVE' ? (
-          <div className="mt-2 text-xs text-neutral-400">{t('on-chain anchor recorded (pending submission)')}</div>
-        ) : null}
-      </div>
+      {/* For a bulk proposal the single canonical hash is the result-JSON hash shown above (= download =
+          on-chain); the title+content docHash is not shown here to avoid a second, confusing hash. */}
+      {p.anchorTxHash || p.status !== 'ACTIVE' ? (
+        <div className="rounded-md border border-neutral-200 p-3 text-sm dark:border-neutral-800">
+          {p.anchorTxHash ? (
+            <div className="text-xs"><a href={txUrl(p.anchorTxHash)} target="_blank" rel="noreferrer" className="text-emerald-700 underline dark:text-emerald-400">{t('on-chain record ↗')}</a></div>
+          ) : (
+            <div className="text-xs text-neutral-400">{t('on-chain anchor recorded (pending submission)')}</div>
+          )}
+        </div>
+      ) : null}
 
       <ConfirmDialog
         open={confirming}

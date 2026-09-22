@@ -373,7 +373,8 @@ export class AnchorService implements OnModuleInit {
           ? { yes: it.result.yes ?? 0, no: it.result.no ?? 0, abstain: it.result.abstain ?? 0, approved: it.result.approved ? 'true' : 'false' }
           : null,
       })),
-      proofHash: hash,
+      // The one canonical hash: SHA-256 of the downloadable result JSON — same value shown on the web.
+      documentHash: hash,
     };
   }
 

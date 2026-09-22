@@ -33,6 +33,17 @@ export interface AnchorResult {
   submitted: boolean;
 }
 
+// §29 BULK — the full result document stored as a bulk anchor's preimage (also the downloadable
+// result.json). The on-chain metadata is a trimmed view of this (no per-item votes or descriptions).
+type BulkResultDoc = {
+  group?: { key?: string; name?: string };
+  proposal?: { id?: string; title?: string; description?: string; createdAt?: string; votingEndAt?: string; closedAt?: string };
+  thresholdPct?: number | null;
+  summary?: { itemsTotal?: number; itemsPassed?: number; itemsFailed?: number };
+  eligibleMembers?: string[];
+  items?: { title?: string; description?: string; result?: { yes?: number; no?: number; abstain?: number; ratioPct?: number; thresholdPct?: number; approved?: boolean } | null; votes?: unknown[] }[];
+};
+
 interface Utxo {
   tx_hash: string;
   tx_index: number;
@@ -336,41 +347,45 @@ export class AnchorService implements OnModuleInit {
   }
 
   /**
-   * §29 BULK — anchor a closed bulk group proposal. The SHA-256 of the per-item result JSON is the
-   * on-chain proofHash (self-describing GROUP metadata: group identity + title + "X/Y items passed"),
-   * and the full result JSON is stored as the anchor preimage so users can download + re-hash to verify.
+   * §29 BULK — the ON-CHAIN metadata for a closed bulk proposal: a self-describing, human-readable
+   * summary (group, proposal, threshold, per-item results, eligible members) — WITHOUT the individual
+   * votes or item descriptions, which stay in the off-chain preimage/download. `proofHash` (SHA-256 of
+   * the full downloadable result JSON) commits on-chain to that full record so it stays verifiable.
+   * Derived purely from the stored preimage so the inline submit and a later batch rebuild agree.
    */
-  async anchorGroupBulk(params: {
-    proposalRowId: string;
-    title: string;
-    publicId: string;
-    group: { key: string; name: string };
-    doc: object;
-    hash: string; // sha256 of the canonical result JSON — this IS the on-chain proofHash
-    passed: number;
-    failed: number;
-    threshold: number;
-  }): Promise<AnchorResult> {
-    const outcome = `${params.passed}/${params.passed + params.failed} items passed`;
-    const metadata = buildResultMetadata({
-      subject: GovSubject.GROUP,
-      style: VotingStyle.ONE_PERSON_ONE_VOTE, // OG groups are strictly 1 member = 1 vote
-      applicant: params.title,
-      proposalId: params.publicId,
-      docHash: null,
-      electedBoard: null,
-      votes: [],
-      yes: params.passed,
-      no: params.failed,
-      threshold: params.threshold,
-      outcome,
-      proofHash: params.hash,
-      group: params.group,
-    })[GOVERNANCE_METADATA_LABEL];
+  private bulkResultEvent(doc: BulkResultDoc, hash: string): Record<string, unknown> {
+    return {
+      group: doc.group ?? {},
+      proposal: {
+        id: doc.proposal?.id ?? '',
+        title: doc.proposal?.title ?? '',
+        createdAt: doc.proposal?.createdAt ?? null,
+        votingEndAt: doc.proposal?.votingEndAt ?? null,
+        closedAt: doc.proposal?.closedAt ?? null,
+      },
+      thresholdPct: doc.thresholdPct ?? null,
+      summary: doc.summary ?? {},
+      eligibleMembers: doc.eligibleMembers ?? [],
+      items: (doc.items ?? []).map((it) => ({
+        title: it.title ?? '',
+        result: it.result
+          ? { yes: it.result.yes ?? 0, no: it.result.no ?? 0, abstain: it.result.abstain ?? 0, approved: !!it.result.approved }
+          : null,
+      })),
+      proofHash: hash,
+    };
+  }
 
+  /**
+   * §29 BULK — anchor a closed bulk group proposal on-chain. The metadata carries the readable per-item
+   * summary (see bulkResultEvent); the full result JSON (with every vote + descriptions) is stored as the
+   * preimage so users can download it and re-hash to `proofHash`.
+   */
+  async anchorGroupBulk(params: { proposalRowId: string; doc: object; hash: string }): Promise<AnchorResult> {
+    const event = this.bulkResultEvent(params.doc as BulkResultDoc, params.hash);
     let txHash: string | null = null;
     try {
-      txHash = await this.maybeSubmitInline(metadata);
+      txHash = await this.maybeSubmitInline(event);
     } catch (e) {
       this.logger.warn(`bulk anchor submit skipped/failed: ${e instanceof Error ? e.message : e}`);
     }
@@ -876,7 +891,13 @@ export class AnchorService implements OnModuleInit {
   }
 
   /** Rebuild the on-chain metadata for an anchor from its stored preimage. */
-  private metadataFromAnchor(a: { kind: string; hash: string; preimage: unknown }): AnchorResultMetadata | AnchorSubmissionMetadata | AnchorPayoutMetadata | AnchorDocHashMetadata {
+  private metadataFromAnchor(a: { kind: string; hash: string; preimage: unknown }): AnchorResultMetadata | AnchorSubmissionMetadata | AnchorPayoutMetadata | AnchorDocHashMetadata | Record<string, unknown> {
+    // §29 BULK — a bulk group result: the preimage is the full doc (group + summary + per-item results).
+    // Rebuild the same trimmed on-chain event so a batched submit matches the inline one.
+    const bulkP = (a.preimage ?? {}) as BulkResultDoc & { summary?: unknown; items?: unknown[] };
+    if (bulkP.summary && Array.isArray(bulkP.items)) {
+      return this.bulkResultEvent(bulkP, a.hash);
+    }
     const p = (a.preimage ?? {}) as {
       subject?: GovSubject;
       style?: VotingStyle;

@@ -835,7 +835,7 @@ export class GroupsService {
       const { doc, json, hash } = await this.composeBulkResult(full, tally, memberIds);
       const decided = { ...tally, resultJson: json, resultHash: hash };
       const res = await this.prisma.groupProposal.updateMany({ where: { id: p.id, status: 'ACTIVE' }, data: { status: 'CLOSED', decidedAt: new Date(), decidedTally: decided as unknown as object } });
-      if (res.count === 1) await this.anchorBulkResult(full, doc, hash, tally).catch(() => undefined);
+      if (res.count === 1) await this.anchorBulkResult(full, doc, hash).catch(() => undefined);
       return;
     }
     const t = await this.tally(p);
@@ -881,20 +881,8 @@ export class GroupsService {
   /** §29 BULK — anchor a closed bulk proposal: the SHA-256 of the per-item result JSON goes on-chain
    *  (self-describing GROUP metadata: group + title + "X/Y items passed" + proofHash); the full JSON is
    *  kept as the anchor preimage and served as a download. Never throws. */
-  private async anchorBulkResult(p: { id: string; title: string; group: { key: string; name: string } }, doc: object, hash: string, tally: BulkTally) {
-    const passed = tally.items.filter((i) => i.approved).length;
-    const failed = tally.items.length - passed;
-    await this.anchor.anchorGroupBulk({
-      proposalRowId: p.id,
-      title: p.title,
-      publicId: `${p.group.key.toUpperCase()} · ${p.title}`,
-      group: { key: p.group.key, name: p.group.name },
-      doc,
-      hash,
-      passed,
-      failed,
-      threshold: tally.items[0]?.thresholdPct ?? 0,
-    });
+  private async anchorBulkResult(p: { id: string }, doc: object, hash: string) {
+    await this.anchor.anchorGroupBulk({ proposalRowId: p.id, doc, hash });
   }
 
   /** §29 BULK — a member closes voting early once EVERY member has voted on EVERY item. Freezes + anchors. */

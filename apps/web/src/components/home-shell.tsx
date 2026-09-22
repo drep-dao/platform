@@ -170,7 +170,11 @@ export function HomeShell() {
         </header>
 
         <main className="mx-auto max-w-7xl px-4 py-6 sm:px-5">
-          {pubView === 'members' ? (
+          {/* A shared group-proposal deep link (?view=g:<key>:proposals&gp=<id>) must open for anyone,
+              logged in or not — group proposals/results are public (on-chain anchored), read-only here. */}
+          {groupMatch ? (
+            groupMatch[2] === 'members' ? <GroupMembers groupKey={groupMatch[1]} /> : <GroupProposals groupKey={groupMatch[1]} />
+          ) : pubView === 'members' ? (
             <DaoMembersDirectory />
           ) : pubView === 'treasury' ? (
             <TreasuryOverview />

@@ -539,8 +539,8 @@ function BulkSection({ p, id, onChange }: { p: GroupProposalDetail; id: string; 
         {/* §29 BULK — how to independently verify the downloaded result against the on-chain anchor. */}
         {p.bulk?.resultHash ? (
           <div className="mt-2 border-t border-neutral-100 pt-2 text-xs text-neutral-500 dark:border-neutral-800">
-            <span className="font-medium">{t('Document hash')}</span>{' '}
-            <span className="text-[10px] text-neutral-400">({t('SHA-256 of the downloaded result.json — the same hash is anchored on-chain')})</span>
+            <span className="font-medium">{t('Hash of the downloadable JSON file')}</span>{' '}
+            <span className="text-[10px] text-neutral-400">({t('the same hash is anchored on-chain — it locks the downloadable file')})</span>
             <div className="mt-0.5 break-all font-mono text-[11px] text-neutral-500 dark:text-neutral-400">{p.bulk.resultHash}</div>
             <div className="mt-1">
               {t('To check it yourself: download the zip, then compute the SHA-256 of the raw result.json with an')}{' '}

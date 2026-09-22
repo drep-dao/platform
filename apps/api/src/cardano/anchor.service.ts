@@ -373,8 +373,13 @@ export class AnchorService implements OnModuleInit {
           ? { yes: it.result.yes ?? 0, no: it.result.no ?? 0, abstain: it.result.abstain ?? 0, approved: it.result.approved ? 'true' : 'false' }
           : null,
       })),
-      // The one canonical hash: SHA-256 of the downloadable result JSON — same value shown on the web.
-      documentHash: hash,
+      // Self-describing link to the OFF-CHAIN full record: the SHA-256 of the exact JSON a user can
+      // download from the site. This locks that file (any change breaks the hash) and, with proposal.id
+      // above, lets anyone tie proposal → downloadable file → this on-chain anchor together.
+      downloadableJson: {
+        sha256: hash,
+        note: 'SHA-256 of the full result JSON downloadable from the DRep Council site',
+      },
     };
   }
 

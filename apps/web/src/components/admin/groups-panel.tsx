@@ -6,7 +6,7 @@ import { adminApi, type AdminGroup, type AdminGroupConfig, type AdminGroupMember
 // §29 — the sysadmin GROUPS tab: create configurable groups (e.g. OG), set what they collect and
 // submit, who admits members, and who may comment — then activate (or hide/pause) them.
 const PROFILE_FIELDS: [string, string][] = [['memberSince', 'Member since'], ['displayName', 'Display name'], ['photo', 'Photo'], ['bio', 'Bio'], ['country', 'Country'], ['conflictOfInterest', 'Conflict of interest'], ['blockchainAddress', 'Blockchain address'], ['expertise', 'Expertise'], ['links', 'Links (X / Telegram / GitHub / email)'], ['preferences', 'Preferences']];
-const PROPOSAL_TYPES: [string, string][] = [['INFORMATIVE', 'Informative'], ['POLL', 'Poll'], ['INSTRUCTIVE', 'Instructive']];
+const PROPOSAL_TYPES: [string, string][] = [['INFORMATIVE', 'Informative'], ['POLL', 'Poll'], ['INSTRUCTIVE', 'Instructive'], ['BULK', 'Bulk']];
 const VOTING_TYPES: [string, string, boolean][] = [['ONE_PERSON_ONE_VOTE', '1 member = 1 vote', true], ['DREP_POWER', 'DRep voting power', false], ['ADJUSTED_POWER', 'Adjusted voting power', false]];
 const ADMISSION: [string, string][] = [['FREE', 'Free admission'], ['BOARD', 'Board approval'], ['DREPS', 'DReps approval'], ['SINGLE_DREP', 'Single DRep approval'], ['ADMIN', 'Admin approval']];
 const COMMENTERS: [string, string][] = [['members', 'Group members'], ['dreps', 'DReps'], ['experts', 'Experts'], ['submitters', 'Submitters'], ['viewers', 'Viewers']];

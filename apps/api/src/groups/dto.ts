@@ -4,7 +4,7 @@ import { ArrayMinSize, IsArray, IsBoolean, IsIn, IsInt, IsISO8601, IsObject, IsO
 // are NOT configurable and are enforced in the service, so they are absent from these DTOs.
 export const ADMISSION_TYPES = ['FREE', 'BOARD', 'DREPS', 'SINGLE_DREP', 'ADMIN'];
 export const GROUP_PROFILE_FIELDS = ['memberSince', 'displayName', 'photo', 'bio', 'country', 'conflictOfInterest', 'blockchainAddress', 'expertise', 'links', 'preferences'];
-export const GROUP_PROPOSAL_TYPES = ['INFORMATIVE', 'POLL', 'INSTRUCTIVE'];
+export const GROUP_PROPOSAL_TYPES = ['INFORMATIVE', 'POLL', 'INSTRUCTIVE', 'BULK'];
 export const GROUP_COMMENTERS = ['members', 'dreps', 'experts', 'submitters', 'viewers'];
 export const GROUP_VOTING_TYPES = ['ONE_PERSON_ONE_VOTE', 'DREP_POWER', 'ADJUSTED_POWER'];
 
@@ -52,13 +52,17 @@ export class SubmitGroupProposalDto {
   @IsOptional() @IsBoolean() pollMultiple?: boolean;
   @IsOptional() @IsArray() @IsString({ each: true }) actors?: string[]; // INSTRUCTIVE
   @IsOptional() @IsISO8601() deliveryDate?: string; // INSTRUCTIVE
+  // BULK — the sub-proposals to vote on together. Each item: { title, description? }. Contents validated in the service.
+  @IsOptional() @IsArray() bulkItems?: { title: string; description?: string }[];
 }
 
-/** Cast/change a vote. INFORMATIVE uses `choice`; POLL uses `options`. */
+/** Cast/change a vote. INFORMATIVE uses `choice`; POLL uses `options`; BULK uses `items` (one per row). */
 export class GroupVoteDto {
   @IsOptional() @IsIn(['YES', 'NO', 'ABSTAIN']) choice?: string;
   @IsOptional() @IsArray() @IsString({ each: true }) options?: string[];
   @IsOptional() @IsString() @MaxLength(4000) rationale?: string;
+  // BULK — per-item votes; each: { itemId, choice: YES|NO|ABSTAIN, rationale? }. Validated in the service.
+  @IsOptional() @IsArray() items?: { itemId: string; choice: string; rationale?: string }[];
 }
 
 export class GroupCommentDto {

@@ -56,7 +56,7 @@ export function GroupProposals({ groupKey }: { groupKey: string }) {
             <span className="flex w-full flex-wrap items-center justify-between gap-2">
               <span className="flex min-w-0 items-center gap-2">
                 <span className="truncate font-medium">{p.title}</span>
-                <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">{p.type === 'POLL' ? t('Poll') : p.type === 'INSTRUCTIVE' ? t('Instructive') : t('Informative')}</span>
+                <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">{p.type === 'POLL' ? t('Poll') : p.type === 'BULK' ? t('Bulk') : p.type === 'INSTRUCTIVE' ? t('Instructive') : t('Informative')}</span>
               </span>
               <span className="flex items-center gap-2 text-xs text-neutral-500">
                 <span>{p.author}</span>
@@ -65,6 +65,9 @@ export function GroupProposals({ groupKey }: { groupKey: string }) {
             </span>
             <span className="flex flex-wrap items-center gap-x-1 text-xs text-neutral-500">
               <span>{p.votedCount} {t('of')} {p.eligible} {t('members voted')}</span>
+              {p.bulk ? (
+                <span>· {p.bulk.items} {t('items')}{p.bulk.passed != null ? ` · ${p.bulk.passed} ${t('passed')}` : ''}</span>
+              ) : null}
               {p.result ? (
                 <>
                   <span>· {t('YES')} {p.result.ratioPct}% · {t('threshold')} {p.result.thresholdPct}% ·</span>
@@ -106,12 +109,14 @@ function SubmitForm({ group, onDone }: { group: GroupProposalsResult['group']; o
   const [votingEnd, setVotingEnd] = useState(() => { const d = new Date(Date.now() + 7 * 86400000); return toLocalInput(d.toISOString()); });
   const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
   const [pollMultiple, setPollMultiple] = useState(false);
+  const [bulkItems, setBulkItems] = useState<{ title: string; description: string }[]>([{ title: '', description: '' }, { title: '', description: '' }]);
   const [actors, setActors] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isPoll = type === 'POLL';
   const isInstructive = type === 'INSTRUCTIVE';
+  const isBulk = type === 'BULK';
   // §29 — show how long voting will run (mirrors internal proposals) so the picked time is obvious.
   const votingDuration = (() => {
     const mins = Math.floor((new Date(votingEnd).getTime() - Date.now()) / 60_000);
@@ -132,9 +137,11 @@ function SubmitForm({ group, onDone }: { group: GroupProposalsResult['group']; o
     if (Number.isNaN(end.getTime()) || end.getTime() <= Date.now()) return setError(t('Pick a voting-end date in the future.'));
     const clean = pollOptions.map((o) => o.trim()).filter(Boolean);
     if (isPoll && clean.length < 2) return setError(t('A poll needs at least two options.'));
+    const cleanItems = bulkItems.map((it) => ({ title: it.title.trim(), description: it.description.trim() })).filter((it) => it.title);
+    if (isBulk && cleanItems.length < 2) return setError(t('A bulk proposal needs at least two items, each with a title.'));
     setBusy(true);
     try {
-      await groupsApi.submit(group.key, { title: title.trim(), contentMd: content, type, votingEndAt: end.toISOString(), ...(isPoll ? { pollOptions: clean, pollMultiple } : {}), ...(isInstructive ? { actors: actors.split(',').map((a) => a.trim()).filter(Boolean), ...(deliveryDate ? { deliveryDate: new Date(deliveryDate).toISOString() } : {}) } : {}) });
+      await groupsApi.submit(group.key, { title: title.trim(), contentMd: content, type, votingEndAt: end.toISOString(), ...(isPoll ? { pollOptions: clean, pollMultiple } : {}), ...(isBulk ? { bulkItems: cleanItems.map((it) => ({ title: it.title, ...(it.description ? { description: it.description } : {}) })) } : {}), ...(isInstructive ? { actors: actors.split(',').map((a) => a.trim()).filter(Boolean), ...(deliveryDate ? { deliveryDate: new Date(deliveryDate).toISOString() } : {}) } : {}) });
       onDone();
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
@@ -145,7 +152,7 @@ function SubmitForm({ group, onDone }: { group: GroupProposalsResult['group']; o
       {types.length > 1 ? (
         <label className="block text-sm">{t('Type')}
           <select value={type} onChange={(e) => setType(e.target.value)} className={field}>
-            {types.map((k) => <option key={k} value={k}>{k === 'POLL' ? t('Poll (choose option(s))') : k === 'INSTRUCTIVE' ? t('Instructive (action with actors)') : t('Informative (yes / no decision)')}</option>)}
+            {types.map((k) => <option key={k} value={k}>{k === 'POLL' ? t('Poll (choose option(s))') : k === 'BULK' ? t('Bulk (several proposals to vote on)') : k === 'INSTRUCTIVE' ? t('Instructive (action with actors)') : t('Informative (yes / no decision)')}</option>)}
           </select>
         </label>
       ) : null}
@@ -164,6 +171,23 @@ function SubmitForm({ group, onDone }: { group: GroupProposalsResult['group']; o
           ))}
           <button onClick={() => setPollOptions((opts) => [...opts, ''])} className="text-xs text-emerald-700 hover:underline dark:text-emerald-400">{t('+ add option')}</button>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={pollMultiple} onChange={(e) => setPollMultiple(e.target.checked)} /> {t('Allow voters to choose more than one option')}</label>
+        </div>
+      ) : null}
+      {isBulk ? (
+        <div className="space-y-2 rounded border border-neutral-200 p-2 dark:border-neutral-800">
+          <div className="text-sm font-medium">{t('Items to vote on')}</div>
+          <p className="text-xs text-neutral-500">{t('Each item is voted on separately (YES / NO / Abstain). Add a title and, optionally, a description with a link.')}</p>
+          {bulkItems.map((it, i) => (
+            <div key={i} className="space-y-1 rounded border border-neutral-200 p-2 dark:border-neutral-700">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-neutral-400">{i + 1}.</span>
+                <input value={it.title} onChange={(e) => setBulkItems((arr) => arr.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)))} placeholder={t('Item title')} className={field} />
+                {bulkItems.length > 2 ? <button onClick={() => setBulkItems((arr) => arr.filter((_, j) => j !== i))} className="rounded border border-neutral-300 px-2 text-sm dark:border-neutral-700">×</button> : null}
+              </div>
+              <textarea value={it.description} onChange={(e) => setBulkItems((arr) => arr.map((x, j) => (j === i ? { ...x, description: e.target.value } : x)))} placeholder={t('Description (optional) — may include a link')} rows={2} className={`${field} resize-y`} />
+            </div>
+          ))}
+          <button onClick={() => setBulkItems((arr) => [...arr, { title: '', description: '' }])} className="text-xs text-emerald-700 hover:underline dark:text-emerald-400">{t('+ add item')}</button>
         </div>
       ) : null}
       {isInstructive ? (
@@ -201,6 +225,9 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
   useEffect(load, [load]);
 
   if (!p) return <section className={card}><button onClick={onBack} className="text-sm text-emerald-700 hover:underline dark:text-emerald-400">← {t('Back')}</button><p className="mt-2 text-sm text-neutral-500">{t('Loading…')}</p></section>;
+
+  // Bind to a const so TS keeps the narrowing (null vs THRESHOLD vs POLL) inside the tally callbacks below.
+  const tally = p.tally;
 
   const castThreshold = async (choice: string) => { setBusy(true); try { setP(await groupsApi.vote(id, { choice, rationale: rationale.trim() || undefined })); setEditing(false); } finally { setBusy(false); } };
   const castPoll = async () => {
@@ -240,33 +267,34 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
           : `${t('Voting ended')} ${new Date(p.decidedAt ?? p.votingEndAt).toLocaleString()}`}
       </p>
 
+      {p.bulk ? <BulkSection p={p} id={id} onChange={setP} /> : (<>
       {/* tally */}
       <div className="mt-3 rounded-md border border-neutral-200 p-3 text-sm dark:border-neutral-800">
-        {p.tally.kind === 'THRESHOLD' ? (
+        {!tally ? null : tally.kind === 'THRESHOLD' ? (
           <div className="space-y-2">
             <div>
-              <span className="font-medium">YES</span> {p.tally.yes}/{p.tally.denominator} ({p.tally.ratioPct}%) · {t('threshold')} {p.tally.thresholdPct}% ·{' '}
-              <span className={p.tally.approved ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>{p.tally.approved ? t('passing') : t('not passing')}</span>
+              <span className="font-medium">YES</span> {tally.yes}/{tally.denominator} ({tally.ratioPct}%) · {t('threshold')} {tally.thresholdPct}% ·{' '}
+              <span className={tally.approved ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>{tally.approved ? t('passing') : t('not passing')}</span>
             </div>
             <div className="flex h-3 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
-              <div className="bg-emerald-500" style={{ width: `${pct(p.tally.yes, p.tally.eligible)}%` }} />
-              <div className="bg-rose-500" style={{ width: `${pct(p.tally.no, p.tally.eligible)}%` }} />
-              <div className="bg-amber-400" style={{ width: `${pct(p.tally.abstain, p.tally.eligible)}%` }} />
+              <div className="bg-emerald-500" style={{ width: `${pct(tally.yes, tally.eligible)}%` }} />
+              <div className="bg-rose-500" style={{ width: `${pct(tally.no, tally.eligible)}%` }} />
+              <div className="bg-amber-400" style={{ width: `${pct(tally.abstain, tally.eligible)}%` }} />
             </div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
-              <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-emerald-500" /> {t('Yes')} {p.tally.yes}</span>
-              <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-rose-500" /> {t('No')} {p.tally.no}</span>
-              <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-amber-400" /> {t('Abstain')} {p.tally.abstain}</span>
-              <span className="text-neutral-500">· {p.tally.voted} {t('of')} {p.tally.eligible} {t('members voted')}</span>
+              <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-emerald-500" /> {t('Yes')} {tally.yes}</span>
+              <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-rose-500" /> {t('No')} {tally.no}</span>
+              <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-amber-400" /> {t('Abstain')} {tally.abstain}</span>
+              <span className="text-neutral-500">· {tally.voted} {t('of')} {tally.eligible} {t('members voted')}</span>
             </div>
             <VoterBreakdown voters={p.voters} t={t} />
           </div>
         ) : (
           <div>
-            <div className="text-xs text-neutral-500">{p.tally.voted} {t('of')} {p.tally.eligible} {t('members voted')} {p.poll?.multiple ? `· ${t('multiple choice')}` : `· ${t('single choice')}`}</div>
+            <div className="text-xs text-neutral-500">{tally.voted} {t('of')} {tally.eligible} {t('members voted')} {p.poll?.multiple ? `· ${t('multiple choice')}` : `· ${t('single choice')}`}</div>
             <div className="mt-1 space-y-1">
-              {p.tally.options.map((o) => {
-                const max = Math.max(1, ...(p.tally.kind === 'POLL' ? p.tally.options.map((x) => x.voters) : [1]));
+              {tally.options.map((o) => {
+                const max = Math.max(1, ...tally.options.map((x) => x.voters));
                 const names = p.voters.filter((v) => v.choice === o.option).map((v) => v.voter);
                 return (
                   <div key={o.option}>
@@ -276,7 +304,7 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
                   </div>
                 );
               })}
-              {p.tally.abstain > 0 ? <div className="text-xs text-amber-600 dark:text-amber-400">{t('Abstain')} {p.tally.abstain}</div> : null}
+              {tally.abstain > 0 ? <div className="text-xs text-amber-600 dark:text-amber-400">{t('Abstain')} {tally.abstain}</div> : null}
             </div>
           </div>
         )}
@@ -364,6 +392,7 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
           </ul>
         </div>
       ) : null}
+      </>)}
 
       {/* comments */}
       <div className="mt-4">
@@ -380,6 +409,120 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
         />
       </div>
     </section>
+  );
+}
+
+/** §29 BULK — several sub-proposals voted on together: per-item YES/NO/Abstain + rationale, a per-item
+ *  pass/fail tally, a "close voting now" button once everyone has voted, and a result JSON+hash download. */
+function BulkSection({ p, id, onChange }: { p: GroupProposalDetail; id: string; onChange: (p: GroupProposalDetail) => void }) {
+  const t = useT();
+  const { txUrl } = useExplorer();
+  const bulk = p.bulk!;
+  const initial = useCallback(() => Object.fromEntries(bulk.items.map((it) => [it.id, { choice: it.myChoice ?? '', rationale: it.myRationale ?? '' }])), [bulk.items]);
+  const [ballot, setBallot] = useState<Record<string, { choice: string; rationale: string }>>(initial);
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+  // Reset the local ballot to the saved votes whenever the proposal reloads (after a save / close).
+  useEffect(() => { setBallot(initial()); }, [initial]);
+
+  const setItem = (itemId: string, patch: Partial<{ choice: string; rationale: string }>) => setBallot((b) => ({ ...b, [itemId]: { ...b[itemId], ...patch } }));
+  const changed = bulk.items.some((it) => (ballot[it.id]?.choice ?? '') !== (it.myChoice ?? '') || (ballot[it.id]?.rationale ?? '') !== (it.myRationale ?? ''));
+
+  const submitVotes = async () => {
+    const items = bulk.items.flatMap((it) => {
+      const choice = ballot[it.id]?.choice;
+      if (!choice) return [];
+      const rationale = ballot[it.id]?.rationale?.trim();
+      return [{ itemId: it.id, choice, ...(rationale ? { rationale } : {}) }];
+    });
+    if (items.length === 0) return;
+    setBusy(true);
+    try { onChange(await groupsApi.vote(id, { items })); } finally { setBusy(false); }
+  };
+  const closeNow = async () => { setBusy(true); try { onChange(await groupsApi.closeEarly(id)); } finally { setBusy(false); } };
+
+  return (
+    <div className="mt-3 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-neutral-200 p-3 text-sm dark:border-neutral-800">
+        <span className="text-neutral-600 dark:text-neutral-300">{bulk.votedMembers} {t('of')} {bulk.eligible} {t('members voted on all items')} · {bulk.items.length} {t('items')}</span>
+        <span className="flex items-center gap-2">
+          {p.canCloseEarly ? <button disabled={busy} onClick={closeNow} className="rounded bg-emerald-600 px-3 py-1 text-sm font-medium text-white disabled:opacity-40">{t('Close voting now')}</button> : null}
+          {p.resultAvailable ? <a href={groupsApi.resultZipUrl(id)} target="_blank" rel="noreferrer" className="rounded border border-emerald-300 px-3 py-1 text-sm font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950">{t('Download result (JSON + hash)')}</a> : null}
+        </span>
+      </div>
+
+      <ol className="space-y-3">
+        {bulk.items.map((it, idx) => {
+          const ti = it.tally;
+          const b = ballot[it.id] ?? { choice: '', rationale: '' };
+          return (
+            <li key={it.id} className="rounded-md border border-neutral-200 p-3 dark:border-neutral-800">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="text-xs text-neutral-400">{idx + 1}.</span>
+                  <span className="font-medium">{it.title}</span>
+                </div>
+                {ti && p.status !== 'ACTIVE' ? (
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${ti.approved ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300'}`}>{ti.approved ? t('Passed') : t('Failed')}</span>
+                ) : null}
+              </div>
+              {it.description ? (
+                <div className="mt-1">
+                  <button onClick={() => setOpen((o) => ({ ...o, [it.id]: !o[it.id] }))} className="text-xs text-emerald-700 hover:underline dark:text-emerald-400">{open[it.id] ? t('Hide details') : t('Show details')}</button>
+                  {open[it.id] ? <div className="prose prose-sm mt-1 max-w-none text-sm dark:prose-invert"><Markdown>{it.description}</Markdown></div> : null}
+                </div>
+              ) : null}
+              {ti ? (
+                <div className="mt-2 text-xs text-neutral-600 dark:text-neutral-300">
+                  <span className="font-medium text-emerald-600 dark:text-emerald-400">{t('Yes')} {ti.yes}</span> · <span className="font-medium text-rose-600 dark:text-rose-400">{t('No')} {ti.no}</span> · <span className="font-medium text-amber-600 dark:text-amber-400">{t('Abstain')} {ti.abstain}</span>
+                  {ti.denominator > 0 ? <> · {t('YES')} {ti.ratioPct}% · {t('threshold')} {ti.thresholdPct}% · <span className={ti.approved ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>{ti.approved ? t('passing') : t('not passing')}</span></> : null}
+                </div>
+              ) : null}
+              {it.voters.length ? <div className="mt-1 text-[11px] text-neutral-400">{it.voters.map((v, i) => <span key={i}>{v.voter} (<span className={CHOICE_TONE[v.choice] ?? ''}>{choiceLabel(v.choice, t)}</span>){i < it.voters.length - 1 ? ', ' : ''}</span>)}</div> : null}
+              {it.rationales.length ? (
+                <ul className="mt-1 space-y-1">
+                  {it.rationales.map((r, i) => (
+                    <li key={i} className="text-sm"><span className="font-medium">{r.voter}</span> <span className={`text-xs font-medium ${CHOICE_TONE[r.choice] ?? 'text-neutral-400'}`}>({choiceLabel(r.choice, t)})</span><RationaleText text={r.rationale} /></li>
+                  ))}
+                </ul>
+              ) : null}
+              {p.canVote ? (
+                <div className="mt-2 space-y-1.5">
+                  <div className="flex gap-2">
+                    {(['YES', 'NO', 'ABSTAIN'] as const).map((c) => {
+                      const on = b.choice === c;
+                      const palette = c === 'YES'
+                        ? (on ? 'bg-emerald-600 text-white border-emerald-600' : 'border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950')
+                        : c === 'NO'
+                          ? (on ? 'bg-rose-600 text-white border-rose-600' : 'border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950')
+                          : (on ? 'bg-neutral-600 text-white border-neutral-600' : 'border-neutral-300 text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800');
+                      return <button key={c} onClick={() => setItem(it.id, { choice: c })} className={`rounded border px-3 py-1 text-sm font-medium ${palette}`}>{on ? '✓ ' : ''}{choiceLabel(c, t)}</button>;
+                    })}
+                  </div>
+                  <textarea value={b.rationale} onChange={(e) => setItem(it.id, { rationale: e.target.value })} placeholder={t('Rationale for this item (optional)')} rows={2} className="w-full resize-y rounded-md border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+                </div>
+              ) : null}
+            </li>
+          );
+        })}
+      </ol>
+
+      {p.canVote ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <button disabled={busy || !changed} onClick={submitVotes} className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-40">{busy ? t('Saving…') : t('Save my votes')}</button>
+          <span className="text-xs text-neutral-500">{t('You can change your votes until voting closes.')}</span>
+        </div>
+      ) : p.status === 'ACTIVE' ? <p className="text-xs text-neutral-500">{t('Only group members can vote.')}</p> : null}
+
+      <div className="rounded-md border border-neutral-200 p-3 text-sm dark:border-neutral-800">
+        <DocHashRow hash={p.docHash} />
+        {p.anchorTxHash ? (
+          <div className="mt-2 text-xs"><a href={txUrl(p.anchorTxHash)} target="_blank" rel="noreferrer" className="text-emerald-700 underline dark:text-emerald-400">{t('on-chain record ↗')}</a></div>
+        ) : p.status !== 'ACTIVE' ? (
+          <div className="mt-2 text-xs text-neutral-400">{t('on-chain anchor recorded (pending submission)')}</div>
+        ) : null}
+      </div>
+    </div>
   );
 }
 

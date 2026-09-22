@@ -1774,8 +1774,11 @@ model GroupProposal {
   authorUserId String    @map("author_user_id") @db.Uuid
   title        String
   contentMd    String    @map("content_md")
-  type         String // INFORMATIVE | POLL
+  type         String // INFORMATIVE | POLL | INSTRUCTIVE | BULK
   pollOptions  Json?     @map("poll_options") // { multiple: boolean, options: string[] }
+  // §29 BULK — several sub-proposals voted on together. Each item: { id, title, description }.
+  // Members vote YES/NO/ABSTAIN per item (see GroupVote.itemId) with a per-item rationale.
+  bulkItems    Json?     @map("bulk_items")
   actors       Json? // INSTRUCTIVE: named actors (string[])
   deliveryDate DateTime? @map("delivery_date") @db.Timestamptz(6) // INSTRUCTIVE: expected delivery
   status       String    @default("ACTIVE") // ACTIVE | PASSED | FAILED | CLOSED
@@ -1797,8 +1800,10 @@ model GroupVote {
   id          String   @id @default(uuid()) @db.Uuid
   proposalId  String   @map("proposal_id") @db.Uuid
   voterUserId String   @map("voter_user_id") @db.Uuid
-  choice      String // INFORMATIVE: YES | NO | ABSTAIN. POLL: the option label (one row per chosen option).
+  choice      String // INFORMATIVE: YES | NO | ABSTAIN. POLL: the option label (one row per chosen option). BULK: YES | NO | ABSTAIN.
   rationale   String? // §29 — optional reason the member gives for their vote
+  // §29 BULK — which bulk item this vote is for (one row per item, per voter); null for INFORMATIVE/POLL.
+  itemId      String?  @map("item_id")
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   proposal GroupProposal @relation(fields: [proposalId], references: [id])

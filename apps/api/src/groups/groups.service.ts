@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { GovSubject, VotingStyle } from '@drep-dao/cardano';
 import { PrismaService } from '../prisma/prisma.service';
@@ -11,6 +11,23 @@ type GroupRow = {
   profileFields: string[]; proposalTypes: string[]; admissionType: string;
   approverUserId: string | null; commenters: string[]; votingType: string; thresholdPct: number; sortIdx: number;
   membersCanApprove: boolean; quorumMode: string; quorumCount: number | null;
+};
+
+// §29 BULK — per-item tally shape (also the JSON stored in decidedTally for a closed bulk proposal).
+type BulkItemTally = { id: string; yes: number; no: number; abstain: number; eligible: number; denominator: number; ratioPct: number; thresholdPct: number; approved: boolean; voted: number };
+type BulkTally = { kind: 'BULK'; eligible: number; votedMembers: number; allVoted: boolean; items: BulkItemTally[] };
+
+// §29 BULK — the per-item detail shape returned to the client (tally + this member's vote + all votes/rationales).
+type BulkItemTallyView = { yes: number; no: number; abstain: number; eligible: number; denominator: number; ratioPct: number; thresholdPct: number; approved: boolean; voted: number };
+type BulkDetail = {
+  eligible: number; votedMembers: number; allVoted: boolean;
+  items: {
+    id: string; title: string; description: string;
+    tally: BulkItemTallyView | null;
+    myChoice: string | null; myRationale: string | null;
+    voters: { voter: string; choice: string }[];
+    rationales: { voter: string; choice: string; rationale: string }[];
+  }[];
 };
 
 @Injectable()
@@ -376,25 +393,39 @@ export class GroupsService {
     }
     // §29 — per-proposal tally so the list shows YES% / threshold / passing without opening.
     // Decided proposals use their FROZEN snapshot (membership changes never rewrite history).
-    const tallies = await Promise.all(fresh.map((p) => this.resolveTally(p)));
+    // BULK proposals summarise as "N items · X passed" (once closed) instead of a single ratio.
+    const metas = await Promise.all(fresh.map(async (p) => {
+      if (p.type === 'BULK') {
+        const bt = await this.resolveBulkTally(p);
+        const passed = p.status !== 'ACTIVE' ? bt.items.filter((it) => it.approved).length : null;
+        return { voted: bt.votedMembers, eligible: bt.eligible, result: null as null, bulk: { items: bt.items.length, passed } };
+      }
+      const tv = await this.resolveTally(p);
+      return {
+        voted: tv.voted,
+        eligible: tv.eligible,
+        result: tv.kind === 'THRESHOLD' ? { ratioPct: tv.ratioPct, thresholdPct: tv.thresholdPct, approved: tv.approved } : null,
+        bulk: null as { items: number; passed: number | null } | null,
+      };
+    }));
     return {
       group: this.config(g),
       canSubmit,
       submitBlockedReason,
       proposals: fresh.map((p, i) => {
         const vmap = byProposal.get(p.id) ?? new Map<string, string[]>();
-        const tv = tallies[i];
+        const meta = metas[i];
         return {
           id: p.id, title: p.title, type: p.type, status: p.status,
           author: nameOf.get(p.authorUserId) ?? p.author.displayName ?? 'Member',
           votingEndAt: p.votingEndAt.toISOString(), createdAt: p.createdAt.toISOString(),
-          // frozen for decided proposals (tv comes from resolveTally), live while ACTIVE
-          votedCount: tv.voted,
-          eligible: tv.eligible,
-          voters: [...vmap.entries()].map(([uid, choices]) => ({ voter: nameOf.get(uid) ?? 'Member', choice: choices.join('/') })),
-          result: tv.kind === 'THRESHOLD'
-            ? { ratioPct: tv.ratioPct, thresholdPct: tv.thresholdPct, approved: tv.approved }
-            : null,
+          // frozen for decided proposals (meta comes from the resolved tally), live while ACTIVE
+          votedCount: meta.voted,
+          eligible: meta.eligible,
+          // BULK per-voter choices are per-item (shown in the detail), so the list omits the voter chips.
+          voters: p.type === 'BULK' ? [] : [...vmap.entries()].map(([uid, choices]) => ({ voter: nameOf.get(uid) ?? 'Member', choice: choices.join('/') })),
+          result: meta.result,
+          bulk: meta.bulk,
         };
       }),
     };
@@ -417,32 +448,69 @@ export class GroupsService {
     if (!fresh) throw new NotFoundException('proposal not found');
     const g = fresh.group as unknown as GroupRow;
     const isMember = !!userId && (await this.admittedMember(g.id, userId));
-    const tally = await this.resolveTally(fresh);
-    const myVotes = userId
-      ? (await this.prisma.groupVote.findMany({ where: { proposalId: id, voterUserId: userId }, select: { choice: true } })).map((v) => v.choice)
-      : [];
+    const isBulk = fresh.type === 'BULK';
     const poll = fresh.pollOptions as { multiple?: boolean; options?: string[] } | null;
     // §29 — resolve voter names from their GROUP profile (account displayName is often empty for
     // non-council members), so the detail shows real names (e.g. "Ivan the OG") not "Member".
     const nameOf = await this.groupMemberNames(g.id);
-    const rationaleRows = await this.prisma.groupVote.findMany({
-      where: { proposalId: id, NOT: { rationale: null } },
-      select: { voterUserId: true, choice: true, rationale: true },
-      distinct: ['voterUserId'],
-      orderBy: { createdAt: 'asc' },
-    });
-    const rationales = rationaleRows
-      .filter((r) => r.rationale?.trim())
-      .map((r) => ({ voter: nameOf.get(r.voterUserId) ?? 'Member', choice: r.choice, rationale: r.rationale as string }));
-    const myRationale = userId
-      ? (await this.prisma.groupVote.findFirst({ where: { proposalId: id, voterUserId: userId }, select: { rationale: true } }))?.rationale ?? null
-      : null;
-    const voterRows = await this.prisma.groupVote.findMany({
-      where: { proposalId: id },
-      select: { voterUserId: true, choice: true },
-      orderBy: { createdAt: 'asc' },
-    });
-    const voters = voterRows.map((v) => ({ voter: nameOf.get(v.voterUserId) ?? 'Member', choice: v.choice }));
+
+    // Single-vote (INFORMATIVE/POLL/INSTRUCTIVE) tally + rationales; null/[] for BULK (per-item, see `bulk`).
+    const tally = isBulk ? null : await this.resolveTally(fresh);
+    let myVotes: string[] = [];
+    let myRationale: string | null = null;
+    let rationales: { voter: string; choice: string; rationale: string }[] = [];
+    let voters: { voter: string; choice: string }[] = [];
+    let bulk: BulkDetail | null = null;
+
+    if (isBulk) {
+      const bt = await this.resolveBulkTally(fresh);
+      const items = this.bulkItemsOf(fresh);
+      const rows = await this.prisma.groupVote.findMany({ where: { proposalId: id, NOT: { itemId: null } }, select: { voterUserId: true, itemId: true, choice: true, rationale: true }, orderBy: { createdAt: 'asc' } });
+      const byItem = new Map<string, typeof rows>();
+      for (const v of rows) { const a = byItem.get(v.itemId as string) ?? []; a.push(v); byItem.set(v.itemId as string, a); }
+      bulk = {
+        eligible: bt.eligible,
+        votedMembers: bt.votedMembers,
+        allVoted: bt.allVoted,
+        items: items.map((it) => {
+          const ti = bt.items.find((x) => x.id === it.id) ?? null;
+          const ivotes = byItem.get(it.id) ?? [];
+          const mine = userId ? ivotes.find((r) => r.voterUserId === userId) : null;
+          return {
+            id: it.id,
+            title: it.title,
+            description: it.description,
+            tally: ti ? { yes: ti.yes, no: ti.no, abstain: ti.abstain, eligible: ti.eligible, denominator: ti.denominator, ratioPct: ti.ratioPct, thresholdPct: ti.thresholdPct, approved: ti.approved, voted: ti.voted } : null,
+            myChoice: mine?.choice ?? null,
+            myRationale: mine?.rationale ?? null,
+            voters: ivotes.map((r) => ({ voter: nameOf.get(r.voterUserId) ?? 'Member', choice: r.choice })),
+            rationales: ivotes.filter((r) => r.rationale?.trim()).map((r) => ({ voter: nameOf.get(r.voterUserId) ?? 'Member', choice: r.choice, rationale: r.rationale as string })),
+          };
+        }),
+      };
+    } else {
+      myVotes = userId
+        ? (await this.prisma.groupVote.findMany({ where: { proposalId: id, voterUserId: userId }, select: { choice: true } })).map((v) => v.choice)
+        : [];
+      const rationaleRows = await this.prisma.groupVote.findMany({
+        where: { proposalId: id, NOT: { rationale: null } },
+        select: { voterUserId: true, choice: true, rationale: true },
+        distinct: ['voterUserId'],
+        orderBy: { createdAt: 'asc' },
+      });
+      rationales = rationaleRows
+        .filter((r) => r.rationale?.trim())
+        .map((r) => ({ voter: nameOf.get(r.voterUserId) ?? 'Member', choice: r.choice, rationale: r.rationale as string }));
+      myRationale = userId
+        ? (await this.prisma.groupVote.findFirst({ where: { proposalId: id, voterUserId: userId }, select: { rationale: true } }))?.rationale ?? null
+        : null;
+      const voterRows = await this.prisma.groupVote.findMany({
+        where: { proposalId: id },
+        select: { voterUserId: true, choice: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      voters = voterRows.map((v) => ({ voter: nameOf.get(v.voterUserId) ?? 'Member', choice: v.choice }));
+    }
     // §29/§3 — the on-chain anchor of this group's decision, so the detail can link to the explorer.
     const anchorRow = await this.prisma.anchor.findFirst({ where: { kind: 'group', proposalId: id }, select: { txHash: true }, orderBy: { createdAt: 'desc' } });
     return {
@@ -458,9 +526,12 @@ export class GroupsService {
       decidedAt: fresh.decidedAt?.toISOString() ?? null,
       createdAt: fresh.createdAt.toISOString(),
       poll: fresh.type === 'POLL' ? { multiple: !!poll?.multiple, options: poll?.options ?? [] } : null,
+      bulk,
       actors: (fresh.actors as string[] | null) ?? null,
       deliveryDate: fresh.deliveryDate?.toISOString() ?? null,
       canVote: isMember && fresh.status === 'ACTIVE',
+      canCloseEarly: isBulk && isMember && fresh.status === 'ACTIVE' && !!bulk?.allVoted,
+      resultAvailable: isBulk && fresh.status !== 'ACTIVE',
       myVotes,
       myRationale,
       rationales,
@@ -503,11 +574,20 @@ export class GroupsService {
       if (options.length < 2) throw new BadRequestException('a poll needs at least two options');
       pollOptions = { multiple: !!dto.pollMultiple, options };
     }
+    // §29 BULK — several sub-proposals in one; each item gets a stable id so per-item votes can reference it.
+    let bulkItems: { id: string; title: string; description: string }[] | undefined;
+    if (dto.type === 'BULK') {
+      const items = (dto.bulkItems ?? [])
+        .map((it) => ({ title: (it?.title ?? '').trim(), description: (it?.description ?? '').trim() }))
+        .filter((it) => it.title);
+      if (items.length < 2) throw new BadRequestException('a bulk proposal needs at least two items (each with a title)');
+      bulkItems = items.map((it) => ({ id: randomUUID(), title: it.title.slice(0, 300), description: it.description.slice(0, 4000) }));
+    }
     const instructive = dto.type === 'INSTRUCTIVE';
     const p = await this.prisma.groupProposal.create({
       data: {
         groupId: g.id, authorUserId: userId, title: dto.title.trim(), contentMd: dto.contentMd,
-        type: dto.type, pollOptions: pollOptions ?? undefined, status: 'ACTIVE', votingEndAt: end,
+        type: dto.type, pollOptions: pollOptions ?? undefined, bulkItems: bulkItems ?? undefined, status: 'ACTIVE', votingEndAt: end,
         actors: instructive && dto.actors?.length ? dto.actors : undefined,
         deliveryDate: instructive && dto.deliveryDate ? new Date(dto.deliveryDate) : undefined,
       },
@@ -522,6 +602,24 @@ export class GroupsService {
     const fresh = await this.prisma.groupProposal.findUnique({ where: { id: proposalId } });
     if (!fresh || fresh.status !== 'ACTIVE') throw new ConflictException('voting is closed for this proposal');
     if (!(await this.admittedMember(p.groupId, userId))) throw new ForbiddenException('only admitted members may vote');
+    // §29 BULK — one vote per item; the ballot may cover any subset of items (re-vote replaces that item).
+    if (fresh.type === 'BULK') {
+      const items = this.bulkItemsOf(fresh);
+      const ids = new Set(items.map((i) => i.id));
+      const ballot = dto.items ?? [];
+      if (ballot.length === 0) throw new BadRequestException('no votes to record');
+      for (const b of ballot) {
+        if (!ids.has(b.itemId)) throw new BadRequestException(`unknown item: ${b.itemId}`);
+        if (!['YES', 'NO', 'ABSTAIN'].includes(b.choice)) throw new BadRequestException('each item choice must be YES, NO or ABSTAIN');
+      }
+      // Replace only the items included in this ballot (per-item, so a member can vote row by row).
+      const touched = ballot.map((b) => b.itemId);
+      await this.prisma.groupVote.deleteMany({ where: { proposalId, voterUserId: userId, itemId: { in: touched } } });
+      await this.prisma.groupVote.createMany({
+        data: ballot.map((b) => ({ proposalId, voterUserId: userId, itemId: b.itemId, choice: b.choice, rationale: b.rationale?.trim() || null })),
+      });
+      return this.getProposal(userId, proposalId);
+    }
     const rows: { choice: string }[] = [];
     if (fresh.type === 'POLL') {
       const poll = fresh.pollOptions as { multiple?: boolean; options?: string[] } | null;
@@ -608,6 +706,80 @@ export class GroupsService {
     return this.tally(p);
   }
 
+  // ── §29 BULK — several sub-proposals voted on together (one YES/NO/ABSTAIN per item) ──────────
+  private bulkItemsOf(p: { bulkItems: unknown }): { id: string; title: string; description: string }[] {
+    const arr = (p.bulkItems as { id?: string; title?: string; description?: string }[] | null) ?? [];
+    return arr.map((x) => ({ id: String(x.id ?? ''), title: String(x.title ?? ''), description: String(x.description ?? '') }));
+  }
+
+  /** §29 BULK — per-item tally (each item scored like an INFORMATIVE proposal: pass at ≥ threshold YES,
+   *  denominator = eligible − abstainers) against a given eligible-member set. */
+  private async bulkTally(p: { id: string; groupId: string; bulkItems: unknown }, memberIds: Set<string>): Promise<BulkTally> {
+    const group = await this.prisma.group.findUnique({ where: { id: p.groupId }, select: { thresholdPct: true } });
+    const thresholdPct = group?.thresholdPct ?? 67;
+    const eligible = memberIds.size;
+    const items = this.bulkItemsOf(p);
+    const votes = (await this.prisma.groupVote.findMany({ where: { proposalId: p.id } })).filter((v) => v.itemId && memberIds.has(v.voterUserId));
+    const byItem = new Map<string, Map<string, string>>(); // itemId → (voterId → choice)
+    for (const v of votes) {
+      let m = byItem.get(v.itemId as string);
+      if (!m) { m = new Map(); byItem.set(v.itemId as string, m); }
+      m.set(v.voterUserId, v.choice);
+    }
+    const itemTallies = items.map((it) => {
+      const m = byItem.get(it.id) ?? new Map<string, string>();
+      let yes = 0, no = 0, abstain = 0;
+      for (const uid of memberIds) {
+        const c = m.get(uid);
+        if (c === 'YES') yes++; else if (c === 'NO') no++; else if (c === 'ABSTAIN') abstain++;
+      }
+      const denominator = Math.max(0, eligible - abstain);
+      const ratioPct = denominator > 0 ? Math.round((yes / denominator) * 1000) / 10 : 0;
+      return { id: it.id, yes, no, abstain, eligible, denominator, ratioPct, thresholdPct, approved: ratioPct >= thresholdPct, voted: yes + no + abstain };
+    });
+    let votedMembers = 0;
+    for (const uid of memberIds) {
+      if (items.length > 0 && items.every((it) => byItem.get(it.id)?.has(uid))) votedMembers++;
+    }
+    return { kind: 'BULK', eligible, votedMembers, allVoted: eligible > 0 && items.length > 0 && votedMembers >= eligible, items: itemTallies };
+  }
+
+  /** §29 BULK — frozen per-item tally for a decided proposal, else the live tally. */
+  private async resolveBulkTally(p: { id: string; groupId: string; bulkItems: unknown; status: string; decidedTally: unknown }): Promise<BulkTally> {
+    if (p.status !== 'ACTIVE' && p.decidedTally) return p.decidedTally as BulkTally;
+    return this.bulkTally(p, await this.admittedMemberIds(p.groupId));
+  }
+
+  /** §29 BULK — build the canonical result document (per-item votes + tally) + its stable pretty-printed
+   *  string and SHA-256. The string is what gets downloaded and hashed, so the on-chain hash, the stored
+   *  copy and the downloadable file are byte-identical and re-verifiable. */
+  private async composeBulkResult(p: { id: string; groupId: string; title: string; contentMd: string; bulkItems: unknown; createdAt: Date; votingEndAt: Date; decidedAt: Date | null; group: { key: string; name: string } }, tally: BulkTally, memberIds: Set<string>) {
+    const nameOf = await this.groupMemberNames(p.groupId);
+    const items = this.bulkItemsOf(p);
+    const voteRows = await this.prisma.groupVote.findMany({ where: { proposalId: p.id, NOT: { itemId: null } }, select: { voterUserId: true, itemId: true, choice: true, rationale: true }, orderBy: { createdAt: 'asc' } });
+    const byItem = new Map<string, typeof voteRows>();
+    for (const v of voteRows) { const a = byItem.get(v.itemId as string) ?? []; a.push(v); byItem.set(v.itemId as string, a); }
+    const doc = {
+      group: { key: p.group.key, name: p.group.name },
+      proposal: { id: p.id, title: p.title, description: p.contentMd, createdAt: p.createdAt.toISOString(), votingEndAt: p.votingEndAt.toISOString(), closedAt: p.decidedAt?.toISOString() ?? new Date().toISOString() },
+      thresholdPct: tally.items[0]?.thresholdPct ?? null,
+      eligibleMembers: [...memberIds].map((uid) => nameOf.get(uid) ?? 'Member').sort(),
+      items: items.map((it) => {
+        const ti = tally.items.find((x) => x.id === it.id);
+        const rows = byItem.get(it.id) ?? [];
+        return {
+          title: it.title,
+          description: it.description,
+          result: ti ? { yes: ti.yes, no: ti.no, abstain: ti.abstain, ratioPct: ti.ratioPct, thresholdPct: ti.thresholdPct, approved: ti.approved } : null,
+          votes: rows.map((r) => ({ voter: nameOf.get(r.voterUserId) ?? 'Member', choice: r.choice, ...(r.rationale?.trim() ? { rationale: r.rationale } : {}) })),
+        };
+      }),
+    };
+    const json = JSON.stringify(doc, null, 2);
+    const hash = createHash('sha256').update(json).digest('hex');
+    return { doc, json, hash };
+  }
+
   /** §29 — one-off: freeze the tally of proposals decided before `decidedTally` existed, using the
    *  membership as it was at their decision time. Idempotent — skips proposals already frozen. */
   async backfillDecidedTallies(): Promise<number> {
@@ -623,8 +795,20 @@ export class GroupsService {
     return n;
   }
 
-  private async maybeFinalize(p: { id: string; status: string; votingEndAt: Date; type: string; groupId: string; pollOptions: unknown }) {
+  private async maybeFinalize(p: { id: string; status: string; votingEndAt: Date; type: string; groupId: string; pollOptions: unknown; bulkItems?: unknown }) {
     if (p.status !== 'ACTIVE' || p.votingEndAt.getTime() > Date.now()) return;
+    // §29 BULK — freeze the per-item tally + the exact result JSON/hash, then anchor the hash on-chain.
+    if (p.type === 'BULK') {
+      const memberIds = await this.admittedMemberIds(p.groupId);
+      const tally = await this.bulkTally({ id: p.id, groupId: p.groupId, bulkItems: p.bulkItems }, memberIds);
+      const full = await this.prisma.groupProposal.findUnique({ where: { id: p.id }, include: { group: true } });
+      if (!full) return;
+      const { doc, json, hash } = await this.composeBulkResult(full, tally, memberIds);
+      const decided = { ...tally, resultJson: json, resultHash: hash };
+      const res = await this.prisma.groupProposal.updateMany({ where: { id: p.id, status: 'ACTIVE' }, data: { status: 'CLOSED', decidedAt: new Date(), decidedTally: decided as unknown as object } });
+      if (res.count === 1) await this.anchorBulkResult(full, doc, hash, tally).catch(() => undefined);
+      return;
+    }
     const t = await this.tally(p);
     const status = p.type === 'POLL' ? 'CLOSED' : t.kind === 'THRESHOLD' && t.approved ? 'PASSED' : 'FAILED';
     // Atomic: only the first finalizer (count === 1) anchors, so concurrent views can't double-anchor.
@@ -665,12 +849,58 @@ export class GroupsService {
     });
   }
 
+  /** §29 BULK — anchor a closed bulk proposal: the SHA-256 of the per-item result JSON goes on-chain
+   *  (self-describing GROUP metadata: group + title + "X/Y items passed" + proofHash); the full JSON is
+   *  kept as the anchor preimage and served as a download. Never throws. */
+  private async anchorBulkResult(p: { id: string; title: string; group: { key: string; name: string } }, doc: object, hash: string, tally: BulkTally) {
+    const passed = tally.items.filter((i) => i.approved).length;
+    const failed = tally.items.length - passed;
+    await this.anchor.anchorGroupBulk({
+      proposalRowId: p.id,
+      title: p.title,
+      publicId: `${p.group.key.toUpperCase()} · ${p.title}`,
+      group: { key: p.group.key, name: p.group.name },
+      doc,
+      hash,
+      passed,
+      failed,
+      threshold: tally.items[0]?.thresholdPct ?? 0,
+    });
+  }
+
+  /** §29 BULK — a member closes voting early once EVERY member has voted on EVERY item. Freezes + anchors. */
+  async closeEarly(userId: string, proposalId: string) {
+    const p = await this.prisma.groupProposal.findUnique({ where: { id: proposalId }, include: { group: true } });
+    if (!p || p.group.status !== 'ACTIVE') throw new NotFoundException('proposal not found');
+    if (p.type !== 'BULK') throw new BadRequestException('only bulk proposals can be closed early');
+    if (p.status !== 'ACTIVE') throw new ConflictException('this proposal is already closed');
+    if (!(await this.admittedMember(p.groupId, userId))) throw new ForbiddenException('only admitted members can close a proposal');
+    const tally = await this.bulkTally(p, await this.admittedMemberIds(p.groupId));
+    if (!tally.allVoted) throw new BadRequestException('every member must vote on every item before the proposal can be closed early');
+    await this.prisma.groupProposal.update({ where: { id: proposalId }, data: { votingEndAt: new Date() } });
+    const fresh = await this.prisma.groupProposal.findUnique({ where: { id: proposalId } });
+    if (fresh) await this.maybeFinalize(fresh);
+    return this.getProposal(userId, proposalId);
+  }
+
+  /** §29 BULK — the frozen result JSON + its SHA-256 for the download (available once voting closed). */
+  async bulkResult(proposalId: string): Promise<{ base: string; json: string; hash: string }> {
+    const p = await this.prisma.groupProposal.findUnique({ where: { id: proposalId }, include: { group: true } });
+    if (!p || p.group.status !== 'ACTIVE') throw new NotFoundException('proposal not found');
+    if (p.type !== 'BULK') throw new BadRequestException('not a bulk proposal');
+    await this.maybeFinalize(p);
+    const fresh = await this.prisma.groupProposal.findUnique({ where: { id: proposalId } });
+    const dt = fresh?.decidedTally as (BulkTally & { resultJson?: string; resultHash?: string }) | null;
+    if (!fresh || fresh.status === 'ACTIVE' || !dt?.resultJson || !dt?.resultHash) throw new BadRequestException('results are available once voting has closed');
+    return { base: `${p.group.key}-bulk-${proposalId.slice(0, 8)}`, json: dt.resultJson, hash: dt.resultHash };
+  }
+
   /** §29 — finalize + anchor every group proposal whose voting has ended but is still ACTIVE.
    *  Run periodically (jobs) so results are anchored even if no one opened the proposal. Returns how many. */
   async finalizeDueProposals(): Promise<number> {
     const due = await this.prisma.groupProposal.findMany({
       where: { status: 'ACTIVE', votingEndAt: { lte: new Date() } },
-      select: { id: true, status: true, votingEndAt: true, type: true, groupId: true, pollOptions: true },
+      select: { id: true, status: true, votingEndAt: true, type: true, groupId: true, pollOptions: true, bulkItems: true },
     });
     for (const p of due) await this.maybeFinalize(p).catch(() => undefined);
     await this.backfillDecidedAnchors().catch(() => undefined);

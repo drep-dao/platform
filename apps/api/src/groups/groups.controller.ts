@@ -1,8 +1,10 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Res, UseGuards } from '@nestjs/common';
+import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { CurrentUser, type AuthContext } from '../auth/current-user.decorator';
 import { GroupsService } from './groups.service';
+import { makeStoredZip } from './zip.util';
 import { GroupCommentDto, GroupVoteDto, GroupVotingSettingsDto, RegisterGroupDto, SubmitGroupProposalDto } from './dto';
 
 /** §29 — configurable groups (e.g. OG): membership, member-submitted proposals + voting, comments. */
@@ -48,6 +50,30 @@ export class GroupsController {
   @UseGuards(JwtAuthGuard)
   vote(@CurrentUser() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: GroupVoteDto) {
     return this.svc.vote(ctx.userId, id, dto);
+  }
+
+  // §29 BULK — a member closes voting early once every member has voted on every item.
+  @Post('proposal/:id/close')
+  @UseGuards(JwtAuthGuard)
+  closeEarly(@CurrentUser() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.closeEarly(ctx.userId, id);
+  }
+
+  // §29 BULK — download the closed proposal's result JSON + its SHA-256 as a zip (public; re-verifiable).
+  @Get('proposal/:id/result.zip')
+  @UseGuards(OptionalJwtAuthGuard)
+  async resultZip(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
+    const { base, json, hash } = await this.svc.bulkResult(id);
+    const zip = makeStoredZip([
+      { name: `${base}.json`, data: json },
+      { name: `${base}.sha256.txt`, data: `${hash}  ${base}.json\n` },
+    ]);
+    res.set({
+      'Content-Type': 'application/zip',
+      'Content-Disposition': `attachment; filename="${base}.zip"`,
+      'Content-Length': String(zip.length),
+    });
+    res.end(zip);
   }
 
   @Post('proposal/:id/comments')

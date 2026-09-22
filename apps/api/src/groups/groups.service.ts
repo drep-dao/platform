@@ -537,6 +537,7 @@ export class GroupsService {
       deliveryDate: fresh.deliveryDate?.toISOString() ?? null,
       canVote: isMember && fresh.status === 'ACTIVE',
       canCloseEarly: isBulk && isMember && fresh.status === 'ACTIVE' && !!bulk?.allDecided,
+      canDiscard: isMember && fresh.status === 'ACTIVE', // §29 — discard before voting ends (any type)
       resultAvailable: isBulk && fresh.status !== 'ACTIVE',
       myVotes,
       myRationale,
@@ -908,6 +909,17 @@ export class GroupsService {
     await this.prisma.groupProposal.update({ where: { id: proposalId }, data: { votingEndAt: new Date() } });
     const fresh = await this.prisma.groupProposal.findUnique({ where: { id: proposalId } });
     if (fresh) await this.maybeFinalize(fresh);
+    return this.getProposal(userId, proposalId);
+  }
+
+  /** §29 — an admitted member discards an ACTIVE proposal before voting ends. It is NOT deleted: it stays
+   *  in the list with status DISCARDED (no outcome, not anchored). Any proposal type. */
+  async discardProposal(userId: string, proposalId: string) {
+    const p = await this.prisma.groupProposal.findUnique({ where: { id: proposalId }, include: { group: true } });
+    if (!p || p.group.status !== 'ACTIVE') throw new NotFoundException('proposal not found');
+    if (!(await this.admittedMember(p.groupId, userId))) throw new ForbiddenException('only admitted members can discard a proposal');
+    if (p.status !== 'ACTIVE') throw new ConflictException('only an active proposal can be discarded');
+    await this.prisma.groupProposal.update({ where: { id: proposalId }, data: { status: 'DISCARDED', decidedAt: new Date() } });
     return this.getProposal(userId, proposalId);
   }
 

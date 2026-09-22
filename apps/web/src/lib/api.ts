@@ -2420,6 +2420,7 @@ export interface GroupProposalDetail {
   deliveryDate: string | null;
   canVote: boolean;
   canCloseEarly: boolean; // §29 BULK — every member has voted on every item; a member may close it now
+  canDiscard: boolean; // §29 — the member may discard this active proposal before voting ends
   resultAvailable: boolean; // §29 BULK — voting closed → the result JSON + hash zip can be downloaded
   myVotes: string[];
   myRationale: string | null;
@@ -2455,6 +2456,7 @@ export const groupsApi = {
   submit: (key: string, input: SubmitGroupProposalInput) => request<GroupProposalDetail>(`/groups/${key}/proposals`, { method: 'POST', body: JSON.stringify(input) }),
   vote: (id: string, input: GroupVoteInput) => request<GroupProposalDetail>(`/groups/proposal/${id}/vote`, { method: 'POST', body: JSON.stringify(input) }),
   closeEarly: (id: string) => request<GroupProposalDetail>(`/groups/proposal/${id}/close`, { method: 'POST' }),
+  discard: (id: string) => request<GroupProposalDetail>(`/groups/proposal/${id}/discard`, { method: 'POST' }),
   // §29 BULK — direct download URL for the closed proposal's result JSON + hash (zip); opened in a new tab.
   resultZipUrl: (id: string) => `${API_BASE}/groups/proposal/${id}/result.zip`,
   comment: (id: string, contentMd: string, parentId?: string) => request<GroupProposalDetail>(`/groups/proposal/${id}/comments`, { method: 'POST', body: JSON.stringify({ contentMd, ...(parentId ? { parentId } : {}) }) }),

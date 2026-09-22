@@ -23,6 +23,7 @@ export function GroupProposals({ groupKey }: { groupKey: string }) {
   const { get, setParams } = useUrlNav();
   const openId = get('gp');
   const [creating, setCreating] = useState(false);
+  const [filter, setFilter] = useState<'all' | 'active' | 'decided' | 'discarded'>('all');
   const load = useCallback(() => { groupsApi.proposals(groupKey).then(setData).catch(() => setData(null)); }, [groupKey]);
   useEffect(load, [load]);
 
@@ -50,9 +51,34 @@ export function GroupProposals({ groupKey }: { groupKey: string }) {
 
       {creating && data.canSubmit ? <SubmitForm group={data.group} onDone={() => { setCreating(false); load(); }} /> : null}
 
+      {/* §29 — filter by lifecycle: All (default) / Active / Decided (passed·failed·closed) / Discarded. */}
+      {(() => {
+        const decidedSet = ['PASSED', 'FAILED', 'CLOSED'];
+        const count = (f: typeof filter) => data.proposals.filter((p) =>
+          f === 'all' ? true : f === 'active' ? p.status === 'ACTIVE' : f === 'discarded' ? p.status === 'DISCARDED' : decidedSet.includes(p.status)).length;
+        const tabs: { key: typeof filter; label: string }[] = [
+          { key: 'all', label: t('All') }, { key: 'active', label: t('Active') }, { key: 'decided', label: t('Decided') }, { key: 'discarded', label: t('Discarded') },
+        ];
+        return (
+          <div className="mt-3 flex flex-wrap gap-1">
+            {tabs.map((tab) => (
+              <button key={tab.key} onClick={() => setFilter(tab.key)}
+                className={`rounded-full px-3 py-1 text-xs font-medium ${filter === tab.key ? 'bg-emerald-600 text-white' : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700'}`}>
+                {tab.label} ({count(tab.key)})
+              </button>
+            ))}
+          </div>
+        );
+      })()}
+
       <div className="mt-4 space-y-2">
-        {data.proposals.length === 0 ? <p className="text-sm text-neutral-400">{t('No proposals yet.')}</p> : null}
-        {data.proposals.map((p) => (
+        {(() => {
+          const decidedSet = ['PASSED', 'FAILED', 'CLOSED'];
+          const filtered = data.proposals.filter((p) =>
+            filter === 'all' ? true : filter === 'active' ? p.status === 'ACTIVE' : filter === 'discarded' ? p.status === 'DISCARDED' : decidedSet.includes(p.status));
+          return (<>
+        {filtered.length === 0 ? <p className="text-sm text-neutral-400">{data.proposals.length === 0 ? t('No proposals yet.') : t('No proposals match this filter.')}</p> : null}
+        {filtered.map((p) => (
           <button key={p.id} onClick={() => setParams({ gp: p.id })} className="flex w-full flex-col gap-1 rounded-md border border-neutral-200 p-3 text-left hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900">
             <span className="flex w-full flex-wrap items-center justify-between gap-2">
               <span className="flex min-w-0 items-center gap-2">
@@ -85,6 +111,8 @@ export function GroupProposals({ groupKey }: { groupKey: string }) {
             </span>
           </button>
         ))}
+          </>);
+        })()}
       </div>
     </section>
   );
@@ -97,6 +125,7 @@ function StatusChip({ status }: { status: string }) {
     PASSED: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
     FAILED: 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300',
     CLOSED: 'bg-neutral-200 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300',
+    DISCARDED: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
   };
   return <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${map[status] ?? map.CLOSED}`}>{t(status)}</span>;
 }
@@ -222,6 +251,7 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
   // rationale alone does nothing. They must click "Change my vote" to re-open it, and only clicking
   // a vote button then persists the new vote + rationale — otherwise the old vote stands.
   const [editing, setEditing] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
   const load = useCallback(() => { groupsApi.proposal(id).then((d) => { setP(d); setPicks(d.myVotes); setRationale(d.myRationale ?? ''); setEditing(false); }).catch(() => setP(null)); }, [id]);
   useEffect(load, [load]);
 
@@ -249,7 +279,13 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
     <section className={card}>
       <div className="flex items-center justify-between gap-2">
         <button onClick={onBack} className="text-sm text-emerald-700 hover:underline dark:text-emerald-400">← {t('Back')}</button>
-        <ShareLinkButton />
+        <span className="flex items-center gap-2">
+          {/* §29 — a member may discard an active proposal before voting ends (kept as DISCARDED). */}
+          {p.canDiscard ? (
+            <button onClick={() => setDiscarding(true)} className="rounded border border-amber-300 px-2.5 py-1 text-xs font-medium text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950">{t('Discard')}</button>
+          ) : null}
+          <ShareLinkButton />
+        </span>
       </div>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">{p.title}</h2>
@@ -409,6 +445,16 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
           emptyText={t('No comments yet.')}
         />
       </div>
+
+      <ConfirmDialog
+        open={discarding}
+        title={t('Discard this proposal?')}
+        message={t('Voting stops now and the proposal is marked DISCARDED. It stays in the list for the record but gets no outcome and is not anchored. This cannot be undone.')}
+        confirmLabel={t('Yes, discard')}
+        tone="danger"
+        onCancel={() => setDiscarding(false)}
+        onConfirm={async () => { setDiscarding(false); setBusy(true); try { setP(await groupsApi.discard(id)); } finally { setBusy(false); } }}
+      />
     </section>
   );
 }

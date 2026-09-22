@@ -59,6 +59,13 @@ export class GroupsController {
     return this.svc.closeEarly(ctx.userId, id);
   }
 
+  // §29 — a member discards an active proposal before voting ends (kept as DISCARDED, not deleted).
+  @Post('proposal/:id/discard')
+  @UseGuards(JwtAuthGuard)
+  discard(@CurrentUser() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.discardProposal(ctx.userId, id);
+  }
+
   // §29 BULK — download the closed proposal's result JSON + its SHA-256 as a zip (public; re-verifiable).
   @Get('proposal/:id/result.zip')
   @UseGuards(OptionalJwtAuthGuard)

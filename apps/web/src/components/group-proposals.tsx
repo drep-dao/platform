@@ -412,6 +412,32 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
   );
 }
 
+/** §29 — the YES/NO/Abstain result bar (ratio + threshold + segmented bar + legend + who-voted),
+ *  shared by an INFORMATIVE proposal and by each BULK item. */
+function ThresholdBar({ ti, voters }: { ti: { yes: number; no: number; abstain: number; eligible: number; denominator: number; ratioPct: number; thresholdPct: number; approved: boolean; voted: number }; voters: { voter: string; choice: string }[] }) {
+  const t = useT();
+  return (
+    <div className="space-y-2">
+      <div>
+        <span className="font-medium">YES</span> {ti.yes}/{ti.denominator} ({ti.ratioPct}%) · {t('threshold')} {ti.thresholdPct}% ·{' '}
+        <span className={ti.approved ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>{ti.approved ? t('passing') : t('not passing')}</span>
+      </div>
+      <div className="flex h-3 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
+        <div className="bg-emerald-500" style={{ width: `${pct(ti.yes, ti.eligible)}%` }} />
+        <div className="bg-rose-500" style={{ width: `${pct(ti.no, ti.eligible)}%` }} />
+        <div className="bg-amber-400" style={{ width: `${pct(ti.abstain, ti.eligible)}%` }} />
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
+        <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-emerald-500" /> {t('Yes')} {ti.yes}</span>
+        <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-rose-500" /> {t('No')} {ti.no}</span>
+        <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-amber-400" /> {t('Abstain')} {ti.abstain}</span>
+        <span className="text-neutral-500">· {ti.voted} {t('of')} {ti.eligible} {t('members voted')}</span>
+      </div>
+      <VoterBreakdown voters={voters} t={t} />
+    </div>
+  );
+}
+
 /** §29 BULK — several sub-proposals voted on together: per-item YES/NO/Abstain + rationale, a per-item
  *  pass/fail tally, a "close voting now" button once everyone has voted, and a result JSON+hash download. */
 function BulkSection({ p, id, onChange }: { p: GroupProposalDetail; id: string; onChange: (p: GroupProposalDetail) => void }) {
@@ -472,13 +498,7 @@ function BulkSection({ p, id, onChange }: { p: GroupProposalDetail; id: string; 
                   {open[it.id] ? <div className="prose prose-sm mt-1 max-w-none text-sm dark:prose-invert"><Markdown>{it.description}</Markdown></div> : null}
                 </div>
               ) : null}
-              {ti ? (
-                <div className="mt-2 text-xs text-neutral-600 dark:text-neutral-300">
-                  <span className="font-medium text-emerald-600 dark:text-emerald-400">{t('Yes')} {ti.yes}</span> · <span className="font-medium text-rose-600 dark:text-rose-400">{t('No')} {ti.no}</span> · <span className="font-medium text-amber-600 dark:text-amber-400">{t('Abstain')} {ti.abstain}</span>
-                  {ti.denominator > 0 ? <> · {t('YES')} {ti.ratioPct}% · {t('threshold')} {ti.thresholdPct}% · <span className={ti.approved ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>{ti.approved ? t('passing') : t('not passing')}</span></> : null}
-                </div>
-              ) : null}
-              {it.voters.length ? <div className="mt-1 text-[11px] text-neutral-400">{it.voters.map((v, i) => <span key={i}>{v.voter} (<span className={CHOICE_TONE[v.choice] ?? ''}>{choiceLabel(v.choice, t)}</span>){i < it.voters.length - 1 ? ', ' : ''}</span>)}</div> : null}
+              {ti ? <div className="mt-2 text-sm"><ThresholdBar ti={ti} voters={it.voters} /></div> : null}
               {it.rationales.length ? (
                 <ul className="mt-1 space-y-1">
                   {it.rationales.map((r, i) => (

@@ -1101,13 +1101,15 @@ export class AnchorService implements OnModuleInit {
   private async submitTxHex(hex: string): Promise<void> {
     // Prefer a cardano-submit-api (our own node) when configured — it avoids Koios
     // entirely for the broadcast, so a Koios daily-cap 429 can't block submission.
-    const url = this.submitApiUrl ? `${this.submitApiUrl.replace(/\/$/, '')}/api/submit/tx` : `${this.base}/submittx`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/cbor' },
-      body: Buffer.from(hex, 'hex'),
-    });
-    if (!res.ok) throw new Error(`submittx ${res.status}: ${await res.text()}`);
+    if (this.submitApiUrl) {
+      const url = `${this.submitApiUrl.replace(/\/$/, '')}/api/submit/tx`;
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/cbor' }, body: Buffer.from(hex, 'hex') });
+      if (!res.ok) throw new Error(`submittx ${res.status}: ${await res.text()}`);
+      return;
+    }
+    // Otherwise broadcast via Koios — AUTHENTICATED with the Koios token so it uses the token's tier
+    // budget, not the shared anonymous-IP limit (which 429s "Exceeded Tier Limit" under load).
+    await this.cardano.submitTxViaKoios(hex);
   }
 
   private anchorKeys(mnemonic: string) {

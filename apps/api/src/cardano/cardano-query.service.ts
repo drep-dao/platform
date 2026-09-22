@@ -136,6 +136,14 @@ export class CardanoQueryService {
     return fetch(`${this.base}${pathAndQuery}`, { ...init, headers });
   }
 
+  /** Broadcast a signed tx (CBOR hex) via Koios /submittx, AUTHENTICATED with the Koios token when one
+   *  is set — so submission draws on the token's tier budget instead of the shared anonymous-IP limit
+   *  (which returns "Exceeded Tier Limit" 429s under load). Throws with the node/Koios reason on failure. */
+  async submitTxViaKoios(hex: string): Promise<void> {
+    const res = await this.koiosFetch('/submittx', { method: 'POST', headers: { 'Content-Type': 'application/cbor' }, body: Buffer.from(hex, 'hex') });
+    if (!res.ok) throw new Error(`submittx ${res.status}: ${await res.text()}`);
+  }
+
   /** A Blockfrost fetch — prepends the base and adds the project_id header. Throws if no key. */
   private async blockfrostFetch(pathAndQuery: string, init?: RequestInit): Promise<Response> {
     if (!this.blockfrostKey) throw new Error('Blockfrost not configured');

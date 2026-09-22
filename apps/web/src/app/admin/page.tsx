@@ -11,6 +11,7 @@ import { WalletPanel } from '@/components/admin/wallet-panel';
 import { ResetPanel } from '@/components/admin/reset-panel';
 import { MaintenancePanel } from '@/components/admin/maintenance-panel';
 import { GroupsPanel } from '@/components/admin/groups-panel';
+import { GROUPS_ENABLED } from '@/lib/features';
 import { fmtDateTime } from '@/components/round-ui';
 import { StepUpProvider } from '@/components/admin/step-up-provider';
 import { Enable2FA } from '@/components/admin/enable-2fa';
@@ -85,7 +86,10 @@ export default function AdminDashboard() {
       </section>
 
       <MaintenancePanel />
-        <GroupsPanel />
+
+      {/* §29 OG — the whole Groups surface, admin panel included, is gated on NEXT_PUBLIC_GROUPS_ENABLED
+          so an instance can ship the feature dormant (default off here) and enable it later. */}
+      {GROUPS_ENABLED ? <GroupsPanel /> : null}
 
       <AdminGenesis key={`genesis-${resetGen}`} onBoardChange={refreshOverview} />
 

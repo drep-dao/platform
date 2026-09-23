@@ -189,7 +189,7 @@ export function HomeShell() {
           ) : pubView === 'requests' ? (
             <RequestsSection />
           ) : (
-            <PublicLanding onConnect={() => setWalletOpen(true)} onExplore={() => setView('members')} />
+            <PublicLanding onConnect={() => setWalletOpen(true)} onExplore={() => setView('members')} onOpenVote={() => setWalletOpen(true)} />
           )}
           <div className="mt-8 border-t border-neutral-200 pt-3 text-xs text-neutral-400 dark:border-neutral-800">
             <HealthBadge />
@@ -285,7 +285,7 @@ export function HomeShell() {
         {groupMatch ? (
           groupMatch[2] === 'members' ? <GroupMembers groupKey={groupMatch[1]} /> : <GroupProposals groupKey={groupMatch[1]} />
         ) : view === 'landing' ? (
-          <PublicLanding onConnect={() => setView('me')} onExplore={() => setView('members')} />
+          <PublicLanding onConnect={() => setView('me')} onExplore={() => setView('members')} onOpenVote={(id) => setParams({ view: 'internal', ip: id, tab: null, round: null, proposal: null, expert: null, doc: null, gp: null })} />
         ) : view === 'overview' ? (
           <DaoOverview />
         ) : view === 'submitters' ? (

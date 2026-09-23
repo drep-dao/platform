@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type KeyboardEvent } from 'react';
 import { publicApi, type PublicOverview, type ActiveVote } from '@/lib/api';
 import { usePrefs } from '@/lib/prefs-context';
 import { brand } from '@/lib/brand';
@@ -21,7 +21,7 @@ const STAGES = [
 // A governance Council runs a continuous cycle rather than budgeted rounds.
 const GOV_FLOW = ['Join', 'Propose', 'Vote', 'Act'];
 
-export function PublicLanding({ onConnect, onExplore }: { onConnect: () => void; onExplore: () => void }) {
+export function PublicLanding({ onConnect, onExplore, onOpenVote }: { onConnect: () => void; onExplore: () => void; onOpenVote?: (id: string) => void }) {
   const { t } = usePrefs();
   const [data, setData] = useState<PublicOverview | null>(null);
   const [failed, setFailed] = useState(false);
@@ -202,7 +202,7 @@ export function PublicLanding({ onConnect, onExplore }: { onConnect: () => void;
         <div className="rounded-2xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
           <h3 className="mb-3 text-sm font-semibold text-neutral-800 dark:text-neutral-200">{t('Votes in progress')}</h3>
           <div className="space-y-3">
-            {data.activeVotes.map((v) => <VoteBar key={v.id} v={v} t={t} />)}
+            {data.activeVotes.map((v) => <VoteBar key={v.id} v={v} t={t} onOpen={onOpenVote ? () => onOpenVote(v.id) : undefined} />)}
           </div>
         </div>
       ) : null}
@@ -223,13 +223,16 @@ export function PublicLanding({ onConnect, onExplore }: { onConnect: () => void;
 
 // A live vote: title, a YES/NO result bar with the threshold marker (like the proposal result
 // chart), pass/fail state, and the voting-end date (red when ≤ 1 day remains).
-function VoteBar({ v, t }: { v: ActiveVote; t: (s: string) => string }) {
+function VoteBar({ v, t, onOpen }: { v: ActiveVote; t: (s: string) => string; onOpen?: () => void }) {
   const end = v.votingEndAt ? new Date(v.votingEndAt) : null;
   const soon = end ? end.getTime() - Date.now() <= 24 * 3600_000 : false;
   const yesPct = Math.min(100, Math.max(0, v.ratioPct ?? 0));
   const thr = v.thresholdPct ?? 67;
   return (
-    <div className="rounded-lg border border-neutral-200 p-3 dark:border-neutral-800">
+    <div
+      className={`rounded-lg border border-neutral-200 p-3 dark:border-neutral-800 ${onOpen ? 'cursor-pointer transition hover:border-emerald-300 hover:bg-neutral-50 dark:hover:border-emerald-800 dark:hover:bg-neutral-800/40' : ''}`}
+      {...(onOpen ? { role: 'button', tabIndex: 0, onClick: onOpen, onKeyDown: (e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } } } : {})}
+    >
       <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
         <div className="text-sm">
           {v.publicId ? <span className="font-mono text-xs text-neutral-500">{v.publicId} </span> : null}

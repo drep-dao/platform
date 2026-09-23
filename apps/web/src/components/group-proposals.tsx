@@ -86,7 +86,7 @@ export function GroupProposals({ groupKey }: { groupKey: string }) {
                 <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">{p.type === 'POLL' ? t('Poll') : p.type === 'BULK' ? t('Bulk') : p.type === 'INSTRUCTIVE' ? t('Instructive') : t('Informative')}</span>
               </span>
               <span className="flex items-center gap-2 text-xs text-neutral-500">
-                <span>{p.author}</span>
+                <span>{t('Submitter')}: {p.author}</span>
                 <StatusChip status={p.status} />
               </span>
             </span>
@@ -289,7 +289,7 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
       </div>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">{p.title}</h2>
-        <span className="flex items-center gap-2 text-xs text-neutral-500"><span>{p.author}</span><StatusChip status={p.status} /></span>
+        <span className="flex items-center gap-2 text-xs text-neutral-500"><span>{t('Submitter')}: {p.author}</span><StatusChip status={p.status} /></span>
       </div>
       <div className="prose prose-sm mt-3 max-w-none text-sm dark:prose-invert"><Markdown>{p.contentMd}</Markdown></div>
       {p.type === 'INSTRUCTIVE' && ((p.actors && p.actors.length) || p.deliveryDate) ? (

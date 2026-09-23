@@ -36,7 +36,7 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 const sha256hex = (s: string) => createHash('sha256').update(s).digest('hex');
 
 interface Ctx {
-  userId: string;
+  userId: string | null; // null → an unauthenticated (public) viewer: only public proposals, no vote
   isBoard: boolean;
 }
 
@@ -530,7 +530,7 @@ export class InternalProposalsService {
     return { count: proposalIds.filter((pid) => !voted.has(pid)).length };
   }
 
-  async list(viewerUserId: string) {
+  async list(viewerUserId: string | null) {
     const isBoard = await this.isBoardUser(viewerUserId);
     const all = await this.prisma.proposal.findMany({
       where: { type: ProposalType.INTERNAL },
@@ -552,7 +552,7 @@ export class InternalProposalsService {
   }
 
   /** Public entry: resolve the viewer's board status, then build the detail. */
-  async detail(proposalId: string, viewerUserId: string) {
+  async detail(proposalId: string, viewerUserId: string | null) {
     return this.build(proposalId, { userId: viewerUserId, isBoard: await this.isBoardUser(viewerUserId) });
   }
 
@@ -573,7 +573,7 @@ export class InternalProposalsService {
 
     const fresh = await this.prisma.proposal.findUnique({ where: { id: proposalId } });
     const tally = await this.tally(proposalId);
-    const myDrep = await this.prisma.drep.findUnique({ where: { userId: ctx.userId }, select: { id: true } });
+    const myDrep = ctx.userId ? await this.prisma.drep.findUnique({ where: { userId: ctx.userId }, select: { id: true } }) : null;
     const snapshot = await this.prisma.voteSnapshot.findFirst({ where: { proposalId } });
     const eligibleEntry = myDrep && snapshot
       ? await this.prisma.voteSnapshotEntry.findUnique({ where: { snapshotId_drepId: { snapshotId: snapshot.id, drepId: myDrep.id } } })
@@ -1105,7 +1105,8 @@ export class InternalProposalsService {
     }));
   }
 
-  private async isBoardUser(userId: string): Promise<boolean> {
+  private async isBoardUser(userId: string | null): Promise<boolean> {
+    if (!userId) return false;
     const u = await this.prisma.appUser.findUnique({ where: { id: userId }, select: { drepKeyHash: true } });
     if (!u?.drepKeyHash) return false;
     return !!(await this.prisma.boardSeat.findFirst({ where: { removedAt: null, drepKeyHash: u.drepKeyHash } }));

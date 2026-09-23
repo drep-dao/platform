@@ -174,6 +174,9 @@ export function HomeShell() {
               logged in or not — group proposals/results are public (on-chain anchored), read-only here. */}
           {groupMatch ? (
             groupMatch[2] === 'members' ? <GroupMembers groupKey={groupMatch[1]} /> : <GroupProposals groupKey={groupMatch[1]} />
+          ) : rawView === 'internal' ? (
+            /* A shared internal-proposal link (?view=internal&ip=<id>) opens for anyone — public read-only. */
+            <InternalProposals />
           ) : pubView === 'members' ? (
             <DaoMembersDirectory />
           ) : pubView === 'treasury' ? (
@@ -189,7 +192,7 @@ export function HomeShell() {
           ) : pubView === 'requests' ? (
             <RequestsSection />
           ) : (
-            <PublicLanding onConnect={() => setWalletOpen(true)} onExplore={() => setView('members')} onOpenVote={() => setWalletOpen(true)} />
+            <PublicLanding onConnect={() => setWalletOpen(true)} onExplore={() => setView('members')} onOpenVote={(id) => setParams({ view: 'internal', ip: id, tab: null, round: null, proposal: null, expert: null, doc: null, gp: null })} />
           )}
           <div className="mt-8 border-t border-neutral-200 pt-3 text-xs text-neutral-400 dark:border-neutral-800">
             <HealthBadge />

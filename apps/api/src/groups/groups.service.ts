@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { GovSubject, VotingStyle } from '@drep-dao/cardano';
+import { EXPLORERS, PLATFORM_CONFIG_DEFAULTS } from '@drep-dao/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { BoardService } from '../auth/board.service';
 import { AnchorService } from '../cardano/anchor.service';
@@ -39,7 +41,17 @@ export class GroupsService {
     private readonly prisma: PrismaService,
     private readonly board: BoardService,
     private readonly anchor: AnchorService,
+    private readonly config: ConfigService,
   ) {}
+
+  /** §29 — explorer URL for an anchor tx, honouring CARDANO_NETWORK + the admin's CARDANO_EXPLORER choice. */
+  private async explorerTxUrl(txHash: string): Promise<string> {
+    const network = this.config.get<string>('CARDANO_NETWORK') ?? 'Preprod';
+    const row = await this.prisma.platformConfig.findUnique({ where: { key: 'CARDANO_EXPLORER' } });
+    const explorer = (typeof row?.value === 'string' && row.value.trim()) ? row.value.trim() : PLATFORM_CONFIG_DEFAULTS.CARDANO_EXPLORER;
+    const ex = EXPLORERS[explorer] ?? EXPLORERS.cardanoscan;
+    return (ex.tx[network] ?? ex.tx.Preprod).replace('{hash}', txHash);
+  }
 
   // ── config JSON (always carries the group name) ─────────────────────────────
   private config(g: GroupRow & { approver?: { displayName: string | null } | null }) {
@@ -912,7 +924,7 @@ export class GroupsService {
   }
 
   /** §29 BULK — the frozen result JSON + its SHA-256 for the download (available once voting closed). */
-  async bulkResult(proposalId: string): Promise<{ base: string; json: string; hash: string }> {
+  async bulkResult(proposalId: string): Promise<{ base: string; json: string; hash: string; title: string; groupName: string; txHash: string | null; explorerUrl: string | null }> {
     const p = await this.prisma.groupProposal.findUnique({ where: { id: proposalId }, include: { group: true } });
     if (!p || p.group.status !== 'ACTIVE') throw new NotFoundException('proposal not found');
     if (p.type !== 'BULK') throw new BadRequestException('not a bulk proposal');
@@ -920,7 +932,18 @@ export class GroupsService {
     const fresh = await this.prisma.groupProposal.findUnique({ where: { id: proposalId } });
     const dt = fresh?.decidedTally as (BulkTally & { resultJson?: string; resultHash?: string }) | null;
     if (!fresh || fresh.status === 'ACTIVE' || !dt?.resultJson || !dt?.resultHash) throw new BadRequestException('results are available once voting has closed');
-    return { base: `${p.group.key}-bulk-${proposalId.slice(0, 8)}`, json: dt.resultJson, hash: dt.resultHash };
+    // The on-chain anchor tx (may still be null/pending until the sweep submits it).
+    const anchorRow = await this.prisma.anchor.findFirst({ where: { kind: 'group', proposalId }, select: { txHash: true }, orderBy: { createdAt: 'desc' } });
+    const txHash = anchorRow?.txHash ?? null;
+    return {
+      base: `${p.group.key}-bulk-${proposalId.slice(0, 8)}`,
+      json: dt.resultJson,
+      hash: dt.resultHash,
+      title: p.title,
+      groupName: p.group.name,
+      txHash,
+      explorerUrl: txHash ? await this.explorerTxUrl(txHash) : null,
+    };
   }
 
   /** §29 — finalize + anchor every group proposal whose voting has ended but is still ACTIVE.

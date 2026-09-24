@@ -66,14 +66,30 @@ export class GroupsController {
     return this.svc.discardProposal(ctx.userId, id);
   }
 
-  // §29 BULK — download the closed proposal's result JSON + its SHA-256 as a zip (public; re-verifiable).
+  // §29 BULK — download the closed proposal's result JSON + its SHA-256 + the on-chain record as a zip
+  // (public; re-verifiable). result.json = full record, .sha256.txt = its hash, on-chain-record.txt =
+  // the anchor tx id + explorer link (or a pending note if it hasn't been submitted yet).
   @Get('proposal/:id/result.zip')
   @UseGuards(OptionalJwtAuthGuard)
   async resultZip(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
-    const { base, json, hash } = await this.svc.bulkResult(id);
+    const { base, json, hash, title, groupName, txHash, explorerUrl } = await this.svc.bulkResult(id);
+    const onChain = [
+      `On-chain record — ${groupName} · ${title}`,
+      `Proposal ID: ${id}`,
+      `Document hash (SHA-256 of ${base}.json): ${hash}`,
+      '',
+      txHash
+        ? `Transaction ID: ${txHash}\nExplorer: ${explorerUrl}`
+        : 'Transaction ID: not yet submitted — the anchor is recorded and pending on-chain submission (it will be posted automatically).',
+      '',
+      `This document hash is anchored on-chain${txHash ? ' in the transaction above' : ' once the transaction above is submitted'}.`,
+      `Re-hash ${base}.json with SHA-256 and confirm it matches the hash above and the on-chain anchor.`,
+      '',
+    ].join('\n');
     const zip = makeStoredZip([
       { name: `${base}.json`, data: json },
       { name: `${base}.sha256.txt`, data: `${hash}  ${base}.json\n` },
+      { name: `${base}.on-chain-record.txt`, data: onChain },
     ]);
     res.set({
       'Content-Type': 'application/zip',

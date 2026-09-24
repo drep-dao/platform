@@ -41,12 +41,12 @@ export class GroupsService {
     private readonly prisma: PrismaService,
     private readonly board: BoardService,
     private readonly anchor: AnchorService,
-    private readonly config: ConfigService,
+    private readonly cfg: ConfigService,
   ) {}
 
   /** §29 — explorer URL for an anchor tx, honouring CARDANO_NETWORK + the admin's CARDANO_EXPLORER choice. */
   private async explorerTxUrl(txHash: string): Promise<string> {
-    const network = this.config.get<string>('CARDANO_NETWORK') ?? 'Preprod';
+    const network = this.cfg.get<string>('CARDANO_NETWORK') ?? 'Preprod';
     const row = await this.prisma.platformConfig.findUnique({ where: { key: 'CARDANO_EXPLORER' } });
     const explorer = (typeof row?.value === 'string' && row.value.trim()) ? row.value.trim() : PLATFORM_CONFIG_DEFAULTS.CARDANO_EXPLORER;
     const ex = EXPLORERS[explorer] ?? EXPLORERS.cardanoscan;

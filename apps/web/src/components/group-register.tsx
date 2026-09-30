@@ -242,19 +242,40 @@ function GroupLeaveButton({ groupKey, groupName }: { groupKey: string; groupName
   );
 }
 
+/** §29 OG — "who may do this" picker: the proposal's author only, or any admitted member. */
+function WhoRadio({ name, value, onChange, t }: { name: string; value: string; onChange: (v: string) => void; t: (s: string) => string }) {
+  return (
+    <div className="mt-1 flex flex-wrap gap-4 pl-6 text-sm">
+      {[{ k: 'MEMBERS', l: t('Any member') }, { k: 'PROPOSER', l: t('Only the proposer') }].map((o) => (
+        <label key={o.k} className="flex items-center gap-1.5">
+          <input type="radio" name={name} checked={value === o.k} onChange={() => onChange(o.k)} /> {o.l}
+        </label>
+      ))}
+    </div>
+  );
+}
+
 /** §29 OG — the group's member-count voting quorum. OPEN = no limit; EXACT = only when the member
  *  count equals N; MINIMUM = only when it is at least N. Gates whether proposals can be submitted. */
 function GroupVotingSettings({ group, onSaved }: { group: GroupConfig; onSaved: () => void }) {
   const t = useT();
   const [mode, setMode] = useState(group.quorumMode || 'OPEN');
   const [count, setCount] = useState<number>(group.quorumCount ?? 1);
+  // §29 OG — proposal-timing settings (extend deadline / finalize when all voted).
+  const [extendEnabled, setExtendEnabled] = useState(group.extendEnabled);
+  const [extendWho, setExtendWho] = useState(group.extendWho || 'MEMBERS');
+  const [finalizeEnabled, setFinalizeEnabled] = useState(group.earlyFinalizeEnabled);
+  const [finalizeWho, setFinalizeWho] = useState(group.earlyFinalizeWho || 'MEMBERS');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const save = async () => {
     setMsg(null);
     setBusy(true);
     try {
-      await groupsApi.updateVoting(group.key, { quorumMode: mode, quorumCount: mode === 'OPEN' ? null : count });
+      await groupsApi.updateVoting(group.key, {
+        quorumMode: mode, quorumCount: mode === 'OPEN' ? null : count,
+        extendEnabled, extendWho, earlyFinalizeEnabled: finalizeEnabled, earlyFinalizeWho: finalizeWho,
+      });
       setMsg(t('Saved'));
       onSaved();
     } catch (e) {
@@ -295,6 +316,29 @@ function GroupVotingSettings({ group, onSaved }: { group: GroupConfig; onSaved: 
           </div>
         ) : null}
       </div>
+
+      {/* §29 OG — proposal timing: extend the voting deadline / finalize once everyone has voted. */}
+      <div className="mt-4 border-t border-neutral-200 pt-3 dark:border-neutral-800">
+        <div className="text-sm font-medium">{t('Proposal timing')}</div>
+        <label className="mt-2 flex items-start gap-2 text-sm">
+          <input type="checkbox" className="mt-1" checked={extendEnabled} onChange={(e) => setExtendEnabled(e.target.checked)} />
+          <span>
+            <span className="font-medium">{t('Allow extending a proposal’s voting deadline')}</span>
+            <span className="block text-xs text-neutral-500">{t('The content stays frozen — only the deadline moves. Each extension is recorded.')}</span>
+          </span>
+        </label>
+        {extendEnabled ? <WhoRadio name="extendWho" value={extendWho} onChange={setExtendWho} t={t} /> : null}
+
+        <label className="mt-3 flex items-start gap-2 text-sm">
+          <input type="checkbox" className="mt-1" checked={finalizeEnabled} onChange={(e) => setFinalizeEnabled(e.target.checked)} />
+          <span>
+            <span className="font-medium">{t('Allow finalizing a proposal immediately once every member has voted')}</span>
+            <span className="block text-xs text-neutral-500">{t('A button closes voting early when all members have cast their vote.')}</span>
+          </span>
+        </label>
+        {finalizeEnabled ? <WhoRadio name="finalizeWho" value={finalizeWho} onChange={setFinalizeWho} t={t} /> : null}
+      </div>
+
       <div className="mt-3 flex items-center gap-2">
         <button onClick={save} disabled={busy} className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
           {busy ? t('Saving…') : t('Save voting settings')}

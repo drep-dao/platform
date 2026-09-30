@@ -8,6 +8,7 @@ import { Markdown, MarkdownEditor } from './markdown';
 import { useUrlNav } from '@/lib/use-url-nav';
 import { ShareLinkButton } from './share-link-button';
 import { DiscussionThread } from './discussion-thread';
+import { GroupQuorumNotice } from './group-quorum-notice';
 import { DateField, toLocalInput, RationaleText } from './round-ui';
 import { useExplorer } from '@/lib/explorer';
 import { DocHashRow } from './doc-hash-row';
@@ -42,12 +43,8 @@ export function GroupProposals({ groupKey }: { groupKey: string }) {
       </div>
       <p className="mt-1 text-sm text-neutral-500">{t('Members only · 1 member = 1 vote')} · {data.group.voting.thresholdPct}% {t('threshold')}.</p>
 
-      {/* §29 OG — member-count quorum not met: submitting is blocked until it is. */}
-      {!data.canSubmit && data.submitBlockedReason ? (
-        <div className="mt-3 rounded-md border border-amber-200 bg-amber-50/60 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-300">
-          {data.submitBlockedReason}
-        </div>
-      ) : null}
+      {/* §29 OG — voting/submitting needs the member-count quorum (count from config); show how many are needed. */}
+      <GroupQuorumNotice quorumMode={data.group.quorumMode} quorumCount={data.group.quorumCount} memberCount={data.memberCount} />
 
       {creating && data.canSubmit ? <SubmitForm group={data.group} onDone={() => { setCreating(false); load(); }} /> : null}
 

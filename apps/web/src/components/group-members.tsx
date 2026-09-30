@@ -5,6 +5,7 @@ import { groupsApi, type GroupMembersResult, type GroupMemberView } from '@/lib/
 import { card } from '@/lib/ui';
 import { useT } from '@/lib/prefs-context';
 import { Markdown } from './markdown';
+import { GroupQuorumNotice } from './group-quorum-notice';
 import { useSubcategories } from '@/lib/subcategories';
 
 /** §29 — a group's member directory (left-nav "<Name> members"). The group's approver sees a
@@ -42,6 +43,9 @@ export function GroupMembers({ groupKey }: { groupKey: string }) {
     <section className={card}>
       <h2 className="text-lg font-semibold">{data.group.name} · {t('members')}</h2>
       <p className="mt-1 text-sm text-neutral-500">{t('Members of this group submit and vote on its proposals.')}</p>
+
+      {/* §29 OG — how many members are needed before voting opens (count from the group config). */}
+      <GroupQuorumNotice quorumMode={data.group.quorumMode} quorumCount={data.group.quorumCount} memberCount={data.members.length} />
 
       {data.canManage && data.pending.length > 0 ? (
         <div className="mt-4 rounded-md border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-900 dark:bg-amber-950/20">

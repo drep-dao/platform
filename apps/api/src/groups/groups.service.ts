@@ -427,6 +427,7 @@ export class GroupsService {
       group: this.config(g),
       canSubmit,
       submitBlockedReason,
+      memberCount, // §29 OG — admitted count, so the UI can show the "N of <quorum>" voting-quorum notice
       proposals: fresh.map((p, i) => {
         const vmap = byProposal.get(p.id) ?? new Map<string, string[]>();
         const meta = metas[i];

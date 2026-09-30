@@ -249,6 +249,10 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
   // a vote button then persists the new vote + rationale — otherwise the old vote stands.
   const [editing, setEditing] = useState(false);
   const [discarding, setDiscarding] = useState(false);
+  // §29 OG — extend deadline / finalize-now.
+  const [err, setErr] = useState<string | null>(null);
+  const [extendOpen, setExtendOpen] = useState(false);
+  const [extendTo, setExtendTo] = useState('');
   const load = useCallback(() => { groupsApi.proposal(id).then((d) => { setP(d); setPicks(d.myVotes); setRationale(d.myRationale ?? ''); setEditing(false); }).catch(() => setP(null)); }, [id]);
   useEffect(load, [load]);
 
@@ -261,6 +265,15 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
   const castPoll = async () => {
     setBusy(true);
     try { setP(await groupsApi.vote(id, picks.includes('ABSTAIN') ? { choice: 'ABSTAIN', rationale: rationale.trim() || undefined } : { options: picks, rationale: rationale.trim() || undefined })); setEditing(false); } finally { setBusy(false); }
+  };
+  const doExtend = async () => {
+    if (!extendTo) return;
+    setBusy(true); setErr(null);
+    try { setP(await groupsApi.extend(id, new Date(extendTo).toISOString())); setExtendOpen(false); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+  };
+  const doFinalize = async () => {
+    setBusy(true); setErr(null);
+    try { setP(await groupsApi.finalizeNow(id)); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
   const togglePick = (opt: string) => {
     if (!p.poll) return;
@@ -300,6 +313,37 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
           ? `${t('Voting ends')} ${new Date(p.votingEndAt).toLocaleString()}`
           : `${t('Voting ended')} ${new Date(p.decidedAt ?? p.votingEndAt).toLocaleString()}`}
       </p>
+
+      {/* §29 OG — self-governed timing: finalize once everyone has voted, or extend the deadline. */}
+      {p.status === 'ACTIVE' && (p.canFinalizeNow || p.canExtend) ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {p.canFinalizeNow ? (
+            <button disabled={busy} onClick={doFinalize} className="rounded-md bg-sky-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-sky-700 disabled:opacity-50">{t('Finalize now — all members voted')}</button>
+          ) : null}
+          {p.canExtend ? (
+            <button disabled={busy} onClick={() => { setExtendTo(toLocalInput(new Date(new Date(p.votingEndAt).getTime() + 86400000).toISOString())); setExtendOpen((v) => !v); }} className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs font-medium hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800">{t('Extend deadline')}</button>
+          ) : null}
+        </div>
+      ) : null}
+      {extendOpen && p.canExtend ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-neutral-200 p-2 text-xs dark:border-neutral-800">
+          <span className="text-neutral-500">{t('New voting deadline')}:</span>
+          <input type="datetime-local" value={extendTo} min={toLocalInput(new Date().toISOString())} onChange={(e) => setExtendTo(e.target.value)} className="rounded-md border border-neutral-300 px-2 py-1 dark:border-neutral-700 dark:bg-neutral-900" />
+          <button disabled={busy || !extendTo} onClick={doExtend} className="rounded-md bg-emerald-600 px-2.5 py-1 font-medium text-white hover:bg-emerald-700 disabled:opacity-50">{t('Extend')}</button>
+          <button disabled={busy} onClick={() => setExtendOpen(false)} className="rounded-md border border-neutral-300 px-2.5 py-1 font-medium hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800">{t('Cancel')}</button>
+        </div>
+      ) : null}
+      {p.extensions.length > 0 ? (
+        <details className="mt-2 text-xs text-neutral-500">
+          <summary className="cursor-pointer">{t('Deadline extended')} ({p.extensions.length})</summary>
+          <ul className="mt-1 space-y-0.5">
+            {p.extensions.map((x, i) => (
+              <li key={i}>{new Date(x.fromIso).toLocaleString()} → <strong>{new Date(x.toIso).toLocaleString()}</strong> · {x.byName} · {new Date(x.atIso).toLocaleDateString()}</li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+      {err ? <p className="mt-2 text-xs text-rose-600">{err}</p> : null}
 
       {p.bulk ? <BulkSection p={p} id={id} onChange={setP} /> : (<>
       {/* tally */}

@@ -1730,6 +1730,13 @@ model Group {
   // MINIMUM = only when member count >= quorumCount. Gates whether a proposal can be submitted.
   quorumMode     String   @default("OPEN") @map("quorum_mode") // OPEN | EXACT | MINIMUM
   quorumCount    Int?     @map("quorum_count")
+  // §29 OG — self-governed proposal-timing settings (set in the group voting settings, like the quorum).
+  // Extend: may the voting deadline of an ACTIVE proposal be pushed out? and by whom.
+  extendEnabled  Boolean  @default(true) @map("extend_enabled")
+  extendWho      String   @default("MEMBERS") @map("extend_who") // PROPOSER | MEMBERS
+  // Early finalize: may an ACTIVE proposal be closed immediately once EVERY member has voted? and by whom.
+  earlyFinalizeEnabled Boolean @default(true) @map("early_finalize_enabled")
+  earlyFinalizeWho     String  @default("MEMBERS") @map("early_finalize_who") // PROPOSER | MEMBERS
   sortIdx        Int      @default(0) @map("sort_idx")
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -1785,6 +1792,8 @@ model GroupProposal {
   votingEndAt  DateTime  @map("voting_end_at") @db.Timestamptz(6)
   decidedAt    DateTime? @map("decided_at") @db.Timestamptz(6)
   decidedTally Json?     @map("decided_tally") // §29 — tally frozen at decision so membership changes can't rewrite a closed result
+  // §29 OG — deadline-extension history: [{ fromIso, toIso, byUserId, byName, atIso }]. Content stays frozen.
+  extensions   Json?     @map("extensions")
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
   group    Group          @relation(fields: [groupId], references: [id])

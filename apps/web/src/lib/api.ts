@@ -2389,7 +2389,14 @@ export interface GroupConfig {
   membersCanApprove: boolean; // §29 OG self-governance
   quorumMode: string; // OPEN | EXACT | MINIMUM
   quorumCount: number | null;
+  // §29 OG — self-governed proposal-timing settings.
+  extendEnabled: boolean;
+  extendWho: string; // PROPOSER | MEMBERS
+  earlyFinalizeEnabled: boolean;
+  earlyFinalizeWho: string; // PROPOSER | MEMBERS
 }
+// §29 OG — one recorded deadline extension.
+export interface GroupProposalExtension { fromIso: string; toIso: string; byUserId: string; byName: string; atIso: string }
 export interface GroupMembershipMine { groupKey: string; groupName: string; status: string; displayName: string | null; canManage: boolean }
 export interface GroupMemberView { id: string; status: string; displayName: string; bio: string | null; photo: string | null; country: string | null; conflictOfInterest: string | null; noSelfVote: boolean | null; address: string | null; subcategoryIds: string[]; socials: Record<string, string> | null; preferences: Record<string, boolean> | null; since: string | null }
 export interface GroupMembersResult { group: GroupConfig; canManage: boolean; members: GroupMemberView[]; pending: GroupMemberView[] }
@@ -2439,6 +2446,11 @@ export interface GroupProposalDetail {
   canVote: boolean;
   canCloseEarly: boolean; // §29 BULK — every member has voted on every item; a member may close it now
   canDiscard: boolean; // §29 — the member may discard this active proposal before voting ends
+  // §29 OG — self-governed proposal timing.
+  canExtend: boolean; // may push out the voting deadline
+  canFinalizeNow: boolean; // every member voted + early-finalize allowed → may close it now
+  allVoted: boolean; // every admitted member has voted
+  extensions: GroupProposalExtension[]; // deadline-extension history
   resultAvailable: boolean; // §29 BULK — voting closed → the result JSON + hash zip can be downloaded
   myVotes: string[];
   myRationale: string | null;
@@ -2464,7 +2476,7 @@ export const groupsApi = {
   register: (key: string, input: RegisterGroupInput) => request<GroupMembershipResult>(`/groups/${key}/register`, { method: 'POST', body: JSON.stringify(input) }),
   updateProfile: (key: string, input: RegisterGroupInput) => request<GroupMembershipResult>(`/groups/${key}/profile`, { method: 'PATCH', body: JSON.stringify(input) }),
   leave: (key: string) => request<{ left: true }>(`/groups/${key}/leave`, { method: 'POST' }),
-  updateVoting: (key: string, input: { quorumMode: string; quorumCount?: number | null }) => request<GroupMembershipResult>(`/groups/${key}/voting`, { method: 'PATCH', body: JSON.stringify(input) }),
+  updateVoting: (key: string, input: { quorumMode: string; quorumCount?: number | null; extendEnabled?: boolean; extendWho?: string; earlyFinalizeEnabled?: boolean; earlyFinalizeWho?: string }) => request<GroupMembershipResult>(`/groups/${key}/voting`, { method: 'PATCH', body: JSON.stringify(input) }),
   members: (key: string) => request<GroupMembersResult>(`/groups/${key}/members`),
   approveMember: (key: string, memberId: string) => request<GroupMembersResult>(`/groups/${key}/members/${memberId}/approve`, { method: 'POST' }),
   rejectMember: (key: string, memberId: string) => request<GroupMembersResult>(`/groups/${key}/members/${memberId}/reject`, { method: 'POST' }),
@@ -2474,6 +2486,8 @@ export const groupsApi = {
   submit: (key: string, input: SubmitGroupProposalInput) => request<GroupProposalDetail>(`/groups/${key}/proposals`, { method: 'POST', body: JSON.stringify(input) }),
   vote: (id: string, input: GroupVoteInput) => request<GroupProposalDetail>(`/groups/proposal/${id}/vote`, { method: 'POST', body: JSON.stringify(input) }),
   closeEarly: (id: string) => request<GroupProposalDetail>(`/groups/proposal/${id}/close`, { method: 'POST' }),
+  extend: (id: string, votingEndAt: string) => request<GroupProposalDetail>(`/groups/proposal/${id}/extend`, { method: 'POST', body: JSON.stringify({ votingEndAt }) }),
+  finalizeNow: (id: string) => request<GroupProposalDetail>(`/groups/proposal/${id}/finalize-now`, { method: 'POST' }),
   discard: (id: string) => request<GroupProposalDetail>(`/groups/proposal/${id}/discard`, { method: 'POST' }),
   // §29 BULK — direct download URL for the closed proposal's result JSON + hash (zip); opened in a new tab.
   resultZipUrl: (id: string) => `${API_BASE}/groups/proposal/${id}/result.zip`,

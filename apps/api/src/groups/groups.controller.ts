@@ -5,7 +5,7 @@ import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { CurrentUser, type AuthContext } from '../auth/current-user.decorator';
 import { GroupsService } from './groups.service';
 import { makeStoredZip } from './zip.util';
-import { GroupCommentDto, GroupVoteDto, GroupVotingSettingsDto, RegisterGroupDto, SubmitGroupProposalDto } from './dto';
+import { ExtendGroupProposalDto, GroupCommentDto, GroupVoteDto, GroupVotingSettingsDto, RegisterGroupDto, SubmitGroupProposalDto } from './dto';
 
 /** §29 — configurable groups (e.g. OG): membership, member-submitted proposals + voting, comments. */
 @Controller('groups')
@@ -64,6 +64,20 @@ export class GroupsController {
   @UseGuards(JwtAuthGuard)
   discard(@CurrentUser() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.svc.discardProposal(ctx.userId, id);
+  }
+
+  // §29 OG — push out a proposal's voting deadline (self-governed; content stays frozen).
+  @Post('proposal/:id/extend')
+  @UseGuards(JwtAuthGuard)
+  extend(@CurrentUser() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ExtendGroupProposalDto) {
+    return this.svc.extendProposal(ctx.userId, id, dto.votingEndAt);
+  }
+
+  // §29 OG — finalize immediately once every member has voted (self-governed).
+  @Post('proposal/:id/finalize-now')
+  @UseGuards(JwtAuthGuard)
+  finalizeNow(@CurrentUser() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.finalizeNow(ctx.userId, id);
   }
 
   // §29 BULK — download the closed proposal's result JSON + its SHA-256 + the on-chain record as a zip

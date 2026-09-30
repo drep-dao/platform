@@ -13,6 +13,7 @@ type GroupRow = {
   profileFields: string[]; proposalTypes: string[]; admissionType: string;
   approverUserId: string | null; commenters: string[]; votingType: string; thresholdPct: number; sortIdx: number;
   membersCanApprove: boolean; quorumMode: string; quorumCount: number | null;
+  extendEnabled: boolean; extendWho: string; earlyFinalizeEnabled: boolean; earlyFinalizeWho: string;
 };
 
 // §29 BULK — per-item tally shape (also the JSON stored in decidedTally for a closed bulk proposal).
@@ -72,6 +73,11 @@ export class GroupsService {
       membersCanApprove: g.membersCanApprove,
       quorumMode: g.quorumMode, // OPEN | EXACT | MINIMUM
       quorumCount: g.quorumCount ?? null,
+      // §29 OG — self-governed proposal-timing settings (extend deadline / early finalize).
+      extendEnabled: g.extendEnabled,
+      extendWho: g.extendWho, // PROPOSER | MEMBERS
+      earlyFinalizeEnabled: g.earlyFinalizeEnabled,
+      earlyFinalizeWho: g.earlyFinalizeWho, // PROPOSER | MEMBERS
     };
   }
 
@@ -301,8 +307,13 @@ export class GroupsService {
     return { left: true };
   }
 
-  /** §29 OG — an admitted member sets the group's voting quorum (self-governed; applies to everyone). */
-  async updateVotingSettings(userId: string, key: string, dto: { quorumMode: string; quorumCount?: number | null }) {
+  /** §29 OG — an admitted member sets the group's voting quorum + proposal-timing settings
+   *  (self-governed; applies to everyone). Extend/early-finalize fields are optional; when omitted they stay. */
+  async updateVotingSettings(
+    userId: string,
+    key: string,
+    dto: { quorumMode: string; quorumCount?: number | null; extendEnabled?: boolean; extendWho?: string; earlyFinalizeEnabled?: boolean; earlyFinalizeWho?: string },
+  ) {
     const g = await this.activeGroupByKey(key);
     if (!(await this.admittedMember(g.id, userId))) throw new ForbiddenException('only admitted members can change the voting settings');
     const mode = dto.quorumMode;
@@ -312,7 +323,20 @@ export class GroupsService {
       count = Number(dto.quorumCount);
       if (!Number.isInteger(count) || count < 1) throw new BadRequestException('a member count of at least 1 is required');
     }
-    await this.prisma.group.update({ where: { id: g.id }, data: { quorumMode: mode, quorumCount: count } });
+    const who = (v: string | undefined) => (v === 'PROPOSER' || v === 'MEMBERS' ? v : undefined);
+    if (dto.extendWho !== undefined && !who(dto.extendWho)) throw new BadRequestException('extendWho must be PROPOSER or MEMBERS');
+    if (dto.earlyFinalizeWho !== undefined && !who(dto.earlyFinalizeWho)) throw new BadRequestException('earlyFinalizeWho must be PROPOSER or MEMBERS');
+    await this.prisma.group.update({
+      where: { id: g.id },
+      data: {
+        quorumMode: mode,
+        quorumCount: count,
+        ...(dto.extendEnabled !== undefined ? { extendEnabled: dto.extendEnabled } : {}),
+        ...(who(dto.extendWho) ? { extendWho: dto.extendWho } : {}),
+        ...(dto.earlyFinalizeEnabled !== undefined ? { earlyFinalizeEnabled: dto.earlyFinalizeEnabled } : {}),
+        ...(who(dto.earlyFinalizeWho) ? { earlyFinalizeWho: dto.earlyFinalizeWho } : {}),
+      },
+    });
     return this.myMembership(userId, key);
   }
 
@@ -532,6 +556,12 @@ export class GroupsService {
     }
     // §29/§3 — the on-chain anchor of this group's decision, so the detail can link to the explorer.
     const anchorRow = await this.prisma.anchor.findFirst({ where: { kind: 'group', proposalId: id }, select: { txHash: true }, orderBy: { createdAt: 'desc' } });
+    // §29 OG — extend deadline / finalize-early gating (self-governed settings on the group).
+    const isAuthor = !!userId && fresh.authorUserId === userId;
+    const tv = tally as { eligible?: number; voted?: number } | null;
+    const allVoted = isBulk ? !!bulk?.allVoted : !!tv && (tv.eligible ?? 0) > 0 && tv.voted === tv.eligible;
+    const mayExtend = isMember && (g.extendWho === 'MEMBERS' || isAuthor);
+    const mayFinalize = isMember && (g.earlyFinalizeWho === 'MEMBERS' || isAuthor);
     return {
       id: fresh.id,
       groupKey: g.key,
@@ -551,6 +581,11 @@ export class GroupsService {
       canVote: isMember && fresh.status === 'ACTIVE',
       canCloseEarly: isBulk && isMember && fresh.status === 'ACTIVE' && !!bulk?.allDecided,
       canDiscard: isMember && fresh.status === 'ACTIVE', // §29 — discard before voting ends (any type)
+      // §29 OG — self-governed proposal timing (deadline extension + finalize-when-all-voted).
+      canExtend: fresh.status === 'ACTIVE' && g.extendEnabled && mayExtend,
+      canFinalizeNow: fresh.status === 'ACTIVE' && g.earlyFinalizeEnabled && mayFinalize && allVoted,
+      allVoted,
+      extensions: (Array.isArray(fresh.extensions) ? fresh.extensions : []) as unknown[],
       resultAvailable: isBulk && fresh.status !== 'ACTIVE',
       myVotes,
       myRationale,
@@ -938,6 +973,75 @@ export class GroupsService {
     if (!(await this.admittedMember(p.groupId, userId))) throw new ForbiddenException('only admitted members can close a proposal');
     const tally = await this.bulkTally(p, await this.admittedMemberIds(p.groupId));
     if (!tally.allDecided) throw new BadRequestException('the result is not final yet — every member must vote, or there must be enough votes that the remaining members cannot change any item’s outcome');
+    await this.prisma.groupProposal.update({ where: { id: proposalId }, data: { votingEndAt: new Date() } });
+    const fresh = await this.prisma.groupProposal.findUnique({ where: { id: proposalId } });
+    if (fresh) await this.maybeFinalize(fresh);
+    return this.getProposal(userId, proposalId);
+  }
+
+  /** §29 OG — is the actor allowed to manage a proposal's timing, given the group's PROPOSER|MEMBERS
+   *  setting? Must be an admitted member; when PROPOSER, must also be the proposal's author. */
+  private async allowedByWho(groupId: string, authorUserId: string, userId: string, who: string): Promise<boolean> {
+    if (!(await this.admittedMember(groupId, userId))) return false;
+    return who === 'MEMBERS' ? true : userId === authorUserId;
+  }
+
+  /** §29 OG — have ALL admitted members voted? (BULK: every member voted on every item.) */
+  private async everyMemberVoted(p: { id: string; groupId: string; type: string; bulkItems?: unknown }, memberIds: Set<string>): Promise<boolean> {
+    if (memberIds.size === 0) return false;
+    if (p.type === 'BULK') {
+      const bt = await this.bulkTally({ id: p.id, groupId: p.groupId, bulkItems: p.bulkItems }, memberIds);
+      return bt.allVoted;
+    }
+    const rows = await this.prisma.groupVote.findMany({ where: { proposalId: p.id }, select: { voterUserId: true } });
+    const voted = new Set(rows.map((r) => r.voterUserId).filter((id) => memberIds.has(id)));
+    return voted.size === memberIds.size;
+  }
+
+  /**
+   * §29 OG — push out a proposal's voting deadline (self-governed; content stays frozen). Only while
+   * ACTIVE, only if the group allows it and the actor is permitted (proposer / any member). Each
+   * extension is recorded in the proposal's history.
+   */
+  async extendProposal(userId: string, proposalId: string, newVotingEndAt: string) {
+    const p = await this.prisma.groupProposal.findUnique({ where: { id: proposalId }, include: { group: true } });
+    if (!p || p.group.status !== 'ACTIVE') throw new NotFoundException('proposal not found');
+    if (p.status !== 'ACTIVE') throw new ConflictException('a closed proposal cannot be extended');
+    const g = p.group as unknown as GroupRow;
+    if (!g.extendEnabled) throw new BadRequestException('extending the voting deadline is disabled for this group');
+    if (!(await this.allowedByWho(p.groupId, p.authorUserId, userId, g.extendWho))) {
+      throw new ForbiddenException(g.extendWho === 'PROPOSER' ? 'only the proposal’s author can extend it' : 'only admitted members can extend a proposal');
+    }
+    const end = new Date(newVotingEndAt);
+    if (Number.isNaN(end.getTime())) throw new BadRequestException('invalid date');
+    if (end.getTime() <= p.votingEndAt.getTime()) throw new BadRequestException('the new deadline must be later than the current one');
+    if (end.getTime() <= Date.now()) throw new BadRequestException('the new deadline must be in the future');
+    if (end.getTime() - Date.now() > 365 * 24 * 3600_000) throw new BadRequestException('the new deadline is too far in the future (max one year)');
+    const byName = (await this.groupMemberNames(p.groupId)).get(userId) ?? 'Member';
+    const prior = Array.isArray(p.extensions) ? (p.extensions as unknown[]) : [];
+    const entry = { fromIso: p.votingEndAt.toISOString(), toIso: end.toISOString(), byUserId: userId, byName, atIso: new Date().toISOString() };
+    await this.prisma.groupProposal.update({ where: { id: proposalId }, data: { votingEndAt: end, extensions: [...prior, entry] as unknown as object } });
+    return this.getProposal(userId, proposalId);
+  }
+
+  /**
+   * §29 OG — finalize an ACTIVE proposal immediately, but ONLY once every admitted member has voted
+   * (full turnout). Self-governed: the group toggles it on/off and picks who may do it. Closes + anchors
+   * exactly like a normal deadline finalization.
+   */
+  async finalizeNow(userId: string, proposalId: string) {
+    const p = await this.prisma.groupProposal.findUnique({ where: { id: proposalId }, include: { group: true } });
+    if (!p || p.group.status !== 'ACTIVE') throw new NotFoundException('proposal not found');
+    if (p.status !== 'ACTIVE') throw new ConflictException('this proposal is already closed');
+    const g = p.group as unknown as GroupRow;
+    if (!g.earlyFinalizeEnabled) throw new BadRequestException('finalizing early is disabled for this group');
+    if (!(await this.allowedByWho(p.groupId, p.authorUserId, userId, g.earlyFinalizeWho))) {
+      throw new ForbiddenException(g.earlyFinalizeWho === 'PROPOSER' ? 'only the proposal’s author can finalize it early' : 'only admitted members can finalize a proposal');
+    }
+    const memberIds = await this.admittedMemberIds(p.groupId);
+    if (!(await this.everyMemberVoted(p, memberIds))) {
+      throw new BadRequestException('every member must have voted before the proposal can be finalized early');
+    }
     await this.prisma.groupProposal.update({ where: { id: proposalId }, data: { votingEndAt: new Date() } });
     const fresh = await this.prisma.groupProposal.findUnique({ where: { id: proposalId } });
     if (fresh) await this.maybeFinalize(fresh);

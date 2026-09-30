@@ -74,4 +74,14 @@ export class GroupCommentDto {
 export class GroupVotingSettingsDto {
   @IsIn(['OPEN', 'EXACT', 'MINIMUM']) quorumMode!: string;
   @IsOptional() @IsInt() @Min(1) @Max(100000) quorumCount?: number;
+  // §29 OG — proposal-timing settings: extend deadline + finalize-when-all-voted.
+  @IsOptional() @IsBoolean() extendEnabled?: boolean;
+  @IsOptional() @IsIn(['PROPOSER', 'MEMBERS']) extendWho?: string;
+  @IsOptional() @IsBoolean() earlyFinalizeEnabled?: boolean;
+  @IsOptional() @IsIn(['PROPOSER', 'MEMBERS']) earlyFinalizeWho?: string;
+}
+
+// §29 OG — push out a proposal's voting deadline.
+export class ExtendGroupProposalDto {
+  @IsISO8601() votingEndAt!: string;
 }

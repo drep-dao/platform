@@ -21,7 +21,7 @@ const STAGES = [
 // A governance Council runs a continuous cycle rather than budgeted rounds.
 const GOV_FLOW = ['Join', 'Propose', 'Vote', 'Act'];
 
-export function PublicLanding({ onConnect, onExplore, onOpenVote }: { onConnect: () => void; onExplore: () => void; onOpenVote?: (id: string) => void }) {
+export function PublicLanding({ onConnect, onExplore, onOpenVote, onOpenGroupVote }: { onConnect: () => void; onExplore: () => void; onOpenVote?: (id: string) => void; onOpenGroupVote?: (groupKey: string, id: string) => void }) {
   const { t } = usePrefs();
   const [data, setData] = useState<PublicOverview | null>(null);
   const [failed, setFailed] = useState(false);
@@ -197,12 +197,21 @@ export function PublicLanding({ onConnect, onExplore, onOpenVote }: { onConnect:
         );
       })() : null}
 
-      {/* ---- Votes in progress: live internal votes with end date + a result chart ---- */}
-      {governance && data && data.activeVotes.length > 0 ? (
+      {/* ---- Votes in progress: live internal votes + group (e.g. OG) proposals, end date + result chart ---- */}
+      {governance && data && (data.activeVotes.length > 0 || data.activeGroupVotes.length > 0) ? (
         <div className="rounded-2xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
           <h3 className="mb-3 text-sm font-semibold text-neutral-800 dark:text-neutral-200">{t('Votes in progress')}</h3>
           <div className="space-y-3">
             {data.activeVotes.map((v) => <VoteBar key={v.id} v={v} t={t} onOpen={onOpenVote ? () => onOpenVote(v.id) : undefined} />)}
+            {data.activeGroupVotes.map((gv) => (
+              <VoteBar
+                key={gv.id}
+                v={{ ...gv, publicId: null, internalType: gv.type }}
+                t={t}
+                badge={gv.groupName}
+                onOpen={onOpenGroupVote ? () => onOpenGroupVote(gv.groupKey, gv.id) : undefined}
+              />
+            ))}
           </div>
         </div>
       ) : null}
@@ -223,7 +232,7 @@ export function PublicLanding({ onConnect, onExplore, onOpenVote }: { onConnect:
 
 // A live vote: title, a YES/NO result bar with the threshold marker (like the proposal result
 // chart), pass/fail state, and the voting-end date (red when ≤ 1 day remains).
-function VoteBar({ v, t, onOpen }: { v: ActiveVote; t: (s: string) => string; onOpen?: () => void }) {
+function VoteBar({ v, t, onOpen, badge }: { v: ActiveVote; t: (s: string) => string; onOpen?: () => void; badge?: string }) {
   const end = v.votingEndAt ? new Date(v.votingEndAt) : null;
   const soon = end ? end.getTime() - Date.now() <= 24 * 3600_000 : false;
   const yesPct = Math.min(100, Math.max(0, v.ratioPct ?? 0));
@@ -235,12 +244,13 @@ function VoteBar({ v, t, onOpen }: { v: ActiveVote; t: (s: string) => string; on
     >
       <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
         <div className="text-sm">
+          {badge ? <span className="mr-1.5 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">{badge}</span> : null}
           {v.publicId ? <span className="font-mono text-xs text-neutral-500">{v.publicId} </span> : null}
           <span className="font-medium text-neutral-800 dark:text-neutral-200">{v.title}</span>
         </div>
         {v.kind === 'THRESHOLD' ? (
           <span className={`text-xs font-semibold ${v.passing ? 'text-emerald-600' : 'text-red-600'}`}>{v.passing ? t('passing') : t('failing')}</span>
-        ) : <span className="text-xs text-neutral-500">{t('poll')}</span>}
+        ) : <span className="text-xs text-neutral-500">{v.internalType === 'BULK' ? t('bulk') : t('poll')}</span>}
       </div>
       {v.kind === 'THRESHOLD' ? (
         <>

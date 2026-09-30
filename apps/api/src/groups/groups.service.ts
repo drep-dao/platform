@@ -673,6 +673,37 @@ export class GroupsService {
     return this.tallyWith(p, await this.admittedMemberIds(p.groupId));
   }
 
+  /**
+   * §29 OG — active (in-progress) proposals across every ACTIVE group, summarised for the public
+   * landing "Votes in progress" section (so group proposals show up like internal ones). Public.
+   * INFORMATIVE proposals carry a YES/NO threshold summary (a result bar); POLL/BULK are listed
+   * as simple cards. `groupKey` lets the landing open the proposal in the right group.
+   */
+  async activeGroupVoteSummaries() {
+    const groups = await this.prisma.group.findMany({ where: { status: 'ACTIVE' }, select: { id: true, key: true, name: true } });
+    const now = Date.now();
+    const out: Array<{
+      id: string; groupKey: string; groupName: string; title: string; type: string; votingEndAt: string | null;
+      kind: 'THRESHOLD' | 'POLL'; ratioPct?: number; eligible?: number; voted?: number; thresholdPct?: number; passing?: boolean;
+    }> = [];
+    for (const g of groups) {
+      const props = await this.prisma.groupProposal.findMany({ where: { groupId: g.id, status: 'ACTIVE' }, orderBy: { votingEndAt: 'asc' } });
+      for (const p of props) {
+        if (p.votingEndAt.getTime() <= now) continue; // only proposals still open for voting
+        const base = { id: p.id, groupKey: g.key, groupName: g.name, title: p.title, type: p.type, votingEndAt: p.votingEndAt.toISOString() };
+        if (p.type === 'INFORMATIVE') {
+          const t = await this.tally(p);
+          if (t.kind === 'THRESHOLD') {
+            out.push({ ...base, kind: 'THRESHOLD', ratioPct: t.ratioPct, eligible: t.eligible, voted: t.voted, thresholdPct: t.thresholdPct, passing: t.approved });
+            continue;
+          }
+        }
+        out.push({ ...base, kind: 'POLL' }); // POLL + BULK: no single YES/NO bar, shown as a card
+      }
+    }
+    return out;
+  }
+
   /** §29 — the LIVE tally against a given eligible-member set. `tally()` passes the group's current
    *  members; at finalization the result is frozen into `decidedTally` so later membership changes
    *  (a new OG member joining) can never alter a closed proposal's outcome. */

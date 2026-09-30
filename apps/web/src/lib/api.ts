@@ -1451,6 +1451,22 @@ export interface ActiveVote {
   voted?: number;
   passing?: boolean;
 }
+// §29 OG — a live group proposal for the landing "Votes in progress" section. INFORMATIVE carries a
+// YES/NO threshold summary (a bar); POLL/BULK render as a simple card. groupKey opens it in its group.
+export interface ActiveGroupVote {
+  id: string;
+  groupKey: string;
+  groupName: string;
+  title: string;
+  type: string; // INFORMATIVE | POLL | BULK
+  votingEndAt: string | null;
+  kind: 'THRESHOLD' | 'POLL';
+  ratioPct?: number;
+  eligible?: number;
+  voted?: number;
+  thresholdPct?: number;
+  passing?: boolean;
+}
 export interface PublicOverview {
   network: string;
   admissionOpen: boolean;
@@ -1465,6 +1481,8 @@ export interface PublicOverview {
   internalProposals: { active: number; passed: number; total: number };
   requests?: { active: number; total: number };
   activeVotes: ActiveVote[];
+  // §29 OG — active group (e.g. OG) proposals, shown in the same "Votes in progress" section.
+  activeGroupVotes: ActiveGroupVote[];
   activeRound: {
     number: number;
     name: string;

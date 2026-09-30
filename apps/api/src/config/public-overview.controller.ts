@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RoundsService } from '../rounds/rounds.service';
 import { TreasuryService } from '../treasury/treasury.service';
 import { InternalProposalsService } from '../internal-proposals/internal-proposals.service';
+import { GroupsService } from '../groups/groups.service';
 
 const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
 
@@ -46,6 +47,7 @@ export class PublicOverviewController {
     private readonly rounds: RoundsService,
     private readonly treasury: TreasuryService,
     private readonly internal: InternalProposalsService,
+    private readonly groups: GroupsService,
   ) {}
 
   @Get('overview')
@@ -95,6 +97,8 @@ export class PublicOverviewController {
     const internalTotal = internalGroups.reduce((sum, g) => sum + g._count._all, 0);
     // §governance — the live votes themselves (end date + tally) for the landing dashboard.
     const activeVotes = await this.internal.activeVoteSummaries().catch(() => []);
+    // §29 OG — active group (e.g. OG) proposals show in the same "Votes in progress" section.
+    const activeGroupVotes = await this.groups.activeGroupVoteSummaries().catch(() => []);
 
     // Treasury balance is on-chain (public), but best-effort — a chain hiccup must not 500 the landing.
     let treasuryBalanceAda: number | null = null;
@@ -129,6 +133,7 @@ export class PublicOverviewController {
       internalProposals: { active: internalActive, passed: internalPassed, total: internalTotal },
       requests: { active: requestsActive, total: requestsTotal },
       activeVotes,
+      activeGroupVotes,
       activeRound: r
         ? {
             number: r.number,

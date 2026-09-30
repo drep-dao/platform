@@ -52,9 +52,10 @@ const NAV: { key: View; label: string; icon: string; boardOnly?: boolean; public
   { key: 'treasury', label: 'Treasury', icon: 'landmark' },
   { key: 'setup', label: 'Platform setup', icon: 'settings', boardOnly: true },
 ];
-// Views a logged-out visitor may browse read-only. Governance edition: internal
-// internal proposals need login; published Requests are public (read-only) so visitors can browse them.
-const PUBLIC_VIEWS: View[] = ['overview', 'members', 'votingpower', 'requests', 'proofs', 'treasury', 'rules', 'decisions'];
+// Views a logged-out visitor may browse read-only. Internal proposals are public (their read
+// endpoints filter out PRIVATE/DRAFT), so the list is reachable from the nav and any proposal's
+// share link opens for anyone; published Requests are public too so visitors can browse them.
+const PUBLIC_VIEWS: View[] = ['overview', 'members', 'votingpower', 'requests', 'internal', 'proofs', 'treasury', 'rules', 'decisions'];
 
 export function HomeShell() {
   const { profile, loading } = useAuth();

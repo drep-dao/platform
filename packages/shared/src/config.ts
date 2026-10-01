@@ -66,6 +66,14 @@ export const PLATFORM_CONFIG_DEFAULTS = {
   // human-readable schedule line from it. Name the timezone (IANA) rather than a fixed offset
   // so it stays correct across DST. Empty (default) → only the join button is shown, no time.
   MEETING_TIME: '',
+  // §14/§17 — how many seats the board has. A board-member election must put up exactly this many
+  // candidates, the genesis board-seating caps at it, and it drives the default multisig threshold
+  // (majority of the seated keys). Default 5.
+  BOARD_SIZE: 5,
+  // §15 — board multisig signing threshold (M of the N board keys). 0 (default) = automatic MAJORITY
+  // of the actually-seated keys (3-of-5, 2-of-3, …). A positive value forces an explicit M (clamped
+  // to 1…N). Applied when the multisig is (re-)assembled; existing wallets keep their stored threshold.
+  MULTISIG_THRESHOLD: 0,
   // §29 OG — when a commenter is BOTH a group member (e.g. OG) and a DRep/board member, which
   // identity's colour + label wins on that group's proposals. ENABLED (default): the GROUP identity
   // wins (in a group's context a person represents the group, not the Council). DISABLED: the
@@ -125,6 +133,10 @@ export const PLATFORM_CONFIG_META: Record<PlatformConfigKey, string> = {
   CARDANO_EXPLORER: 'Block explorer for on-chain links: cardanoscan, cexplorer, or adastat.',
   TX_SIGNING_PROCESS:
     'Multisig signing ceremony. 1-Phase (default): each board member signs the tx once â requires the Eternl wallet (broadcasts on the 3rd signature). 2-Phase: Authorize â Sign â the backup that works with any CIP-30 wallet.',
+  BOARD_SIZE:
+    'Number of board seats. A board-member election must put up exactly this many candidates, genesis board-seating is capped at it, and it drives the default multisig threshold (majority). Typical: 5 (3-of-5 multisig) or 3 (2-of-3).',
+  MULTISIG_THRESHOLD:
+    'Board treasury multisig signing threshold — how many of the N board keys must sign. 0 (default) = automatic majority of the seated keys (so 5 keys → 3-of-5, 3 keys → 2-of-3). A positive number forces an explicit M (clamped to 1…N). Takes effect when the multisig is next assembled; existing wallets keep their threshold until funds migrate.',
   COMMENT_ROLE_PREFER_GROUP:
     'On a group\'s proposals (e.g. OG), when a commenter is both a group member and a DRep/board member, whose colour + label wins. ENABLED (default): the group identity wins — in the group\'s context a person represents the group, not the Council. DISABLED: the Council/board identity wins. Internal proposals always use the Council/board identity.',
 };

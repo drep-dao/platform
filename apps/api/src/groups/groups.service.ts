@@ -1135,22 +1135,27 @@ export class GroupsService {
   }
 
   private async loadComments(proposalId: string, userId: string | null | undefined, g: GroupRow) {
-    const [rows, boardSeats, admitted, experts, memberIds] = await Promise.all([
+    const [rows, boardSeats, admitted, experts, submitters, memberIds] = await Promise.all([
       this.prisma.groupComment.findMany({ where: { proposalId }, orderBy: { createdAt: 'asc' }, include: { author: { select: { displayName: true, drepKeyHash: true } } } }),
       this.prisma.boardSeat.findMany({ where: { removedAt: null }, select: { drepKeyHash: true } }),
       this.prisma.drep.findMany({ where: { status: 'ADMITTED' }, select: { userId: true } }),
       this.prisma.expert.findMany({ where: { approvedByBoard: true, leftAt: null }, select: { userId: true } }),
+      this.prisma.submitterApplication.findMany({ where: { status: 'APPROVED' }, select: { userId: true } }),
       this.admittedMemberIds(g.id),
     ]);
     const boardHashes = new Set(boardSeats.map((b) => b.drepKeyHash));
     const admittedIds = new Set(admitted.map((d) => d.userId));
     const expertIds = new Set(experts.map((e) => e.userId));
+    const submitterIds = new Set(submitters.map((s) => s.userId));
     type Row = (typeof rows)[number];
+    // Role is used to colour-code the comment (DRep=Council member, OG member, Expert, Submitter,
+    // Board member, or null = a plain logged-in viewer). Most specific first.
     const role = (c: Row) =>
       c.author.drepKeyHash && boardHashes.has(c.author.drepKeyHash) ? 'Board member'
       : memberIds.has(c.authorUserId) ? `${g.name} member`
       : admittedIds.has(c.authorUserId) ? 'Council member'
       : expertIds.has(c.authorUserId) ? 'Expert'
+      : submitterIds.has(c.authorUserId) ? 'Submitter'
       : null;
     const shape = (c: Row): Record<string, unknown> => ({
       id: c.id,

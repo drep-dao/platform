@@ -22,6 +22,22 @@ export interface DiscComment {
   replies?: DiscComment[];
 }
 
+// Colour-code a commenter's role so a DRep, an OG member, an expert, the board and a plain viewer are
+// distinguishable at a glance. Role strings come from the API (e.g. "Council member" = a DRep, "<group>
+// member" = an OG member, null = a logged-in viewer with no special role). Order matters: "Council
+// member" / "Board member" contain "member", so match those before the generic member case. Label is
+// passed through t() by the caller.
+function roleTone(role: string | null | undefined): { label: string; cls: string } {
+  const grey = 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300';
+  if (!role) return { label: 'Viewer', cls: grey };
+  if (/board/i.test(role)) return { label: role, cls: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300' };
+  if (/council/i.test(role)) return { label: role, cls: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' };
+  if (/expert/i.test(role)) return { label: role, cls: 'bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-300' };
+  if (/submitter/i.test(role)) return { label: role, cls: 'bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300' };
+  if (/member/i.test(role)) return { label: role, cls: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300' };
+  return { label: role, cls: grey };
+}
+
 function countAll(list: DiscComment[]): number {
   return list.reduce((n, c) => n + 1 + (c.replies ? countAll(c.replies) : 0), 0);
 }
@@ -58,7 +74,7 @@ function Card({
     <div>
       <div className="rounded border border-neutral-200 p-2 text-sm dark:border-neutral-800">
         <div className="mb-0.5 flex items-center justify-between text-xs text-neutral-500">
-          <span><span className="font-semibold text-blue-600 dark:text-blue-400">{c.authorName}</span>{c.authorRole ? ` · ${c.authorRole}` : ''}</span>
+          <span className="flex items-center gap-1.5"><span className="font-semibold text-blue-600 dark:text-blue-400">{c.authorName}</span>{(() => { const r = roleTone(c.authorRole); return <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${r.cls}`}>{t(r.label)}</span>; })()}</span>
           <span className="flex items-center gap-2">
             <span>{new Date(c.createdAt).toLocaleString()}</span>
             {!c.deleted && (c.isMine || canModerate) ? <button onClick={() => onDelete(c.id)} className="text-rose-600 hover:underline">{t('Delete')}</button> : null}

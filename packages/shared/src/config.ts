@@ -66,6 +66,12 @@ export const PLATFORM_CONFIG_DEFAULTS = {
   // human-readable schedule line from it. Name the timezone (IANA) rather than a fixed offset
   // so it stays correct across DST. Empty (default) → only the join button is shown, no time.
   MEETING_TIME: '',
+  // §29 OG — when a commenter is BOTH a group member (e.g. OG) and a DRep/board member, which
+  // identity's colour + label wins on that group's proposals. ENABLED (default): the GROUP identity
+  // wins (in a group's context a person represents the group, not the Council). DISABLED: the
+  // Council/board identity wins. Only affects group-proposal comments; internal proposals always use
+  // the Council/board identity.
+  COMMENT_ROLE_PREFER_GROUP: true,
 } as const;
 
 export type PlatformConfigKey = keyof typeof PLATFORM_CONFIG_DEFAULTS;
@@ -119,6 +125,8 @@ export const PLATFORM_CONFIG_META: Record<PlatformConfigKey, string> = {
   CARDANO_EXPLORER: 'Block explorer for on-chain links: cardanoscan, cexplorer, or adastat.',
   TX_SIGNING_PROCESS:
     'Multisig signing ceremony. 1-Phase (default): each board member signs the tx once â requires the Eternl wallet (broadcasts on the 3rd signature). 2-Phase: Authorize â Sign â the backup that works with any CIP-30 wallet.',
+  COMMENT_ROLE_PREFER_GROUP:
+    'On a group\'s proposals (e.g. OG), when a commenter is both a group member and a DRep/board member, whose colour + label wins. ENABLED (default): the group identity wins — in the group\'s context a person represents the group, not the Council. DISABLED: the Council/board identity wins. Internal proposals always use the Council/board identity.',
 };
 
 /**

@@ -1135,28 +1135,35 @@ export class GroupsService {
   }
 
   private async loadComments(proposalId: string, userId: string | null | undefined, g: GroupRow) {
-    const [rows, boardSeats, admitted, experts, submitters, memberIds] = await Promise.all([
+    const [rows, boardSeats, admitted, experts, submitters, memberIds, prefRow] = await Promise.all([
       this.prisma.groupComment.findMany({ where: { proposalId }, orderBy: { createdAt: 'asc' }, include: { author: { select: { displayName: true, drepKeyHash: true } } } }),
       this.prisma.boardSeat.findMany({ where: { removedAt: null }, select: { drepKeyHash: true } }),
       this.prisma.drep.findMany({ where: { status: 'ADMITTED' }, select: { userId: true } }),
       this.prisma.expert.findMany({ where: { approvedByBoard: true, leftAt: null }, select: { userId: true } }),
       this.prisma.submitterApplication.findMany({ where: { status: 'APPROVED' }, select: { userId: true } }),
       this.admittedMemberIds(g.id),
+      this.prisma.platformConfig.findUnique({ where: { key: 'COMMENT_ROLE_PREFER_GROUP' } }),
     ]);
     const boardHashes = new Set(boardSeats.map((b) => b.drepKeyHash));
     const admittedIds = new Set(admitted.map((d) => d.userId));
     const expertIds = new Set(experts.map((e) => e.userId));
     const submitterIds = new Set(submitters.map((s) => s.userId));
+    // §29 OG — when a commenter is both a group member and a DRep/board member, which identity's
+    // colour+label wins (board-configurable, default group wins: in a group's context a person
+    // represents the group, not the Council).
+    const preferGroup = prefRow ? prefRow.value !== false : true;
     type Row = (typeof rows)[number];
-    // Role is used to colour-code the comment (DRep=Council member, OG member, Expert, Submitter,
-    // Board member, or null = a plain logged-in viewer). Most specific first.
-    const role = (c: Row) =>
-      c.author.drepKeyHash && boardHashes.has(c.author.drepKeyHash) ? 'Board member'
-      : memberIds.has(c.authorUserId) ? `${g.name} member`
-      : admittedIds.has(c.authorUserId) ? 'Council member'
-      : expertIds.has(c.authorUserId) ? 'Expert'
-      : submitterIds.has(c.authorUserId) ? 'Submitter'
-      : null;
+    const role = (c: Row) => {
+      const isBoard = !!(c.author.drepKeyHash && boardHashes.has(c.author.drepKeyHash));
+      const isOG = memberIds.has(c.authorUserId);
+      // Group identity wins over board/Council when preferGroup; otherwise board/Council win.
+      if (isBoard && !(preferGroup && isOG)) return 'Board member';
+      if (admittedIds.has(c.authorUserId) && !(preferGroup && isOG)) return 'Council member';
+      if (isOG) return `${g.name} member`;
+      if (expertIds.has(c.authorUserId)) return 'Expert';
+      if (submitterIds.has(c.authorUserId)) return 'Submitter';
+      return null;
+    };
     const shape = (c: Row): Record<string, unknown> => ({
       id: c.id,
       authorName: c.author.displayName ?? 'Member',

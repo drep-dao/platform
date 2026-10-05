@@ -1967,6 +1967,10 @@ export interface InternalProposalDetail extends InternalProposalSummary {
   rationaleMinWords: { YES: number; NO: number; ABSTAIN: number };
   /** The viewer's current (live) rationale, shown read-only in the locked vote card. */
   myRationale: string | null;
+  /** §10 — the viewer may push out this proposal's voting deadline (enabled + ACTIVE + permitted). */
+  canExtend: boolean;
+  /** §10 — recorded deadline extensions (each is anchored on-chain), oldest first. */
+  extensions: { fromIso: string | null; toIso: string | null; by: string | null; atIso: string | null; txHash: string | null }[];
 }
 export interface CreateInternalInput {
   /** §10.5 SPENDING: amount + destination (+ optional source bucket). */
@@ -2026,6 +2030,8 @@ export const internalProposalsApi = {
       `/internal-proposals/${id}/install-board`,
       { method: 'POST' },
     ),
+  extend: (id: string, votingEndAt: string) =>
+    request<InternalProposalDetail>(`/internal-proposals/${id}/extend`, { method: 'POST', body: JSON.stringify({ votingEndAt }) }),
 };
 
 // ── §27 Rule Documents ──────────────────────────────────────────────────────

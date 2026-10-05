@@ -80,6 +80,11 @@ export const PLATFORM_CONFIG_DEFAULTS = {
   // Council/board identity wins. Only affects group-proposal comments; internal proposals always use
   // the Council/board identity.
   COMMENT_ROLE_PREFER_GROUP: true,
+  // §10 — allow pushing out an internal proposal's voting deadline while it is still ACTIVE. ENABLED
+  // (default for the Council): a board-member election may be extended ONLY by its submitter; every
+  // other internal proposal ONLY by a board member. Content stays frozen — only the deadline moves —
+  // and each extension is recorded + anchored on-chain. DISABLED: the deadline is fixed at submission.
+  INTERNAL_EXTEND_ENABLED: true,
 } as const;
 
 export type PlatformConfigKey = keyof typeof PLATFORM_CONFIG_DEFAULTS;
@@ -139,6 +144,8 @@ export const PLATFORM_CONFIG_META: Record<PlatformConfigKey, string> = {
     'Board treasury multisig signing threshold — how many of the N board keys must sign. 0 (default) = automatic majority of the seated keys (so 5 keys → 3-of-5, 3 keys → 2-of-3). A positive number forces an explicit M (clamped to 1…N). Takes effect when the multisig is next assembled; existing wallets keep their threshold until funds migrate.',
   COMMENT_ROLE_PREFER_GROUP:
     'On a group\'s proposals (e.g. OG), when a commenter is both a group member and a DRep/board member, whose colour + label wins. ENABLED (default): the group identity wins — in the group\'s context a person represents the group, not the Council. DISABLED: the Council/board identity wins. Internal proposals always use the Council/board identity.',
+  INTERNAL_EXTEND_ENABLED:
+    'Allow extending an internal proposal\'s voting deadline while it is still open. ENABLED (default): a board-member election can be extended only by the member who submitted it; every other internal proposal only by a board member. Only the deadline moves — the proposal content stays frozen from submission — and each extension is recorded and anchored on-chain. DISABLED: the voting end is fixed at submission and cannot change.',
 };
 
 /**

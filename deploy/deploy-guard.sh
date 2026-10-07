@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # §26 — careful mainnet deploy: wait until nobody is using the platform, switch on the
-# "Short maintenance mode" page, build + restart + smoke-test, then let users back in.
-# Rebuild the changed source FIRST (rsync from your machine), then run this.
+# "Short maintenance mode" page, then install deps + regenerate the Prisma client + apply pending
+# migrations (KI-2) + build + restart + smoke-test, then let users back in.
+# Rsync the changed source FIRST (from your machine), then run this — deps/client/migrations are now
+# applied automatically; you no longer need to run pnpm install / prisma generate / migrate by hand.
 #
 #   deploy-guard.sh <instance-dir> [scope] [mode]
 #     instance-dir : /opt/drepdao-main (mainnet)  |  /opt/drepdao-gov (preprod)
@@ -18,6 +20,14 @@ INSTANCE="${1:-/opt/drepdao-main}"
 SCOPE="${2:-full}"
 MODE="${3:-safe}"
 FLAG="$INSTANCE/MAINTENANCE"
+
+# KI-13 — reject an unknown scope instead of silently skipping the rebuild. The build blocks match
+# only full|api|web, so a typo like "all" would rebuild nothing yet still smoke-test the OLD build
+# and report success. Fail loudly instead.
+case "$SCOPE" in
+  full|api|web) ;;
+  *) echo "unknown scope: '$SCOPE' (expected: full | api | web)"; exit 2 ;;
+esac
 
 case "$INSTANCE" in
   *drepdao-main) API_SVC=drepdao-main-api; WEB_SVC=drepdao-main-web; WEB_PORT=3400 ;;
@@ -78,9 +88,27 @@ fi
 log "enabling maintenance mode → users now see \"Short maintenance mode\""
 touch "$FLAG"; sleep 2
 
-# ── 3. build + restart under maintenance ─────────────────────────────────────
+# ── 3. install deps + regenerate client + apply migrations, then build + restart ──────────────
 build_pkgs(){ pnpm --filter @drep-dao/shared build && pnpm --filter @drep-dao/cardano build; }
 fail=0
+
+# KI-2 — new deps, a fresh Prisma client, and pending migrations are applied automatically (they
+# used to be manual pre-steps that were easy to forget). NODE_ENV=production would skip devDeps, so
+# install with --prod=false (needed to build). The client is generated on the server (Linux engine),
+# never shipped. `migrate deploy` only applies migrations not yet recorded; the history was reconciled
+# (KI-1) so it no longer tries to re-run already-applied ones. A no-op when everything is up to date.
+log "installing dependencies…";      pnpm install --prod=false                          || fail=1
+log "regenerating Prisma client…";   pnpm --filter @drep-dao/db exec prisma generate     || fail=1
+log "applying database migrations…"; pnpm --filter @drep-dao/db exec prisma migrate deploy || { log "MIGRATE DEPLOY FAILED"; fail=1; }
+
+# A failed prep must NOT restart the services onto a half-ready state: keep the old build running
+# behind maintenance and bail (same contract as a failed smoke test).
+if [ "$fail" != "0" ]; then
+  log "PREP FAILED (install / generate / migrate deploy) → maintenance kept ON, services untouched."
+  log "fix and rerun, or force open with:  rm $FLAG"
+  exit 4
+fi
+
 if [ "$SCOPE" = "full" ] || [ "$SCOPE" = "api" ]; then
   log "building api…"; build_pkgs && pnpm --filter @drep-dao/api build || fail=1
   systemctl restart "$API_SVC"

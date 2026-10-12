@@ -85,6 +85,10 @@ export const PLATFORM_CONFIG_DEFAULTS = {
   // other internal proposal ONLY by a board member. Content stays frozen — only the deadline moves —
   // and each extension is recorded + anchored on-chain. DISABLED: the deadline is fixed at submission.
   INTERNAL_EXTEND_ENABLED: true,
+  // §15.3 — how much ADA the platform auto-tops-up the anchor hot wallet with when its balance drops
+  // below the low-balance threshold (100 ₳). The hot wallet only pays Cardano fees for anchor txs, so
+  // a small running balance is enough. Default 50 ₳; clamped to the single-top-up cap (1000 ₳).
+  PLATFORM_HOT_WALLET_TOPUP_AMOUNT: 50,
 } as const;
 
 export type PlatformConfigKey = keyof typeof PLATFORM_CONFIG_DEFAULTS;
@@ -146,6 +150,8 @@ export const PLATFORM_CONFIG_META: Record<PlatformConfigKey, string> = {
     'On a group\'s proposals (e.g. OG), when a commenter is both a group member and a DRep/board member, whose colour + label wins. ENABLED (default): the group identity wins — in the group\'s context a person represents the group, not the Council. DISABLED: the Council/board identity wins. Internal proposals always use the Council/board identity.',
   INTERNAL_EXTEND_ENABLED:
     'Allow extending an internal proposal\'s voting deadline while it is still open. ENABLED (default): a board-member election can be extended only by the member who submitted it; every other internal proposal only by a board member. Only the deadline moves — the proposal content stays frozen from submission — and each extension is recorded and anchored on-chain. DISABLED: the voting end is fixed at submission and cannot change.',
+  PLATFORM_HOT_WALLET_TOPUP_AMOUNT:
+    'How much ADA to auto-top-up the anchor hot wallet with when its balance drops below the low-balance threshold (100 ₳). The hot wallet only pays Cardano fees for on-chain anchoring, so a small running balance is enough. Default 50 ₳; clamped to the single-top-up cap (1000 ₳).',
 };
 
 /**

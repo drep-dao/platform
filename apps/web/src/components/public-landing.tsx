@@ -97,7 +97,7 @@ export function PublicLanding({ onConnect, onExplore, onOpenVote, onOpenGroupVot
             <Tile loading={!data} bg="#4f8f2f" label={t('Requests')} big={`${data?.requests?.active ?? 0}`}
               sub={`${data?.requests?.total ?? 0} ${t('total')} · ${t('submitters → DReps')}`} />
             <Tile loading={!data} bg="#173a2a" label={t('Governance')} big={data?.admissionOpen ? t('Open') : t('Gated')}
-              sub={t('Any registered DRep can join & vote')} />
+              sub={data?.admissionOpen ? t('Any registered DRep can join & vote') : t('Any registered DRep can apply to become a member')} />
           </>
         ) : (
           <>

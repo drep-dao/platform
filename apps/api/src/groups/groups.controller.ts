@@ -59,6 +59,13 @@ export class GroupsController {
     return this.svc.closeEarly(ctx.userId, id);
   }
 
+  // §29 BULK — a member ends voting now with the current votes (even if not everyone has voted).
+  @Post('proposal/:id/close-now')
+  @UseGuards(JwtAuthGuard)
+  closeVotingNow(@CurrentUser() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.closeVotingNow(ctx.userId, id);
+  }
+
   // §29 — a member discards an active proposal before voting ends (kept as DISCARDED, not deleted).
   @Post('proposal/:id/discard')
   @UseGuards(JwtAuthGuard)

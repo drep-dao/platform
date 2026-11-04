@@ -580,6 +580,9 @@ export class GroupsService {
       deliveryDate: fresh.deliveryDate?.toISOString() ?? null,
       canVote: isMember && fresh.status === 'ACTIVE',
       canCloseEarly: isBulk && isMember && fresh.status === 'ACTIVE' && !!bulk?.allDecided,
+      // §29 BULK — end voting now with the current votes (shown only when closeEarly can't: the result
+      // could still change because not every member has voted). Self-governed; any admitted member.
+      canCloseVotingNow: isBulk && isMember && fresh.status === 'ACTIVE' && !bulk?.allDecided,
       canDiscard: isMember && fresh.status === 'ACTIVE', // §29 — discard before voting ends (any type)
       // §29 OG — self-governed proposal timing (deadline extension + finalize-when-all-voted).
       canExtend: fresh.status === 'ACTIVE' && g.extendEnabled && mayExtend,
@@ -973,6 +976,23 @@ export class GroupsService {
     if (!(await this.admittedMember(p.groupId, userId))) throw new ForbiddenException('only admitted members can close a proposal');
     const tally = await this.bulkTally(p, await this.admittedMemberIds(p.groupId));
     if (!tally.allDecided) throw new BadRequestException('the result is not final yet — every member must vote, or there must be enough votes that the remaining members cannot change any item’s outcome');
+    await this.prisma.groupProposal.update({ where: { id: proposalId }, data: { votingEndAt: new Date() } });
+    const fresh = await this.prisma.groupProposal.findUnique({ where: { id: proposalId } });
+    if (fresh) await this.maybeFinalize(fresh);
+    return this.getProposal(userId, proposalId);
+  }
+
+  /** §29 BULK — a member ends voting NOW, finalizing with the CURRENT votes even if not every member has
+   *  voted yet (the members who haven't voted simply don't count, exactly as if the deadline had been
+   *  reached). Self-governed: any admitted member may do it. Freezes the result + anchors it on-chain —
+   *  the same outcome as a deadline close. (closeEarly stays the stricter "the result can no longer
+   *  change" path; this is the member's explicit decision to end voting before everyone has voted.) */
+  async closeVotingNow(userId: string, proposalId: string) {
+    const p = await this.prisma.groupProposal.findUnique({ where: { id: proposalId }, include: { group: true } });
+    if (!p || p.group.status !== 'ACTIVE') throw new NotFoundException('proposal not found');
+    if (p.type !== 'BULK') throw new BadRequestException('only bulk proposals can be closed this way');
+    if (p.status !== 'ACTIVE') throw new ConflictException('this proposal is already closed');
+    if (!(await this.admittedMember(p.groupId, userId))) throw new ForbiddenException('only admitted members can close a proposal');
     await this.prisma.groupProposal.update({ where: { id: proposalId }, data: { votingEndAt: new Date() } });
     const fresh = await this.prisma.groupProposal.findUnique({ where: { id: proposalId } });
     if (fresh) await this.maybeFinalize(fresh);

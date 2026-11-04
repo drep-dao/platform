@@ -535,8 +535,10 @@ function BulkSection({ p, id, onChange }: { p: GroupProposalDetail; id: string; 
   const initial = useCallback(() => Object.fromEntries(bulk.items.map((it) => [it.id, { choice: it.myChoice ?? '', rationale: it.myRationale ?? '' }])), [bulk.items]);
   const [ballot, setBallot] = useState<Record<string, { choice: string; rationale: string }>>(initial);
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [confirming, setConfirming] = useState(false);
+  const [confirmingCloseNow, setConfirmingCloseNow] = useState(false);
   // The bulk proposal has no single approved/rejected outcome — its result is the summary of item outcomes.
   const passed = bulk.items.filter((it) => it.tally?.approved).length;
   const failed = bulk.items.length - passed;
@@ -557,7 +559,9 @@ function BulkSection({ p, id, onChange }: { p: GroupProposalDetail; id: string; 
     setBusy(true);
     try { onChange(await groupsApi.vote(id, { items })); } finally { setBusy(false); }
   };
-  const closeNow = async () => { setBusy(true); try { onChange(await groupsApi.closeEarly(id)); } finally { setBusy(false); } };
+  const closeNow = async () => { setBusy(true); setErr(null); try { onChange(await groupsApi.closeEarly(id)); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); } };
+  // §29 BULK — end voting now with the current votes (not everyone has voted); finalizes + anchors.
+  const closeVotingNow = async () => { setBusy(true); setErr(null); try { onChange(await groupsApi.closeVotingNow(id)); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); } };
 
   return (
     <div className="mt-3 space-y-3">
@@ -574,6 +578,7 @@ function BulkSection({ p, id, onChange }: { p: GroupProposalDetail; id: string; 
         </span>
         <span className="flex items-center gap-2">
           {p.canCloseEarly ? <button disabled={busy} onClick={() => setConfirming(true)} className="rounded bg-emerald-600 px-3 py-1 text-sm font-medium text-white disabled:opacity-40">{t('Close voting now')}</button> : null}
+          {p.canCloseVotingNow ? <button disabled={busy} onClick={() => setConfirmingCloseNow(true)} className="rounded bg-emerald-600 px-3 py-1 text-sm font-medium text-white disabled:opacity-40">{t('Close voting now')}</button> : null}
           {p.resultAvailable ? <a href={groupsApi.resultZipUrl(id)} target="_blank" rel="noreferrer" className="rounded border border-emerald-300 px-3 py-1 text-sm font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950">{t('Download result (JSON + hash)')}</a> : null}
         </span>
         </div>
@@ -661,6 +666,8 @@ function BulkSection({ p, id, onChange }: { p: GroupProposalDetail; id: string; 
         </div>
       ) : null}
 
+      {err ? <p className="text-xs text-rose-600">{err}</p> : null}
+
       <ConfirmDialog
         open={confirming}
         title={t('Close voting before it expires?')}
@@ -668,6 +675,14 @@ function BulkSection({ p, id, onChange }: { p: GroupProposalDetail; id: string; 
         confirmLabel={t('Yes, close voting')}
         onCancel={() => setConfirming(false)}
         onConfirm={async () => { setConfirming(false); await closeNow(); }}
+      />
+      <ConfirmDialog
+        open={confirmingCloseNow}
+        title={t('Close voting now with the current votes?')}
+        message={t('Not every member has voted yet. This ends voting now and finalizes each item with the votes cast so far — members who haven’t voted won’t count. The result is frozen and anchored on-chain. This cannot be undone.')}
+        confirmLabel={t('Yes, close voting')}
+        onCancel={() => setConfirmingCloseNow(false)}
+        onConfirm={async () => { setConfirmingCloseNow(false); await closeVotingNow(); }}
       />
     </div>
   );

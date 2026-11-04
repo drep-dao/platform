@@ -2020,6 +2020,7 @@ export interface InternalProposalDetail extends InternalProposalSummary {
   docHash: string; // §3 — SHA-256 of title+content (or the frozen rule/decision hash); matches the on-chain anchor
   anchorTxHash: string | null;
   anchorHash: string | null;
+  docAnchorTxHash?: string | null; // §30 — content anchor written when a document opened voting; null until anchored
   /** §27 — set for RULE_APPROVAL proposals: the targeted rule document + frozen content hash. */
   rule?: { documentId: string; title: string; documentStatus: string; deleteRequested: boolean; contentHash: string | null } | null;
   decision?: { decisionId: string; title: string; decisionStatus: string; deleteRequested: boolean; contentHash: string | null } | null;
@@ -2153,6 +2154,8 @@ export const internalProposalsApi = {
     request<InternalProposalDetail>(`/internal-proposals/${id}/attachments`, { method: 'POST', body: JSON.stringify(input) }),
   removeAttachment: (id: string, attId: string) =>
     request<InternalProposalDetail>(`/internal-proposals/${id}/attachments/${attId}`, { method: 'DELETE' }),
+  renameAttachment: (id: string, attId: string, title: string) =>
+    request<InternalProposalDetail>(`/internal-proposals/${id}/attachments/${attId}`, { method: 'PATCH', body: JSON.stringify({ title }) }),
   openVoting: (id: string, input: OpenVotingInput) =>
     request<InternalProposalDetail>(`/internal-proposals/${id}/open-voting`, { method: 'POST', body: JSON.stringify(input) }),
   attachmentFile: (id: string, attId: string) =>
@@ -2605,6 +2608,7 @@ export interface GroupProposalDetail {
   deliveryDate: string | null;
   canVote: boolean;
   canCloseEarly: boolean; // §29 BULK — every member has voted on every item; a member may close it now
+  canCloseVotingNow: boolean; // §29 BULK — a member may end voting now with the current votes (not all voted yet)
   canDiscard: boolean; // §29 — the member may discard this active proposal before voting ends
   // §29 OG — self-governed proposal timing.
   canExtend: boolean; // may push out the voting deadline
@@ -2646,6 +2650,7 @@ export const groupsApi = {
   submit: (key: string, input: SubmitGroupProposalInput) => request<GroupProposalDetail>(`/groups/${key}/proposals`, { method: 'POST', body: JSON.stringify(input) }),
   vote: (id: string, input: GroupVoteInput) => request<GroupProposalDetail>(`/groups/proposal/${id}/vote`, { method: 'POST', body: JSON.stringify(input) }),
   closeEarly: (id: string) => request<GroupProposalDetail>(`/groups/proposal/${id}/close`, { method: 'POST' }),
+  closeVotingNow: (id: string) => request<GroupProposalDetail>(`/groups/proposal/${id}/close-now`, { method: 'POST' }),
   extend: (id: string, votingEndAt: string) => request<GroupProposalDetail>(`/groups/proposal/${id}/extend`, { method: 'POST', body: JSON.stringify({ votingEndAt }) }),
   finalizeNow: (id: string) => request<GroupProposalDetail>(`/groups/proposal/${id}/finalize-now`, { method: 'POST' }),
   discard: (id: string) => request<GroupProposalDetail>(`/groups/proposal/${id}/discard`, { method: 'POST' }),

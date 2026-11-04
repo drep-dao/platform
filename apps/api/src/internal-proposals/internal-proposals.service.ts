@@ -288,6 +288,10 @@ export class InternalProposalsService {
     if (!p || p.type !== ProposalType.INTERNAL) throw new NotFoundException('proposal not found');
     if (p.status === ProposalStatus.DRAFT) throw new BadRequestException('a draft is removed from the draft editor, not deleted here');
     if (p.status === ProposalStatus.DELETED) return { id: proposalId, deleted: true }; // idempotent
+    // §30 — once voting has opened on a document, it can no longer be deleted; wait for the result.
+    if (p.commentAudience != null && p.status === ProposalStatus.ACTIVE) {
+      throw new BadRequestException('a document that is being voted on cannot be deleted — wait for the voting result');
+    }
     await this.prisma.proposal.update({ where: { id: proposalId }, data: { status: ProposalStatus.DELETED } });
     return { id: proposalId, deleted: true };
   }
@@ -439,6 +443,17 @@ export class InternalProposalsService {
     return this.detail(proposalId, userId);
   }
 
+  /** §30 — set/change an attachment's display name (title) while the document is still open for comment.
+   *  The title is a label only (not part of the anchored content hash), so a link/file that was added
+   *  without a name — e.g. on a document created before this feature — can be named retroactively. */
+  async renameAttachment(userId: string, proposalId: string, attachmentId: string, title: string) {
+    await this.docEditable(userId, proposalId);
+    const att = await this.prisma.proposalAttachment.findUnique({ where: { id: attachmentId } });
+    if (!att || att.proposalId !== proposalId) throw new NotFoundException('attachment not found');
+    await this.prisma.proposalAttachment.update({ where: { id: attachmentId }, data: { title: title.trim().slice(0, 300) } });
+    return this.detail(proposalId, userId);
+  }
+
   /** Download the original uploaded file of an attachment (the stored base64 data URL). A private
    *  document's files are only served to the board or the author, mirroring the detail-view gate. */
   async getAttachmentFile(proposalId: string, attachmentId: string, viewerUserId: string | null) {
@@ -500,6 +515,16 @@ export class InternalProposalsService {
       },
     });
     await this.buildSnapshot(proposalId, scope, dto.votingType);
+    // §30 — anchor the frozen document content on-chain now that voting has opened, so voters can
+    // verify what they are voting on against the chain (same model as rule/decision documents). The
+    // on-chain hash is SHA-256(`title\ncontent`) = proposalDocHash(p). Idempotent per proposal;
+    // anchoring never blocks the vote from opening.
+    await this.anchor.anchorProposalDoc({
+      proposalRowId: proposalId,
+      publicId: p.publicId ?? proposalId,
+      title: p.title,
+      text: `${p.title}\n${p.contentMd}`,
+    }).catch(() => undefined);
     return this.detail(proposalId, userId);
   }
 
@@ -883,6 +908,9 @@ export class InternalProposalsService {
     const voters = await this.voteHistory(proposalId);
     const rationaleMinWords = await this.rationaleMinWords();
     const anchor = await this.prisma.anchor.findFirst({ where: { proposalId, kind: 'internal' }, orderBy: { createdAt: 'desc' } });
+    // §30 — a document is anchored on-chain when voting OPENS (kind PROPOSAL_DOC), so the integrity
+    // panel can show the on-chain record while voting is in progress, not only after it concludes.
+    const docAnchor = await this.prisma.anchor.findFirst({ where: { proposalId, kind: GovSubject.PROPOSAL_DOC }, orderBy: { createdAt: 'desc' } });
     // §27 — for a rule-approval vote, the targeted document + the content hash frozen when the vote opened.
     const ruleDoc = p.internalType === 'RULE_APPROVAL' && p.ruleDocumentId
       ? await this.prisma.ruleDocument.findUnique({ where: { id: p.ruleDocumentId }, select: { id: true, title: true, status: true } })
@@ -983,6 +1011,8 @@ export class InternalProposalsService {
       docHash: this.proposalDocHash(p),
       anchorTxHash: anchor?.txHash ?? null,
       anchorHash: anchor?.hash ?? null,
+      // §30 — the content anchor written when voting opened (document integrity panel). null until anchored.
+      docAnchorTxHash: docAnchor?.txHash ?? null,
       // §27 — rule-approval target: the document, whether this is a delete vote, and the frozen hash.
       rule: ruleDoc ? {
         documentId: ruleDoc.id,

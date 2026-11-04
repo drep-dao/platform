@@ -4,6 +4,7 @@ import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { BoardGuard } from '../auth/board.guard';
 import { CurrentUser, type AuthContext } from '../auth/current-user.decorator';
 import { DrepService } from './drep.service';
+import { AnchorService } from '../cardano/anchor.service';
 import { SetMemberLinkDto } from './dto';
 
 // §2/§4 — DAO member overview (board + admitted DReps) with balanced voting power.
@@ -13,7 +14,10 @@ import { SetMemberLinkDto } from './dto';
 // login-only.
 @Controller('dao')
 export class DaoController {
-  constructor(private readonly drep: DrepService) {}
+  constructor(
+    private readonly drep: DrepService,
+    private readonly anchor: AnchorService,
+  ) {}
 
   @Get('members')
   @UseGuards(OptionalJwtAuthGuard)
@@ -44,5 +48,13 @@ export class DaoController {
   @UseGuards(OptionalJwtAuthGuard)
   proofs() {
     return this.drep.listOnChainProofs();
+  }
+
+  // §24 (KI-7) — when pending anchors will next be posted on-chain, so the proofs page can show an
+  // expected window instead of a bare "pending".
+  @Get('anchor-schedule')
+  @UseGuards(OptionalJwtAuthGuard)
+  anchorSchedule() {
+    return this.anchor.anchorSchedule();
   }
 }

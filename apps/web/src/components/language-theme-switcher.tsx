@@ -7,10 +7,12 @@ import { usePrefs } from '@/lib/prefs-context';
  * Fixed top-right toolbar: a language picker (top 12 languages) and a light/dark toggle.
  * Rendered once in the root layout so it sits in the corner on every screen (logged in or out).
  */
-export function LanguageThemeSwitcher() {
+/** Just the language picker + theme toggle, no positioning — reusable inside any toolbar
+ *  (the global fixed switcher, or the public shell's own top-right cluster). */
+export function LangThemeControls() {
   const { lang, setLang, theme, toggleTheme, t } = usePrefs();
   return (
-    <div className="fixed right-3 top-2 z-50 flex items-center gap-1.5">
+    <>
       <select
         aria-label={t('Language')}
         title={t('Language')}
@@ -31,6 +33,16 @@ export function LanguageThemeSwitcher() {
       >
         {theme === 'dark' ? '☀️' : '🌙'}
       </button>
+    </>
+  );
+}
+
+export function LanguageThemeSwitcher() {
+  // `data-global-switcher` lets a page that renders its OWN top-right cluster (e.g. the logged-out
+  // public shell, which puts Connect wallet next to these) hide this one via a body class.
+  return (
+    <div data-global-switcher className="fixed right-3 top-2 z-50 flex items-center gap-1.5">
+      <LangThemeControls />
     </div>
   );
 }

@@ -41,6 +41,7 @@ export function SubmitterReviewPanel({ onChange, history = false }: { onChange?:
               <span className="flex items-center gap-2">
                 {a.logoDataUrl ? <img src={a.logoDataUrl} alt="" className="h-8 w-8 rounded object-cover" /> : null}
                 <span className="font-medium">{a.displayName}</span>
+                {a.isBuilder ? <span className="rounded-full bg-indigo-100 px-1.5 text-[10px] font-semibold text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300">🛠 BUILDER</span> : null}
                 <span className="text-xs text-neutral-500">{a.country}</span>
                 {a.status === 'APPROVED' ? <span className="rounded bg-emerald-100 px-1 text-[10px] text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">✓ {t('APPROVED')}</span>
                   : a.status === 'REJECTED' ? <span className="rounded bg-red-100 px-1 text-[10px] text-red-700 dark:bg-red-950 dark:text-red-300">{t('REJECTED')}</span> : null}
@@ -60,6 +61,19 @@ export function SubmitterReviewPanel({ onChange, history = false }: { onChange?:
             {a.previousFunding ? (
               <div className="mt-1 text-xs"><span className="font-medium">{t('Previous funding:')}</span>
                 <ClampedMarkdown className="text-neutral-600 dark:text-neutral-300" empty="—" maxLines={15}>{a.previousFunding}</ClampedMarkdown>
+              </div>
+            ) : null}
+            {a.products.length ? (
+              <div className="mt-1 text-xs"><span className="font-medium">{t('Products and protocols:')}</span>
+                <ul className="mt-0.5 space-y-1">
+                  {a.products.map((p, i) => (
+                    <li key={i} className="flex items-center gap-2">
+                      {p.iconDataUrl ? <img src={p.iconDataUrl} alt="" className="h-5 w-5 rounded object-cover" /> : null}
+                      <a href={p.url} target="_blank" rel="noreferrer" className="break-all text-emerald-700 underline dark:text-emerald-400">{p.url}</a>
+                      {p.description ? <span className="text-neutral-500">— {p.description}</span> : null}
+                    </li>
+                  ))}
+                </ul>
               </div>
             ) : null}
             {/* §2.1 — disclosure + contact for the board's review. */}

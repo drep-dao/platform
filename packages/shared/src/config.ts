@@ -13,7 +13,11 @@ export const PLATFORM_CONFIG_DEFAULTS = {
   // §2 — contact details on the DRep profile. Off (default): optional. On: the field is required.
   REQUIRE_TELEGRAM: false,
   REQUIRE_EMAIL: false,
-  ADMISSION_APPROVAL_VOTES: 3, // Â§14.2 board YES votes needed to admit a DRep (3-of-5)
+  // Â§14.2 â board YES votes needed to admit (or remove) a Council member. 0 (default) = automatic
+  // MAJORITY of the seated board (2-of-3, 3-of-5, â¦), so it tracks BOARD_SIZE as the board shrinks or
+  // grows; a positive value forces an explicit M, clamped to 1â¦(seated board size). Mirrors how
+  // MULTISIG_THRESHOLD derives the treasury signing threshold.
+  ADMISSION_APPROVAL_VOTES: 0,
   INTERNAL_DEFAULT_THRESHOLD_PCT: 67,
   INTERNAL_IMPORTANT_THRESHOLD_PCT: 75,
   // Internal proposals only â minimum words a voter must write in their rationale,
@@ -22,9 +26,6 @@ export const PLATFORM_CONFIG_DEFAULTS = {
   MIN_LEN_OF_WORDS_IN_RATIONALE_FOR_VOTE_YES: 0,
   MIN_LEN_OF_WORDS_IN_RATIONALE_FOR_VOTE_NO: 0,
   MIN_LEN_OF_WORDS_IN_RATIONALE_FOR_VOTE_ABSTAIN: 0,
-  // Â§11.5 â after a milestone POA is REJECTED this many times, the platform automatically
-  // opens a stop-funding proposal for the board to vote on (0 = never auto-propose).
-  MILESTONE_MAX_REJECTIONS: 3,
   // Â§14.1 â Council-entry gate, layer 1: a registered DRep may request to join only if it
   // meets the on-chain minimums. Two independent, separately-toggled groups (both OFF
   // by default so testnet entry is open; enable on mainnet).
@@ -109,13 +110,12 @@ export const PLATFORM_CONFIG_META: Record<PlatformConfigKey, string> = {
     'Link to the recurring meeting, shown on the landing page below the Telegram invite. Use a permanent Google Meet link (e.g. https://meet.google.com/xxx-xxxx-xxx) — a calendar "add event" link is unreliable for a shared call (guests see "can\'t find meeting"). Leave empty to hide the meeting card.',
   MEETING_TIME:
     'Recurring meeting time as "<Weekday> <HH:MM>-<HH:MM> <IANA timezone>", e.g. "Tuesday 15:00-15:30 Europe/Prague". Drives the live countdown to the next meeting (and the "Live now" state while it runs) and the schedule line on the card. Use an IANA timezone name (not a fixed CET/CEST offset) so it stays right across daylight-saving. Leave empty to show just the join button.',
-  MILESTONE_MAX_REJECTIONS:
-    'After a milestone POA is rejected this many times, the platform automatically opens a stop-funding proposal for the board (0 = disabled).',
   DREP_OPEN_ADMISSION:
     'Open membership. ENABLED (default): any registered DRep who completes the profile joins the Council straight away and can vote â no board admission vote is held. DISABLED: each applicant is put on hold as PENDING and joins only once the board approves them (ADMISSION_APPROVAL_VOTES yes-votes). Note that while no board is seated, admission stays open whatever this is set to, since there would be nobody to run the vote.',
   REQUIRE_TELEGRAM: 'Require a Telegram handle on the DRep profile. Off (default): optional.',
   REQUIRE_EMAIL: 'Require an email address on the DRep profile. Off (default): optional.',
-  ADMISSION_APPROVAL_VOTES: 'Board YES votes needed to admit a new Council member (3-of-5).',
+  ADMISSION_APPROVAL_VOTES:
+    'Board YES votes needed to admit or remove a Council member. 0 (default) = automatic majority of the seated board (3 seats → 2-of-3, 5 → 3-of-5), so it tracks the board size automatically as seats change. A positive number forces an explicit count, clamped to the seated board size.',
   INTERNAL_DEFAULT_THRESHOLD_PCT: 'Approval threshold (%) for ordinary internal proposals.',
   INTERNAL_IMPORTANT_THRESHOLD_PCT: 'Approval threshold (%) for internal proposals flagged as important.',
   MIN_LEN_OF_WORDS_IN_RATIONALE_FOR_VOTE_YES:

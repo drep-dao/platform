@@ -1,5 +1,13 @@
 import { IsArray, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
+// §2.1 — one entry in the FOR BUILDERS "Products and protocols" list. Loosely validated here
+// (the service trims + caps sizes and drops entries with no link); mirrors how github/social links work.
+export interface SubmitterProductDto {
+  url?: string;
+  description?: string;
+  iconDataUrl?: string; // base64 data URL, client-resized small
+}
+
 export class SubmitterApplicationDto {
   @IsString() @IsNotEmpty() @MaxLength(120) displayName!: string;
   @IsString() @IsNotEmpty() @MaxLength(20000) description!: string;
@@ -14,6 +22,8 @@ export class SubmitterApplicationDto {
   @IsString() @IsNotEmpty() @MaxLength(320) email!: string;
   // §2.1 — previous Cardano-ecosystem funding (optional, keep updated).
   @IsOptional() @IsString() @MaxLength(20000) previousFunding?: string;
+  // §2.1 — FOR BUILDERS: products/protocols shipped (link + short description + optional icon).
+  @IsOptional() @IsArray() products?: SubmitterProductDto[];
   // §2.1 — consent that the profile is persisted by the platform (kept even after leaving).
   @IsOptional() agreePersist?: boolean;
   // §2 — cross-wallet link: the on-chain DRep id of the DAO-member profile this submitter

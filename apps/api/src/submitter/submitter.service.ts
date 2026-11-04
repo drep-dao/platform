@@ -2,10 +2,45 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { MeritService } from '../merit/merit.service';
 import { AnchorService } from '../cardano/anchor.service';
 import { GovSubject } from '@drep-dao/cardano';
+import { Prisma } from '@drep-dao/db';
 import { PrismaService } from '../prisma/prisma.service';
 import type { SubmitterApplicationDto } from './dto';
 
 const MIN_DESCRIPTION_WORDS = 100;
+
+// §2.1 — FOR BUILDERS: products/protocols shipped. Stored as JSON; sanitised on the way in.
+type StoredProduct = { url: string; description: string; iconDataUrl?: string };
+const MAX_PRODUCTS = 20;
+const MAX_PRODUCT_DESC = 500;
+const MAX_PRODUCT_ICON = 700_000; // base64 data URL, client-resized
+
+/** Trim + cap the products list, dropping any entry without a link. */
+function sanitizeProducts(input: unknown): StoredProduct[] {
+  if (!Array.isArray(input)) return [];
+  const out: StoredProduct[] = [];
+  for (const raw of input) {
+    if (!raw || typeof raw !== 'object') continue;
+    const r = raw as Record<string, unknown>;
+    const url = (typeof r.url === 'string' ? r.url : '').trim();
+    if (!url) continue; // a product must have a link
+    const description = (typeof r.description === 'string' ? r.description : '').trim().slice(0, MAX_PRODUCT_DESC);
+    const rawIcon = typeof r.iconDataUrl === 'string' ? r.iconDataUrl.trim() : '';
+    const iconDataUrl = rawIcon && rawIcon.length <= MAX_PRODUCT_ICON ? rawIcon : undefined;
+    out.push({ url: url.slice(0, 500), description, ...(iconDataUrl ? { iconDataUrl } : {}) });
+    if (out.length >= MAX_PRODUCTS) break;
+  }
+  return out;
+}
+
+/** Read a persisted products JSON value back into a typed, sanitised list. */
+function readProducts(v: Prisma.JsonValue | null | undefined): StoredProduct[] {
+  return sanitizeProducts(v);
+}
+
+/** §2.1 — the BUILDER label rule: any previous funding OR any shipped product. */
+function computeIsBuilder(previousFunding: string, products: StoredProduct[]): boolean {
+  return previousFunding.trim() !== '' || products.length > 0;
+}
 
 /**
  * §2.1 — submitter role. A user applies with a profile form; a board member approves or rejects
@@ -58,6 +93,7 @@ export class SubmitterService {
     const email = (dto.email ?? '').trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new BadRequestException('a valid email is required');
     const previousFunding = (dto.previousFunding ?? '').trim();
+    const products = sanitizeProducts(dto.products);
     const socialLinks = (dto.socialLinks ?? []).map((s) => s.trim()).filter(Boolean);
     const githubUrls = (dto.githubUrls ?? []).map((s) => s.trim()).filter(Boolean);
     const logoDataUrl = dto.logoDataUrl?.trim() || null;
@@ -82,7 +118,8 @@ export class SubmitterService {
       existing.noSelfVotePledge !== !!dto.noSelfVotePledge ||
       existing.telegram !== telegram ||
       existing.email !== email ||
-      existing.previousFunding !== previousFunding
+      existing.previousFunding !== previousFunding ||
+      JSON.stringify(readProducts(existing.products)) !== JSON.stringify(products)
     );
     if (existing && existing.status === 'APPROVED' && changed) {
       await this.prisma.submitterApplicationHistory.create({
@@ -99,12 +136,13 @@ export class SubmitterService {
           telegram: existing.telegram,
           email: existing.email,
           previousFunding: existing.previousFunding,
+          products: existing.products ?? Prisma.JsonNull,
         },
       });
     }
     // §2 — cross-wallet link to a DAO-member profile (empty string clears it).
     const linkedDrepIdOnchain = dto.linkedDrepIdOnchain?.trim() || null;
-    const data = { status, displayName, description, githubUrls, socialLinks, logoDataUrl, country, conflictOfInterest, noSelfVotePledge: !!dto.noSelfVotePledge, telegram, email, previousFunding, linkedDrepIdOnchain, rejectionReason: null };
+    const data = { status, displayName, description, githubUrls, socialLinks, logoDataUrl, country, conflictOfInterest, noSelfVotePledge: !!dto.noSelfVotePledge, telegram, email, previousFunding, products: products as unknown as Prisma.InputJsonValue, linkedDrepIdOnchain, rejectionReason: null };
     await this.prisma.submitterApplication.upsert({
       where: { userId },
       update: data,
@@ -132,6 +170,7 @@ export class SubmitterService {
       telegram: h.telegram,
       email: h.email,
       previousFunding: h.previousFunding,
+      products: readProducts(h.products),
       snapshotAt: h.snapshotAt,
     }));
   }
@@ -140,6 +179,7 @@ export class SubmitterService {
     const a = await this.prisma.submitterApplication.findUnique({ where: { userId } });
     if (!a) return null;
     const linkedMember = await this.resolveLinkedMember(userId, a.linkedDrepIdOnchain);
+    const products = readProducts(a.products);
     return {
       id: a.id,
       status: a.status as 'PENDING' | 'APPROVED' | 'REJECTED' | 'LEFT',
@@ -158,6 +198,8 @@ export class SubmitterService {
       telegram: a.telegram,
       email: a.email,
       previousFunding: a.previousFunding,
+      products,
+      isBuilder: computeIsBuilder(a.previousFunding, products),
       rejectionReason: a.rejectionReason,
       leftAt: a.leftAt,
       history: await this.historyFor(userId),
@@ -265,6 +307,7 @@ export class SubmitterService {
       const linkedMember = await this.resolveLinkedMember(a.user.id, a.linkedDrepIdOnchain);
       const isDaoMember = !!linkedMember || a.user.drep?.status === 'ADMITTED' || (!!a.user.drepKeyHash && boardKeys.has(a.user.drepKeyHash));
       const ownName = a.displayName?.trim() || '';
+      const products = readProducts(a.products);
       return {
       id: a.id,
       // The submitter's account id — the value a DAO member selects to link to this profile.
@@ -285,6 +328,8 @@ export class SubmitterService {
       telegram: a.telegram,
       email: a.email,
       previousFunding: a.previousFunding,
+      products,
+      isBuilder: computeIsBuilder(a.previousFunding, products),
       // The platform knows the wallet — expose it (and the DRep identity when they have one).
       stakeAddress: a.user.stakeAddress,
       drepIdOnchain: a.user.drep?.drepIdOnchain ?? null,
@@ -403,30 +448,35 @@ export class SubmitterService {
     });
     const histByUser = new Map<string, ReturnType<typeof mapHist>[]>();
     function mapHist(h: (typeof hist)[number]) {
-      return { displayName: h.displayName, description: h.description, githubUrls: h.githubUrls, socialLinks: h.socialLinks, logoDataUrl: h.logoDataUrl, country: h.country, conflictOfInterest: h.conflictOfInterest, noSelfVotePledge: h.noSelfVotePledge, telegram: h.telegram, email: h.email, previousFunding: h.previousFunding, snapshotAt: h.snapshotAt };
+      return { displayName: h.displayName, description: h.description, githubUrls: h.githubUrls, socialLinks: h.socialLinks, logoDataUrl: h.logoDataUrl, country: h.country, conflictOfInterest: h.conflictOfInterest, noSelfVotePledge: h.noSelfVotePledge, telegram: h.telegram, email: h.email, previousFunding: h.previousFunding, products: readProducts(h.products), snapshotAt: h.snapshotAt };
     }
     for (const h of hist) {
       if (!histByUser.has(h.userId)) histByUser.set(h.userId, []);
       histByUser.get(h.userId)!.push(mapHist(h));
     }
-    return rows.map((a) => ({
-      id: a.id,
-      status: a.status as 'PENDING' | 'APPROVED' | 'REJECTED',
-      displayName: a.displayName,
-      description: a.description,
-      githubUrls: a.githubUrls,
-      socialLinks: a.socialLinks,
-      logoDataUrl: a.logoDataUrl,
-      country: a.country,
-      conflictOfInterest: a.conflictOfInterest,
-      noSelfVotePledge: a.noSelfVotePledge,
-      telegram: a.telegram,
-      email: a.email,
-      previousFunding: a.previousFunding,
-      rejectionReason: a.rejectionReason,
-      stakeAddress: a.user.stakeAddress,
-      history: histByUser.get(a.userId) ?? [],
-    }));
+    return rows.map((a) => {
+      const products = readProducts(a.products);
+      return {
+        id: a.id,
+        status: a.status as 'PENDING' | 'APPROVED' | 'REJECTED',
+        displayName: a.displayName,
+        description: a.description,
+        githubUrls: a.githubUrls,
+        socialLinks: a.socialLinks,
+        logoDataUrl: a.logoDataUrl,
+        country: a.country,
+        conflictOfInterest: a.conflictOfInterest,
+        noSelfVotePledge: a.noSelfVotePledge,
+        telegram: a.telegram,
+        email: a.email,
+        previousFunding: a.previousFunding,
+        products,
+        isBuilder: computeIsBuilder(a.previousFunding, products),
+        rejectionReason: a.rejectionReason,
+        stakeAddress: a.user.stakeAddress,
+        history: histByUser.get(a.userId) ?? [],
+      };
+    });
   }
 
   async approve(id: string, reviewerUserId?: string) {

@@ -13,7 +13,12 @@ export class SubmitRequestFeeDto {
 }
 
 export class SetRequestStatusDto {
-  @IsIn(['ACTIVE', 'DONE', 'REJECTED']) status!: string;
+  @IsIn(['ACTIVE', 'ACCEPTED', 'DONE', 'REJECTED']) status!: string;
+}
+
+// §R — board links/unlinks an internal proposal (escalation to a vote); null unlinks.
+export class SetLinkedProposalDto {
+  @IsOptional() @IsUUID() proposalId?: string | null;
 }
 
 export class CreateRequestTypeDto {

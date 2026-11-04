@@ -113,13 +113,30 @@ export class TreasuryService implements OnModuleInit {
     // Rewards = every paid reward (DReps + experts: filtering / D&V / milestone / board), wherever sourced.
     const rewardsPaid = await this.prisma.rewardEntry.aggregate({ _sum: { amountAda: true }, where: { paidAt: { not: null } } });
     const rewardsSpent = Number(rewardsPaid._sum.amountAda ?? 0n) / ADA;
-    // Operations = every other confirmed outgoing action (top-ups, transfers, returns) — not a
-    // reward, not project funding, not an internal treasury migration. Again, regardless of source.
-    const opsAgg = await this.prisma.multisigAction.aggregate({
-      _sum: { amountAda: true },
+    // Operations = confirmed outgoing actions that actually LEFT the DAO — not a reward, not project
+    // funding, not an internal treasury migration. A hot-wallet top-up (or a bucket-to-bucket move)
+    // pays into a DAO-CONTROLLED address, so that ADA is still counted in the treasury total: it is an
+    // INTERNAL TRANSFER, not a spend. We exclude it from opsSpent and surface it separately, so "Total
+    // spent" reflects only money that has truly left the treasury (fixes a top-up showing as "spent"
+    // while it still sits in the hot wallet).
+    const daoAddrs = new Set(allAddrs);
+    const opsActions = await this.prisma.multisigAction.findMany({
       where: { status: 'CONFIRMED', amountAda: { not: null }, kind: { notIn: ['REWARD_PAYOUT', 'PROJECT_FUNDING', 'MIGRATION'] } },
+      select: { amountAda: true, destAddress: true },
     });
-    const opsSpent = Number(opsAgg._sum.amountAda ?? 0n) / ADA;
+    let opsSpent = 0; // left the DAO (real operations spend)
+    let hotWalletToppedUp = 0; // treasury → hot wallet (internal float, still held)
+    let internalTransfers = 0; // treasury ↔ bucket (internal, still held)
+    for (const a of opsActions) {
+      const amt = Number(a.amountAda ?? 0n) / ADA;
+      if (a.destAddress && hot && a.destAddress === hot) hotWalletToppedUp += amt;
+      else if (a.destAddress && daoAddrs.has(a.destAddress)) internalTransfers += amt;
+      else opsSpent += amt;
+    }
+    // Hot-wallet tx fees (anchor + sweep txs) are ADA that truly LEFT the DAO — a real operational
+    // spend. Counting it stops the Operations bar reading "nothing spent" while anchoring has been paid.
+    const hotWalletFees = hot ? Number(await this.hotWalletFeesSpentLovelace(hot, bal.get(hot) ?? 0n)) / ADA : 0;
+    opsSpent += hotWalletFees;
 
     // Project funding per round = confirmed PROJECT_FUNDING (milestone payouts) for that round's proposals.
     const rounds = await this.prisma.round.findMany({ orderBy: { number: 'asc' } });
@@ -136,11 +153,14 @@ export class TreasuryService implements OnModuleInit {
       const rid = a.proposalId ? roundByProp.get(a.proposalId) : null;
       if (rid) spentByRound.set(rid, (spentByRound.get(rid) ?? 0) + Number(a.amountAda ?? 0n) / ADA);
     }
-    // §12.2 — maximums come from the round setups: funding = Σ round budgets, rewards = Σ round
-    // reward pools (DRep + bonus + expert). Operations gets the REST of the treasury, so newly
-    // received ADA lands in operations until a round earmarks it. The three partition totalAda.
+    // §12.2 — maximums: funding = Σ round budgets; rewards = Σ round reward pools (DRep + bonus +
+    // expert) PLUS the yearly board-compensation budget (BOARD_YEARLY_REWARD_ADA — the only rewards
+    // budget in the Council edition, which has no rounds). Operations gets the REST of the treasury,
+    // so newly received ADA lands in operations until a round or the board budget earmarks it.
+    const boardYearlyRow = await this.prisma.platformConfig.findUnique({ where: { key: 'BOARD_YEARLY_REWARD_ADA' } });
+    const boardYearlyAda = typeof boardYearlyRow?.value === 'number' ? boardYearlyRow.value : 0;
     const fundingMax = rounds.reduce((s, r) => s + Number(r.budgetAda) / ADA, 0);
-    const rewardsMax = rounds.reduce((s, r) => s + Number(r.rewardsPoolAda) / ADA, 0);
+    const rewardsMax = rounds.reduce((s, r) => s + Number(r.rewardsPoolAda) / ADA, 0) + boardYearlyAda;
     const opsMax = Math.max(0, totalAda - fundingMax - rewardsMax);
     const totalFundingSpent = rounds.reduce((s, r) => s + (spentByRound.get(r.id) ?? 0), 0);
 
@@ -165,8 +185,43 @@ export class TreasuryService implements OnModuleInit {
       // the per-round breakdown of funding). Total spent = the three top categories' spend.
       totalAllocatedAda: totalAda,
       totalSpentAda: rewardsSpent + opsSpent + totalFundingSpent,
-      spent: { funding: totalFundingSpent, rewards: rewardsSpent, operations: opsSpent },
+      // operations INCLUDES hotWalletFees (fees are an operational cost); hotWalletFees is also broken
+      // out so the UI can show it as a sub-line, without double-counting it in the total.
+      spent: { funding: totalFundingSpent, rewards: rewardsSpent, operations: opsSpent, hotWalletFees },
+      // Internal transfers — still inside the treasury total, NOT spent. Surfaced so a hot-wallet
+      // top-up is not mistaken for an outflow.
+      internal: { hotWalletToppedUp, buckets: internalTransfers },
     };
+  }
+
+  /**
+   * §15.3 — ADA the hot wallet has burned on tx fees (anchor + sweep txs). The hot wallet only ever
+   * pays fees or sweeps back to the treasury, so by balance conservation:
+   *   fees = (external ADA ever received) − (swept back to treasury) − (current balance).
+   * "External received" = inflows on txs where the hot wallet spent nothing (pure top-ups / funding);
+   * change it returns to itself on its own spend txs is excluded. Returns 0 unless the whole tx
+   * history reconciles to the live balance (guards against a truncated read reporting a bogus figure).
+   */
+  private async hotWalletFeesSpentLovelace(hot: string, balanceLovelace: bigint): Promise<bigint> {
+    try {
+      const txs = await this.cardano.addressTransactions([hot], 5000);
+      let grossIn = 0n;
+      let grossOut = 0n;
+      let externalReceived = 0n;
+      for (const t of txs) {
+        grossIn += t.inLovelace;
+        grossOut += t.outLovelace;
+        if (t.outLovelace === 0n) externalReceived += t.inLovelace; // a pure receipt, not self-change
+      }
+      // Trust the figure only when the full history reconciles to the on-chain balance.
+      if (grossIn - grossOut !== balanceLovelace) return 0n;
+      const sweptAgg = await this.prisma.hotWalletSweep.aggregate({ _sum: { amountLovelace: true }, where: { fromAddress: hot } });
+      const swept = sweptAgg._sum.amountLovelace ?? 0n;
+      const fees = externalReceived - balanceLovelace - swept;
+      return fees > 0n ? fees : 0n;
+    } catch {
+      return 0n; // never fail the overview because a fee read hiccuped
+    }
   }
 
   /** Pending board actions for a board member (drives the notification badge).
@@ -725,6 +780,11 @@ export class TreasuryService implements OnModuleInit {
     const sweeps = await this.prisma.hotWalletSweep.findMany({ select: { txHash: true } });
     const sweepHashes = new Set(sweeps.map((s) => s.txHash).filter(Boolean));
 
+    // Public proposal-scan tool: fee payments arriving at a treasury address. Keyed by tx hash so an
+    // incoming scan fee reads as what it is, not "anonymous income". Tx hashes are stored lowercase.
+    const scanPays = await this.prisma.publicScanPayment.findMany({ select: { txHash: true, scan: { select: { title: true } } } });
+    const scanPayTitleByHash = new Map(scanPays.map((p) => [p.txHash.toLowerCase(), p.scan?.title ?? null]));
+
     const transactions: TreasuryTx[] = txs.map((t): TreasuryTx | null => {
       const net = t.inLovelace - t.outLovelace;
       const fee = feeByHash.get(t.hash);
@@ -766,6 +826,10 @@ export class TreasuryService implements OnModuleInit {
           tx.proposalPublicId = fee.publicId ?? undefined;
           tx.proposalTitle = fee.title;
           tx.submitter = fee.submitter ?? undefined;
+        } else if (scanPayTitleByHash.has(t.hash.toLowerCase())) {
+          tx.label = 'Proposal Score tool payment';
+          const title = scanPayTitleByHash.get(t.hash.toLowerCase());
+          if (title) tx.proposalTitle = title;
         } else tx.label = 'anonymous income';
       } else if (action) {
         tx.label = actionLabel(action);

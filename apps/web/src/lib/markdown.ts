@@ -24,7 +24,11 @@ function inline(s: string): string {
   let t = s;
   // [text](url) — sanitize the href to http(s)/mailto only.
   t = t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_m, text: string, url: string) => {
-    const safe = /^(https?:\/\/|mailto:)/i.test(url) ? url : '#';
+    let safe = /^(https?:\/\/|mailto:)/i.test(url) ? url : '#';
+    // Tolerate a mis-pasted link whose href is just a bare scheme ("https://") while the visible
+    // text is the real URL — a common paste error — by using the text as the destination.
+    const txt = text.trim();
+    if (/^https?:\/\/$/i.test(safe) && /^https?:\/\/\S+$/i.test(txt)) safe = txt;
     return `<a href="${safe}" target="_blank" rel="noopener noreferrer" class="text-emerald-600 underline">${text}</a>`;
   });
   t = t.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
@@ -40,9 +44,38 @@ const H_CLASS: Record<string, string> = {
   h4: 'mt-2 text-sm font-medium',
 };
 
+// ── GFM pipe tables ───────────────────────────────────────────────────────────
+/** Split a table row into trimmed cells, dropping the optional outer pipes. */
+function splitRow(raw: string): string[] {
+  return raw.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
+}
+/** A delimiter row is `| :--- | ---: | … |` — every cell is dashes with optional colons. */
+function isDelimiterRow(raw: string | undefined): boolean {
+  if (!raw || !raw.includes('-') || !raw.includes('|')) return false;
+  const cells = splitRow(raw);
+  return cells.length > 0 && cells.every((c) => /^:?-{1,}:?$/.test(c));
+}
+const alignClass = (cell: string): string => {
+  const l = cell.startsWith(':');
+  const r = cell.endsWith(':');
+  return l && r ? ' text-center' : r ? ' text-right' : l ? ' text-left' : '';
+};
+function renderTable(header: string[], aligns: string[], rows: string[][]): string {
+  const cell = (tag: 'th' | 'td', text: string, i: number) => {
+    const base = tag === 'th' ? 'border border-neutral-300 px-2 py-1 font-semibold dark:border-neutral-700' : 'border border-neutral-300 px-2 py-1 dark:border-neutral-700';
+    return `<${tag} class="${base}${aligns[i] ?? ''}">${inline(text)}</${tag}>`;
+  };
+  const head = `<tr>${header.map((c, i) => cell('th', c, i)).join('')}</tr>`;
+  const body = rows.map((r) => `<tr>${r.map((c, i) => cell('td', c, i)).join('')}</tr>`).join('');
+  return `<div class="my-2 overflow-x-auto"><table class="w-full border-collapse text-sm"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
+}
+
 /** Render a markdown string to a safe HTML string. */
 export function renderMarkdown(src: string): string {
-  const lines = escapeHtml(src ?? '').split('\n');
+  // Honour markdown backslash-escapes for punctuation (e.g. Google Docs exports "11\." / "\|" / "\[").
+  // Exclude * _ ` so inline emphasis/code still works as before.
+  const unescaped = (src ?? '').replace(/\\([.[\]()|<>&"#+!{}~=-])/g, '$1');
+  const lines = escapeHtml(unescaped).split('\n');
   const out: string[] = [];
   let list: 'ul' | 'ol' | null = null;
   let para: string[] = [];
@@ -60,8 +93,24 @@ export function renderMarkdown(src: string): string {
     }
   };
 
-  for (const raw of lines) {
-    const line = raw.replace(/\s+$/, '');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].replace(/\s+$/, '');
+    // GFM table: a row with pipes immediately followed by a delimiter row.
+    if (line.includes('|') && isDelimiterRow(lines[i + 1])) {
+      flushPara();
+      closeList();
+      const header = splitRow(line);
+      const aligns = splitRow(lines[i + 1]).map(alignClass);
+      const rows: string[][] = [];
+      let j = i + 2;
+      while (j < lines.length && lines[j].includes('|') && lines[j].trim() !== '') {
+        rows.push(splitRow(lines[j]));
+        j++;
+      }
+      out.push(renderTable(header, aligns, rows));
+      i = j - 1;
+      continue;
+    }
     const h = line.match(/^(#{1,3})\s+(.*)$/);
     const ul = line.match(/^\s*[-*]\s+(.*)$/);
     const ol = line.match(/^\s*\d+\.\s+(.*)$/);

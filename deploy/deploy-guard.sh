@@ -46,6 +46,12 @@ jval(){ python3 -c "import sys,json;print(json.load(sys.stdin).get('$1'))" 2>/de
 
 # ── 1. wait for a quiet moment ───────────────────────────────────────────────
 WINDOW=45; NEED_QUIET=2; MAX_WAIT=1200; quiet=0; waited=0
+if [ "$MODE" = "force" ]; then
+  # force: skip the readiness wait entirely. For the one case the safe/strict waits cannot resolve —
+  # when the only "writer" blocking the deploy is the very bug being shipped (e.g. an open tab whose
+  # background poll still POSTs on the OLD bundle). Still sets maintenance, builds, smoke-tests, lifts.
+  log "FORCE mode — skipping the activity wait; deploying now."
+else
 log "checking platform activity (mode=$MODE, window ${WINDOW}s)…"
 while :; do
   R=$(curl -s -m5 -H "x-deploy-token: $DEPLOY_TOKEN" \
@@ -72,6 +78,7 @@ while :; do
     log "still busy after ${MAX_WAIT}s — aborting, nothing deployed."; exit 3
   fi
 done
+fi
 
 # ── 1b. heads-up: warn connected users ~WARN_SEC before maintenance so they can finish + save ─
 # Writes the epoch-seconds when maintenance will begin into <FLAG>.pending; the API serves it at

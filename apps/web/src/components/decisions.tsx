@@ -246,10 +246,10 @@ export function Decisions() {
 
   const startVote = (docId: string) => setParams({ view: 'internal', newDecision: docId, doc: null, filter: null });
 
-  if (selected) return <div className="mx-auto max-w-3xl"><DecisionDetailView id={selected} onBack={() => setParams({ doc: null })} onStartVote={startVote} /></div>;
+  if (selected) return <div className="max-w-3xl"><DecisionDetailView id={selected} onBack={() => setParams({ doc: null })} onStartVote={startVote} /></div>;
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="max-w-3xl">
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-semibold">Decisions</h2>
       </div>

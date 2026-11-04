@@ -13,11 +13,12 @@ import { useAuth } from '@/lib/auth-context';
 import { brand } from '@/lib/brand';
 
 const ada = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 0 });
+// Progress-bar fills use a left-to-right gradient (lighter → deeper) for a softer, more polished look.
 const BUCKET_COLOR: Record<string, string> = {
-  rewards: 'bg-emerald-500',
-  operations: 'bg-sky-500',
+  rewards: 'bg-gradient-to-r from-emerald-400 to-emerald-600',
+  operations: 'bg-gradient-to-r from-sky-400 to-sky-600',
 };
-const roundColor = 'bg-violet-500';
+const roundColor = 'bg-gradient-to-r from-violet-400 to-violet-600';
 
 /** §15 — Treasury overview: budget buckets (allocated/spent/remaining) + balances. */
 export function TreasuryOverview() {
@@ -138,6 +139,11 @@ export function TreasuryOverview() {
           {/* Budget buckets — allocated, with spent overlaid as a bar. */}
           <div className="space-y-3">
             <div className="text-sm font-medium">{t('Budget allocation')}</div>
+            <p className="-mt-2 text-xs text-neutral-500">
+              {brand.kind === 'funding'
+                ? t('Earmarked by purpose (spent vs budget) — not the same as the sub-addresses above, which only show where ADA is held. Rewards and funding come from the round setups; Operations covers everything not reserved for them.')
+                : t('Earmarked by purpose (spent vs budget) — not the same as the sub-addresses above, which only show where ADA is held. Rewards is the budget to compensate board members (set in Rewards → Board rewards, 0 when board pay is off); Operations covers everything else.')}
+            </p>
             {data.buckets.filter((b) => brand.kind === 'funding' || (b.key !== 'total-funding' && !b.key.startsWith('round-'))).map((b) => {
               const pct = b.allocatedAda > 0 ? Math.min(100, (b.spentAda / b.allocatedAda) * 100) : 0;
               const color = BUCKET_COLOR[b.key] ?? roundColor;
@@ -181,6 +187,29 @@ export function TreasuryOverview() {
             <div className="flex justify-between pl-3 text-xs text-neutral-500">
               <span>{t('· operations')}</span><span className="tabular-nums">{ada(data.spent.operations)} ₳</span>
             </div>
+            {data.spent.hotWalletFees > 0 ? (
+              <div className="flex justify-between pl-6 text-[11px] text-neutral-400">
+                <span>{t('· of which hot-wallet tx fees')}</span>
+                <span className="tabular-nums">{data.spent.hotWalletFees.toLocaleString(undefined, { maximumFractionDigits: 2 })} ₳</span>
+              </div>
+            ) : null}
+            {/* Internal transfers — the ADA is still in the Treasury total, so it is NOT counted as spent. */}
+            {data.internal.hotWalletToppedUp > 0 || data.internal.buckets > 0 ? (
+              <div className="mt-1 flex justify-between border-t border-neutral-100 pt-1 dark:border-neutral-800">
+                <span className="text-neutral-500">{t('Moved internally')} <span className="text-xs text-neutral-400">{t('(still in treasury, not spent)')}</span></span>
+                <span className="font-medium tabular-nums text-neutral-500">{ada(data.internal.hotWalletToppedUp + data.internal.buckets)} ₳</span>
+              </div>
+            ) : null}
+            {data.internal.hotWalletToppedUp > 0 ? (
+              <div className="flex justify-between pl-3 text-xs text-neutral-400">
+                <span>{t('· topped up to hot wallet')}</span><span className="tabular-nums">{ada(data.internal.hotWalletToppedUp)} ₳</span>
+              </div>
+            ) : null}
+            {data.internal.buckets > 0 ? (
+              <div className="flex justify-between pl-3 text-xs text-neutral-400">
+                <span>{t('· between buckets')}</span><span className="tabular-nums">{ada(data.internal.buckets)} ₳</span>
+              </div>
+            ) : null}
           </div>
         </>
       )}

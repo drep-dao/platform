@@ -8,6 +8,8 @@ export interface UserProfile {
     stakeAddress: string;
     stakeKeyHash: string;
     displayName: string | null;
+    /** §2.1 — profile photo (data URL) resolved from the account avatar or a role photo; null = none. */
+    avatarUrl: string | null;
     createdAt: string;
   };
   /** §2 — the submitter profile's own name (may differ from the Council-member name). */
@@ -79,6 +81,13 @@ export const authApi = {
   me: () => request<UserProfile>('/auth/me'),
 
   logout: () => request<{ ok: boolean }>('/auth/logout', { method: 'POST' }),
+};
+
+// §2.1 — the public "Viewer" profile: a display name + photo any signed-in wallet can set. Omit a
+// field to leave it unchanged; clearing a field = pass null/''. Returns the refreshed UserProfile.
+export const profileApi = {
+  update: (input: { displayName?: string | null; avatarDataUrl?: string | null }) =>
+    request<UserProfile>('/me/profile', { method: 'PATCH', body: JSON.stringify(input) }),
 };
 
 export interface DrepApplicationInput {
@@ -187,11 +196,20 @@ export interface DaoMemberDetail extends DaoMember {
   linkedSubmitterUserId: string | null;
 }
 
+// §24 (KI-7) — when pending anchors will next be posted on-chain.
+export interface AnchorSchedule {
+  mode: 'scheduled' | 'immediate';
+  sweepHours: number;
+  lastAnchorAt: string | null;
+  nextAnchorAt: string | null;
+}
+
 export const daoApi = {
   members: () => request<DaoMember[]>('/dao/members'),
   member: (drepId: string) => request<DaoMemberDetail>(`/dao/members/${encodeURIComponent(drepId)}`),
   experts: () => request<DaoExpert[]>('/dao/experts'),
   proofs: () => request<OnChainProof[]>('/dao/proofs'),
+  anchorSchedule: () => request<AnchorSchedule>('/dao/anchor-schedule'),
   // §2 (board) — override a Council member's cross-wallet link to a submitter (null clears it).
   setMemberLink: (drepId: string, linkedSubmitterUserId: string | null) =>
     request<DaoMemberDetail>(`/dao/members/${encodeURIComponent(drepId)}/link`, { method: 'PATCH', body: JSON.stringify({ linkedSubmitterUserId }) }),
@@ -235,7 +253,11 @@ export interface TreasuryOverview {
   buckets: TreasuryBucket[];
   totalAllocatedAda: number; // treasury total — all ADA across every address (incl. hot wallet)
   totalSpentAda: number;
-  spent: { funding: number; rewards: number; operations: number };
+  // operations INCLUDES hotWalletFees (tx fees are an operational cost); hotWalletFees is also broken
+  // out so it can be shown as a sub-line without double-counting.
+  spent: { funding: number; rewards: number; operations: number; hotWalletFees: number };
+  // Internal transfers — still inside the treasury total, NOT a spend (hot-wallet top-ups, bucket moves).
+  internal: { hotWalletToppedUp: number; buckets: number };
 }
 export interface BoardAction {
   id: string;
@@ -546,6 +568,16 @@ export interface GovParam {
   description: string;
 }
 
+// §14.1 — Setup entry-gating tester: would a given DRep pass the current on-chain entry gates?
+export interface EntryTestResult {
+  drepId: string;
+  name?: string;
+  image?: string;
+  gatingEnabled: boolean;
+  eligible: boolean;
+  requirements: { group: 'power' | 'activity'; label: string; met: boolean; detail: string }[];
+}
+
 export const governanceApi = {
   list: () => request<GovParam[]>('/admin/governance'),
   update: (key: string, value: number | string | boolean) =>
@@ -554,6 +586,11 @@ export const governanceApi = {
       body: JSON.stringify({ key, value }),
     }),
   wallets: () => request<WalletStatus>('/admin/governance/wallets'),
+  entryTest: (drepId: string, stakeAddress?: string) =>
+    request<EntryTestResult>('/admin/drep-applications/entry-test', {
+      method: 'POST',
+      body: JSON.stringify({ drepId, stakeAddress }),
+    }),
 };
 
 // §22 — on-chain data source: ordered fallback list + credentials (Blockfrost key, db-sync URL).
@@ -736,6 +773,12 @@ export const boardExpertsApi = {
   reject: (id: string) => request<{ ok: boolean }>(`/admin/experts/${id}/reject`, { method: 'POST' }),
 };
 
+// §2.1 — FOR BUILDERS: one product/protocol the applicant shipped (link + short description + optional icon).
+export interface SubmitterProduct {
+  url: string;
+  description: string;
+  iconDataUrl?: string | null;
+}
 // §2.1 — submitter role: apply with a profile form; the board approves/rejects (with a reason).
 export interface SubmitterApplicationInput {
   displayName: string;
@@ -749,6 +792,7 @@ export interface SubmitterApplicationInput {
   telegram: string;
   email: string;
   previousFunding?: string;
+  products?: SubmitterProduct[];
   agreePersist?: boolean;
   // §2 — cross-wallet link to a Council-member profile (DRep id; empty string clears it).
   linkedDrepIdOnchain?: string;
@@ -765,6 +809,7 @@ export interface SubmitterHistoryItem {
   telegram: string;
   email: string;
   previousFunding: string;
+  products: SubmitterProduct[];
   snapshotAt: string;
 }
 export interface MySubmitter {
@@ -781,6 +826,9 @@ export interface MySubmitter {
   telegram: string;
   email: string;
   previousFunding: string;
+  products: SubmitterProduct[];
+  // §2.1 — auto-derived: any previous funding OR any shipped product ⇒ BUILDER.
+  isBuilder: boolean;
   rejectionReason: string | null;
   leftAt: string | null;
   history: SubmitterHistoryItem[];
@@ -811,6 +859,8 @@ export interface ApprovedSubmitter {
   telegram: string;
   email: string;
   previousFunding: string;
+  products: SubmitterProduct[];
+  isBuilder: boolean;
   stakeAddress: string;
   drepIdOnchain: string | null;
   isDaoMember: boolean;
@@ -1577,7 +1627,7 @@ export const proposalEditApi = {
 export interface CommentNode {
   id: string;
   parentId: string | null;
-  author: { displayName: string | null; drepId: string | null; role: string | null };
+  author: { displayName: string | null; drepId: string | null; role: string | null; avatarUrl?: string | null };
   contentMd: string | null;
   deleted: boolean;
   createdAt: string;
@@ -1920,6 +1970,7 @@ export interface InternalProposalSummary {
   isPrivate: boolean;
   status: string; // ACTIVE | APPROVED | REJECTED
   submitter: string | null;
+  submitterAvatar?: string | null; // §2.1 — the document author's photo; null/absent = placeholder
   votingEndAt: string | null;
   thresholdPct: number | null;
   tally: InternalTally;
@@ -1940,6 +1991,7 @@ export interface BoardCandidate {
 export interface InternalProposalVoter {
   drep: string; // on-chain DRep id
   displayName: string | null;
+  avatarUrl?: string | null; // §2.1 — voter photo; null/absent = generated placeholder
   choice: string; // YES | NO | ABSTAIN | <poll option label>
   weight: number; // final voting power
   rationale: string | null;
@@ -1979,6 +2031,55 @@ export interface InternalProposalDetail extends InternalProposalSummary {
   canExtend: boolean;
   /** §10 — recorded deadline extensions (each is anchored on-chain), oldest first. */
   extensions: { fromIso: string | null; toIso: string | null; by: string | null; atIso: string | null; txHash: string | null }[];
+  /** §30 — "Document for public comment": attachments + who may comment/edit + the viewer's rights. */
+  attachments?: InternalAttachment[];
+  commentAudience?: string | null; // DREPS | ANY_WALLET | null
+  docEditableBy?: string | null; // PROPOSER | PROPOSER_BOARD | null
+  canEditDocument?: boolean;
+  canOpenVoting?: boolean;
+}
+/** §30 — one file/link attached to a document proposal. */
+export interface InternalAttachment {
+  id: string;
+  source: string; // UPLOAD | LINK
+  title: string | null;
+  fileName: string | null;
+  mimeType: string | null;
+  sourceUrl: string | null;
+  hasFile: boolean;
+  extractedText: string;
+}
+/** §30 — create/update a document proposal. */
+export interface SaveDocumentInput {
+  title: string;
+  contentMd?: string;
+  commentAudience: string; // DREPS | ANY_WALLET
+  docEditableBy: string; // PROPOSER | PROPOSER_BOARD
+  isPrivate?: boolean;
+  attachments?: AddAttachmentInput[];
+}
+export interface AddAttachmentInput {
+  source: string; // UPLOAD | LINK
+  title?: string;
+  dataUrl?: string; // UPLOAD
+  fileName?: string; // UPLOAD
+  url?: string; // LINK
+}
+/** §30 — open voting on a document: the chosen vote type + its params. */
+export interface OpenVotingInput {
+  internalType: string; // INSTRUCTIVE | INFORMATIVE | POLL | SPENDING
+  votersScope: string;
+  thresholdKind: string;
+  votingType: string;
+  votingEndAt?: string;
+  votingPeriodDays?: number;
+  pollOptions?: string[];
+  pollMultiple?: boolean;
+  actors?: string[];
+  deliveryDate?: string;
+  spendingAmountAda?: number;
+  spendingSourceBucketId?: string;
+  spendingDestAddress?: string;
 }
 export interface CreateInternalInput {
   /** §10.5 SPENDING: amount + destination (+ optional source bucket). */
@@ -2031,6 +2132,9 @@ export const internalProposalsApi = {
     request<InternalProposalDetail>(`/internal-proposals/drafts/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
   deleteDraft: (id: string) =>
     request<{ id: string; deleted: boolean }>(`/internal-proposals/drafts/${id}`, { method: 'DELETE' }),
+  // §10 — board member soft-deletes a submitted proposal (kept as DELETED for the record).
+  remove: (id: string) =>
+    request<{ id: string; deleted: boolean }>(`/internal-proposals/${id}`, { method: 'DELETE' }),
   vote: (id: string, input: VoteInternalInput) =>
     request<InternalProposalDetail>(`/internal-proposals/${id}/vote`, { method: 'POST', body: JSON.stringify(input) }),
   installBoard: (id: string) =>
@@ -2040,7 +2144,32 @@ export const internalProposalsApi = {
     ),
   extend: (id: string, votingEndAt: string) =>
     request<InternalProposalDetail>(`/internal-proposals/${id}/extend`, { method: 'POST', body: JSON.stringify({ votingEndAt }) }),
+  // §30 — "Document for public comment".
+  createDocument: (input: SaveDocumentInput) =>
+    request<InternalProposalDetail>('/internal-proposals/document', { method: 'POST', body: JSON.stringify(input) }),
+  updateDocument: (id: string, input: SaveDocumentInput) =>
+    request<InternalProposalDetail>(`/internal-proposals/document/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
+  addAttachment: (id: string, input: AddAttachmentInput) =>
+    request<InternalProposalDetail>(`/internal-proposals/${id}/attachments`, { method: 'POST', body: JSON.stringify(input) }),
+  removeAttachment: (id: string, attId: string) =>
+    request<InternalProposalDetail>(`/internal-proposals/${id}/attachments/${attId}`, { method: 'DELETE' }),
+  openVoting: (id: string, input: OpenVotingInput) =>
+    request<InternalProposalDetail>(`/internal-proposals/${id}/open-voting`, { method: 'POST', body: JSON.stringify(input) }),
+  attachmentFile: (id: string, attId: string) =>
+    request<{ fileName: string | null; mimeType: string | null; dataUrl: string }>(`/internal-proposals/${id}/attachments/${attId}/file`),
+  probeLink: (url: string) =>
+    request<LinkProbe>('/internal-proposals/probe-link', { method: 'POST', body: JSON.stringify({ url }) }),
+  fetchLinkText: (url: string) =>
+    request<{ text: string; chars: number }>('/internal-proposals/fetch-link', { method: 'POST', body: JSON.stringify({ url }) }),
 };
+/** §30 — result of probing a link while composing a document (can we fetch + read it?). */
+export interface LinkProbe {
+  ok: boolean;
+  chars: number;
+  mime: string | null;
+  note: string | null;
+  preview: string;
+}
 
 // ── §27 Rule Documents ──────────────────────────────────────────────────────
 export interface RuleDocVote {
@@ -2259,11 +2388,21 @@ export interface AppNotification {
   readAt: string | null;
   createdAt: string;
 }
+// §20.3 — email-notification preferences (default on). effectiveEmail is the address emails would go to
+// (from the toggle override, else the one on the user's profile); null means we have no address for them.
+export interface NotificationPrefs {
+  email: boolean;
+  emailAddr: string | null;
+  effectiveEmail: string | null;
+}
 export const notificationsApi = {
   list: () => request<AppNotification[]>('/me/notifications'),
   unreadCount: () => request<{ count: number }>('/me/notifications/unread-count'),
   markRead: (id: string) => request<{ ok: boolean }>(`/me/notifications/${id}/read`, { method: 'POST' }),
   markAllRead: () => request<{ ok: boolean }>('/me/notifications/read-all', { method: 'POST' }),
+  getPreferences: () => request<NotificationPrefs>('/me/notifications/preferences'),
+  setPreferences: (p: { email?: boolean; emailAddr?: string | null }) =>
+    request<NotificationPrefs>('/me/notifications/preferences', { method: 'PATCH', body: JSON.stringify(p) }),
 };
 
 // §9.2 — quick polls (tie-break at the budget cliff).
@@ -2325,7 +2464,8 @@ export interface RequestView {
   title: string;
   description: string;
   expectedResponseAt: string | null; // §R — submitter's requested response-by time
-  status: 'DRAFT' | 'PENDING_FEE' | 'ACTIVE' | 'DONE' | 'REJECTED' | 'DELETED';
+  // §R — DB values; ACTIVE shows as "New", DONE as "Complete". ACCEPTED = board took it on (still open).
+  status: 'DRAFT' | 'PENDING_FEE' | 'ACTIVE' | 'ACCEPTED' | 'DONE' | 'REJECTED' | 'DELETED';
   publishedAt: string | null;
   isOwner: boolean;
   editable: boolean;
@@ -2340,6 +2480,8 @@ export interface RequestView {
   free: boolean;
   feeTxHash: string | null;
   feeVerified: boolean;
+  // §R — optional internal proposal this request was escalated to (board-set); null by default.
+  linkedProposal: { id: string; publicId: string | null; title: string; status: string } | null;
 }
 
 export const requestsApi = {
@@ -2363,8 +2505,11 @@ export const requestsApi = {
     request<RequestView>(`/requests/${id}/fee-tx`, { method: 'POST', body: JSON.stringify({ txHash }) }),
   recheckFee: (id: string) => request<{ verified: boolean }>(`/requests/${id}/recheck-fee`, { method: 'POST' }),
   // board-only
-  setStatus: (id: string, status: 'ACTIVE' | 'DONE' | 'REJECTED') =>
+  setStatus: (id: string, status: 'ACTIVE' | 'ACCEPTED' | 'DONE' | 'REJECTED') =>
     request<RequestView>(`/requests/${id}/status`, { method: 'POST', body: JSON.stringify({ status }) }),
+  // board-only — link an internal proposal (escalate to a vote); proposalId=null unlinks.
+  setLinkedProposal: (id: string, proposalId: string | null) =>
+    request<RequestView>(`/requests/${id}/linked-proposal`, { method: 'POST', body: JSON.stringify({ proposalId }) }),
   createType: (body: { name: string; priceAda: number }) =>
     request<{ id: string }>('/requests/types', { method: 'POST', body: JSON.stringify(body) }),
   updateType: (id: string, body: { name?: string; priceAda?: number; active?: boolean }) =>
@@ -2509,3 +2654,182 @@ export const groupsApi = {
   comment: (id: string, contentMd: string, parentId?: string) => request<GroupProposalDetail>(`/groups/proposal/${id}/comments`, { method: 'POST', body: JSON.stringify({ contentMd, ...(parentId ? { parentId } : {}) }) }),
   deleteComment: (commentId: string) => request<GroupProposalDetail>(`/groups/comment/${commentId}`, { method: 'DELETE' }),
 };
+
+// ── Proposal checker ────────────────────────────────────────────────────────────
+export interface PcTemplate {
+  id: string;
+  title: string;
+  source: 'UPLOAD' | 'LINK' | 'RULE_DOC';
+  sourceUrl?: string | null;
+  fileName?: string | null;
+  mimeType?: string | null;
+  active: boolean;
+  createdAt: string;
+}
+export interface PcTemplateDetail extends PcTemplate {
+  extractedText: string;
+  hasOriginal: boolean;
+}
+export interface PcGovAction {
+  proposalId: string;
+  type: string;
+  blockTime: number;
+  metaUrl: string | null;
+  metaHash: string | null;
+  expiration: number | null;
+  status: 'active' | 'enacted' | 'ratified' | 'expired' | 'dropped';
+  withdrawalAda?: number | null; // TreasuryWithdrawals total requested, in ADA
+}
+export interface PcGovActionDetail {
+  action: PcGovAction;
+  meta: { available: boolean; title?: string; abstract?: string; motivation?: string; rationale?: string; references?: { label?: string; uri?: string }[]; raw?: string };
+}
+// Review framework (Triangle Forces, adapted) — structured, board-editable.
+export interface PcReviewOutcome { key: string; label: string; definition: string }
+export interface PcReviewQuestion { id: number; text: string }
+export interface PcReviewArea { key: string; title: string; description?: string; templateRefs?: string[]; questions: PcReviewQuestion[] }
+export interface PcReviewFramework { title: string; attribution?: string; guidance: string; outcomes: PcReviewOutcome[]; areas: PcReviewArea[] }
+// One assessed framework question; `outcome` is one of the framework's outcome labels.
+export interface PcFinding { id: number; tier?: 'base' | 'middle' | 'large'; area: string; question: string; outcome: string; reason?: string; risk?: string; condition?: string; templateRefs?: string[]; evidence?: string | string[]; evidenceCited?: string }
+export interface PcTierNames { small: string; middle: string; large: string }
+export interface PcTierConfig { enabled: boolean; smallMax: number; middleMax: number; names: PcTierNames; middleQuestions: string[]; largeQuestions: string[] }
+export interface PcResult {
+  id: string;
+  templateId: string;
+  govActionId: string;
+  govActionTitle?: string | null;
+  govActionType?: string | null;
+  amountAda?: number | string | null; // TreasuryWithdrawals requested ADA (Prisma Decimal → string over the wire)
+  submittedAt?: string | null; // on-chain submission time (for submission-date ordering)
+  scorePct: number; // Template coverage %
+  templateFindings?: PcFinding[]; // per-requirement coverage detail
+  visionPct?: number | null; // Cardano Vision 2030 alignment %
+  visionFindings?: PcFinding[]; // per-question Vision 2030 detail
+  summary?: string | null;
+  questions: PcFinding[]; // framework findings (one per question)
+  model?: string | null;
+  createdAt: string;
+  // Only present on a freshly-created score (board); the public list omits these.
+  prompt?: string | null;
+  response?: string | null;
+}
+export interface PcVisionConfig { framework: PcReviewFramework; reference: string; sourceUrl: string }
+export interface PcAiConfig {
+  provider: string;
+  configured: boolean;
+  hint: string | null;
+  model: string;
+  baseUrl: string;
+  maxTokens: number;
+  temperature: number;
+  templatePrompt: string; defaultTemplatePrompt: string; templatePlaceholders: string[];
+  frameworkPrompt: string; defaultFrameworkPrompt: string; frameworkPlaceholders: string[];
+  visionPrompt: string; defaultVisionPrompt: string; visionPlaceholders: string[];
+  framework: PcReviewFramework;
+  defaultFramework: PcReviewFramework;
+  vision: PcReviewFramework; defaultVision: PcReviewFramework;
+  visionReference: string; defaultVisionReference: string; visionSourceUrl: string;
+  checkIntervalHours: number;
+  lastCheckAt: string | null;
+  autoCheckEnabled: boolean;
+}
+export interface PcCheckResult {
+  ran: boolean;
+  reason?: string;
+  scored: { govActionId: string; scorePct: number }[];
+  errors: { govActionId: string; error: string }[];
+}
+
+export const proposalCheckerApi = {
+  templates: () => request<PcTemplate[]>('/proposal-checker/templates'),
+  template: (id: string) => request<PcTemplateDetail>(`/proposal-checker/templates/${encodeURIComponent(id)}`),
+  uploadTemplate: (body: { title?: string; dataUrl: string; fileName?: string }) =>
+    request<{ id: string; title: string }>('/proposal-checker/templates/upload', { method: 'POST', body: JSON.stringify(body) }),
+  linkTemplate: (body: { title?: string; url: string }) =>
+    request<{ id: string; title: string }>('/proposal-checker/templates/link', { method: 'POST', body: JSON.stringify(body), signal: AbortSignal.timeout(30000) }),
+  ruleDocTemplate: (body: { ruleDocId: string; title?: string }) =>
+    request<{ id: string; title: string }>('/proposal-checker/templates/rule-doc', { method: 'POST', body: JSON.stringify(body) }),
+  setTemplateActive: (id: string, active: boolean) =>
+    request<{ id: string; active: boolean }>(`/proposal-checker/templates/${encodeURIComponent(id)}/active`, { method: 'PATCH', body: JSON.stringify({ active }) }),
+  deleteTemplate: (id: string) =>
+    request<{ id: string; deleted: boolean }>(`/proposal-checker/templates/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  original: (id: string) =>
+    request<{ fileName: string | null; mimeType: string | null; dataUrl: string }>(`/proposal-checker/templates/${encodeURIComponent(id)}/original`),
+  govActions: (limit?: number) => request<PcGovAction[]>(`/proposal-checker/gov-actions${limit ? `?limit=${limit}` : ''}`),
+  framework: () => request<PcReviewFramework>('/proposal-checker/framework'),
+  vision: () => request<PcVisionConfig>('/proposal-checker/vision'),
+  govAction: (id: string) => request<PcGovActionDetail>(`/proposal-checker/gov-actions/${encodeURIComponent(id)}`, { signal: AbortSignal.timeout(30000) }),
+  govActionTitles: (ids: string[]) =>
+    request<Record<string, { title: string | null; status: string }>>('/proposal-checker/gov-action-titles', { method: 'POST', body: JSON.stringify({ ids }), signal: AbortSignal.timeout(90000) }),
+  results: (templateId?: string) => request<PcResult[]>(`/proposal-checker/results${templateId ? `?templateId=${encodeURIComponent(templateId)}` : ''}`),
+  aiConfig: () => request<PcAiConfig>('/proposal-checker/ai-config'),
+  updateAiConfig: (body: { apiKey?: string; model?: string; baseUrl?: string; maxTokens?: number; temperature?: number; templatePrompt?: string; frameworkPrompt?: string; visionPrompt?: string; reviewFramework?: PcReviewFramework; visionFramework?: PcReviewFramework; visionReference?: string; visionSourceUrl?: string; checkIntervalHours?: number; autoCheckEnabled?: boolean }) =>
+    request<PcAiConfig>('/proposal-checker/ai-config', { method: 'PATCH', body: JSON.stringify(body) }),
+  testAi: () => request<{ ok: true; model: string }>('/proposal-checker/ai-config/test', { method: 'POST', signal: AbortSignal.timeout(30000) }),
+  score: (templateId: string, govActionId: string, extraLinks?: string[]) =>
+    request<PcResult>('/proposal-checker/score', { method: 'POST', body: JSON.stringify({ templateId, govActionId, extraLinks }), signal: AbortSignal.timeout(180000) }),
+  deleteResult: (id: string) =>
+    request<{ id: string; deleted: boolean }>(`/proposal-checker/results/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  checkNow: () => request<PcCheckResult>('/proposal-checker/check-now', { method: 'POST', signal: AbortSignal.timeout(600000) }),
+  resultLog: (id: string) =>
+    request<{ prompt: string | null; response: string | null }>(`/proposal-checker/results/${encodeURIComponent(id)}/log`),
+  publicScanConfig: () => request<PcPublicScanConfig>('/proposal-checker/public-scan-config'),
+  updatePublicScanConfig: (body: { enabled?: boolean; feeAda?: number; address?: string }) =>
+    request<PcPublicScanConfig>('/proposal-checker/public-scan-config', { method: 'PATCH', body: JSON.stringify(body) }),
+  templateTiers: () => request<PcTierConfig>('/proposal-checker/template-tiers'),
+  updateTemplateTiers: (body: Partial<Omit<PcTierConfig, 'names'>> & { names?: Partial<PcTierNames> }) =>
+    request<PcTierConfig>('/proposal-checker/template-tiers', { method: 'PATCH', body: JSON.stringify(body) }),
+  generateTierQuestions: (tier: 'middle' | 'large', count?: number) =>
+    request<{ questions: string[] }>('/proposal-checker/template-tiers/generate', { method: 'POST', body: JSON.stringify({ tier, count }) }),
+  // Public pay-to-scan
+  scanTool: () => request<PcScanTool>('/proposal-checker/scan-tool'),
+  scanSignMessage: (stake: string) => request<{ message: string }>(`/proposal-checker/scan-sign-message?stake=${encodeURIComponent(stake)}`),
+  createScan: (body: { walletStakeAddr: string; walletPaymentAddr?: string; title: string; abstract?: string; motivation?: string; rationale?: string; amountAda?: number; extraLinks?: string[] }) =>
+    request<PcScanCreated>('/proposal-checker/scan', { method: 'POST', body: JSON.stringify(body) }),
+  getScan: (id: string) => request<PcScan>(`/proposal-checker/scan/${encodeURIComponent(id)}`),
+  updateScan: (id: string, body: { title: string; abstract?: string; motivation?: string; rationale?: string; amountAda?: number; extraLinks?: string[] }) =>
+    request<PcScan>(`/proposal-checker/scan/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  attachScanTx: (id: string, txHash: string) => request<PcScan>(`/proposal-checker/scan/${encodeURIComponent(id)}/tx`, { method: 'POST', body: JSON.stringify({ txHash }) }),
+  verifyScan: (id: string) => request<PcScan>(`/proposal-checker/scan/${encodeURIComponent(id)}/verify`, { method: 'POST' }),
+  runScan: (id: string) => request<PcScan>(`/proposal-checker/scan/${encodeURIComponent(id)}/run`, { method: 'POST', signal: AbortSignal.timeout(180000) }),
+  forkScan: (id: string) => request<PcScan>(`/proposal-checker/scan/${encodeURIComponent(id)}/fork`, { method: 'POST' }),
+  myScans: (body: { stakeAddress: string; signature: string; key: string }) =>
+    request<PcScan[]>('/proposal-checker/scan/mine', { method: 'POST', body: JSON.stringify(body) }),
+  // Board view of all public scans
+  listScans: () => request<PcScanList>('/proposal-checker/scans'),
+  scanDetail: (id: string) => request<PcScan>(`/proposal-checker/scans/${encodeURIComponent(id)}`),
+};
+
+export interface PcPublicScanConfig { enabled: boolean; feeAda: number; address: string; resolvedAddress: string; network: string }
+export interface PcScanTool { enabled: boolean; feeAda: number; address: string; network: string; tiers: { enabled: boolean; smallMax: number; middleMax: number; names: PcTierNames } }
+export interface PcScanCreated { id: string; toAddress: string; feeAda: number; status: string }
+/** The fields ResultCard renders — satisfied by both PcResult and PcScan. */
+export interface PcScored { model?: string | null; scorePct: number | null; questions?: PcFinding[] | null; templateFindings?: PcFinding[] | null; visionFindings?: PcFinding[] | null; visionPct?: number | null }
+export interface PcScan extends PcScored {
+  id: string;
+  walletStakeAddr: string;
+  walletPaymentAddr: string | null;
+  title: string;
+  abstract: string;
+  motivation: string;
+  rationale: string;
+  amountAda: number | null;
+  extraLinks: string[];
+  feeAda: number;
+  toAddress: string;
+  feeTxHash: string | null;
+  feeVerified: boolean;
+  status: string; // PENDING_PAYMENT | PAID | DONE | FAILED_RETRY | FAILED_CONTACT_ADMIN
+  attempts: number;
+  error: string | null;
+  createdAt: string;
+  prompt?: string | null;
+  response?: string | null;
+  /** Fee-payment ledger: the total confirmed so far, and each payment (several can add up to the fee). */
+  paidAda: number;
+  payments: { txHash: string; ada: number | null; sender: string | null; seen: boolean }[];
+  /** Versioning: "Edit and Rescan" forks a scan into a new version linked to its parent. */
+  version: number;
+  parentId: string | null;
+}
+export interface PcScanList { total: number; paid: number; pending: number; done: number; failedPaid: number; scans: (PcScan & { refundCandidate: boolean })[] }

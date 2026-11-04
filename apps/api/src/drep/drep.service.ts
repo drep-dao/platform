@@ -1195,12 +1195,18 @@ export class DrepService {
     return typeof v === 'boolean' ? v : PLATFORM_CONFIG_DEFAULTS.DREP_OPEN_ADMISSION;
   }
 
+  /** §14.2 — board YES votes needed to admit or remove a Council member. Reads ADMISSION_APPROVAL_VOTES:
+   *  0 (default) = automatic MAJORITY of the seated board (2-of-3, 3-of-5, …); a positive value forces
+   *  an explicit M, clamped to 1…(seated board size). Mirrors the treasury multisig threshold, so a
+   *  board-size change (seats added/removed) flows through to the admission/removal vote automatically. */
   private async approvalThreshold(): Promise<number> {
-    const row = await this.prisma.platformConfig.findUnique({
-      where: { key: 'ADMISSION_APPROVAL_VOTES' },
-    });
-    const v = row?.value;
-    return typeof v === 'number' ? v : PLATFORM_CONFIG_DEFAULTS.ADMISSION_APPROVAL_VOTES;
+    const seated = await this.prisma.boardSeat.count({ where: { removedAt: null } });
+    if (seated <= 0) return 0;
+    const row = await this.prisma.platformConfig.findUnique({ where: { key: 'ADMISSION_APPROVAL_VOTES' } });
+    const forced =
+      typeof row?.value === 'number' ? row.value : (PLATFORM_CONFIG_DEFAULTS.ADMISSION_APPROVAL_VOTES as number);
+    const t = forced > 0 ? forced : Math.floor(seated / 2) + 1; // majority
+    return Math.max(1, Math.min(t, seated));
   }
 
   /**
@@ -1277,6 +1283,87 @@ export class DrepService {
     }
 
     return { gatingEnabled, eligible: requirements.every((r) => r.met), freePeriod, requirements };
+  }
+
+  /**
+   * §14.1 — board Setup tester: would a given DRep pass the entry gates as currently configured?
+   * Mirrors the gate checks in entryEligibility() but for an arbitrary on-chain DRep id typed into
+   * Setup (not a logged-in user). The optional `stakeAddress` is the DRep operator's own stake —
+   * needed only to measure OWN voting power; without it the power gate is judged on delegator count
+   * alone. KEEP IN SYNC with the power/activity blocks of entryEligibility().
+   */
+  async verifyEntryForDrep(
+    rawDrepId: string,
+    stakeAddress?: string,
+  ): Promise<{
+    drepId: string;
+    name?: string;
+    image?: string;
+    gatingEnabled: boolean;
+    eligible: boolean;
+    requirements: { group: 'power' | 'activity'; label: string; met: boolean; detail: string }[];
+  }> {
+    const input = (rawDrepId ?? '').trim();
+    if (!input) throw new BadRequestException('enter a DRep ID');
+    let drepId: string;
+    if (input.startsWith('drep1')) drepId = input;
+    else if (/^[0-9a-fA-F]{56}$/.test(input)) drepId = drepIdFromKeyHashHex(input.toLowerCase());
+    else throw new BadRequestException('not a valid DRep ID (expected drep1… or a 56-character hex key hash)');
+    const stake = stakeAddress?.trim() || null;
+
+    // §CIP-119 — on-chain DRep identity (name + image) for confirmation, best-effort.
+    const meta = (await this.cardano.drepMetadata([drepId])).get(drepId);
+    const name = meta?.name;
+    const image = meta?.image;
+
+    const rows = await this.prisma.platformConfig.findMany();
+    const overrides = new Map(rows.map((r) => [r.key, r.value]));
+    const D = PLATFORM_CONFIG_DEFAULTS as Record<string, number | string | boolean>;
+    const num = (k: string) => { const v = overrides.get(k); return typeof v === 'number' ? v : (D[k] as number); };
+    const bool = (k: string) => { const v = overrides.get(k); return typeof v === 'boolean' ? v : (D[k] as boolean); };
+
+    const requirePower = bool('ENTRY_REQUIRE_VOTING_POWER');
+    const requireActivity = bool('ENTRY_REQUIRE_ACTIVITY');
+    const gatingEnabled = requirePower || requireActivity;
+    const requirements: { group: 'power' | 'activity'; label: string; met: boolean; detail: string }[] = [];
+    if (!gatingEnabled) return { drepId, name, image, gatingEnabled, eligible: true, requirements };
+
+    if (requirePower) {
+      const minOwn = num('MIN_OWN_VOTING_POWER_ADA');
+      const minDelegs = num('MIN_DELEGATORS');
+      const minStake = num('MIN_DELEGATOR_STAKE_ADA');
+      const m = await this.cardano.drepEntryMetrics(drepId, stake ?? '', BigInt(Math.round(minStake)) * 1_000_000n);
+      const ownAda = Number(m.ownVotingPowerLovelace) / 1_000_000;
+      const met = m.available && ((stake != null && ownAda >= minOwn) || m.qualifyingDelegators >= minDelegs);
+      const ownPart = stake != null ? `own ${Math.round(ownAda).toLocaleString()} ₳ (need ${minOwn.toLocaleString()}), or ` : '';
+      requirements.push({
+        group: 'power',
+        label: 'Voting power',
+        met,
+        detail: !m.available
+          ? "couldn't read this DRep's on-chain delegation right now — try again"
+          : `${ownPart}${m.qualifyingDelegators} delegators ≥ ${minStake.toLocaleString()} ₳ (need ${minDelegs})${stake == null ? " — add the DRep's stake address to also check own voting power" : ''}`,
+      });
+    }
+
+    if (requireActivity) {
+      const window = num('MINIMUM_VOTES_CASTED');
+      const activityPct = num('MINIMUM_DREP_ACTIVITY');
+      const onlyRationale = bool('ONLY_VOTES_WITH_RATIONALE');
+      const need = Math.ceil((window * activityPct) / 100);
+      const a = await this.cardano.drepActivityMetrics(drepId, window, onlyRationale);
+      const met = a.available && a.votesInWindow >= need;
+      requirements.push({
+        group: 'activity',
+        label: 'Voting activity',
+        met,
+        detail: !a.available
+          ? "couldn't read this DRep's on-chain voting history right now — try again"
+          : `voted on ${a.votesInWindow} of the last ${window} governance actions${onlyRationale ? ' (with rationale)' : ''} — need ${need}`,
+      });
+    }
+
+    return { drepId, name, image, gatingEnabled, eligible: requirements.every((r) => r.met), requirements };
   }
 }
 

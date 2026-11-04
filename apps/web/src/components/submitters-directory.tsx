@@ -11,6 +11,7 @@ import { useExplorer } from '@/lib/explorer';
 import { useUrlNav } from '@/lib/use-url-nav';
 import { StatusBadge, PROPOSAL_STATUS_CLS } from './round-ui';
 import { ClampedMarkdown } from './clamped-markdown';
+import { brand } from '@/lib/brand';
 
 /**
  * §2.1 — public directory of APPROVED submitters (mirrors the Council members overview).
@@ -69,6 +70,7 @@ export function SubmittersDirectory() {
                     ? <img src={s.logoDataUrl} alt="" className="h-9 w-9 rounded object-cover" />
                     : <FallbackAvatar name={s.displayName} className="h-9 w-9 rounded" />}
                   <span className="font-medium">{s.displayName}</span>
+                  {s.isBuilder ? <span className="rounded-full bg-indigo-100 px-1.5 py-0.5 text-[11px] font-semibold text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300" title={t('Has shipped products and/or received ecosystem funding')}>🛠 BUILDER</span> : null}
                   {s.country ? <span className="text-xs text-neutral-500">{s.country}</span> : null}
                   {s.status === 'LEFT' ? (
                     <span className="rounded bg-neutral-200 px-1.5 py-0.5 text-[11px] font-medium text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300" title={s.leftAt ? `${t('left')} ${new Date(s.leftAt).toLocaleDateString()}` : t('left the platform')}>
@@ -98,10 +100,26 @@ export function SubmittersDirectory() {
                       <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{t('Description')}</div>
                       <ClampedMarkdown className="mt-0.5 text-neutral-700 dark:text-neutral-300" empty="—" maxLines={15}>{s.description}</ClampedMarkdown>
                     </div>
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{t('Previous funding')}</div>
-                      <ClampedMarkdown className="mt-0.5 text-neutral-700 dark:text-neutral-300" empty={t('— none declared —')} maxLines={15}>{s.previousFunding}</ClampedMarkdown>
-                    </div>
+                    {s.previousFunding ? (
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{t('Previous funding')}</div>
+                        <ClampedMarkdown className="mt-0.5 text-neutral-700 dark:text-neutral-300" empty="—" maxLines={15}>{s.previousFunding}</ClampedMarkdown>
+                      </div>
+                    ) : null}
+                    {s.products?.length ? (
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{t('Products and protocols')}</div>
+                        <ul className="mt-0.5 space-y-1">
+                          {s.products.map((p, i) => (
+                            <li key={i} className="flex items-center gap-2">
+                              {p.iconDataUrl ? <img src={p.iconDataUrl} alt="" className="h-6 w-6 rounded object-cover" /> : null}
+                              <a href={p.url} target="_blank" rel="noreferrer" className="break-all text-emerald-700 underline dark:text-emerald-400">{p.url}</a>
+                              {p.description ? <span className="text-neutral-500">— {p.description}</span> : null}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
                     <div>
                       <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{t('Conflict of interest')}</div>
                       <ClampedMarkdown className="mt-0.5 text-neutral-700 dark:text-neutral-300" empty="—" maxLines={15}>{s.conflictOfInterest}</ClampedMarkdown>
@@ -134,17 +152,17 @@ export function SubmittersDirectory() {
                     <div>
                       <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{t('Links')}</div>
                       <div className="mt-0.5 space-y-0.5 text-xs">
-                        <div>
-                          <span className="font-medium">{t('GitHub:')}</span>{' '}
-                          {s.githubUrls.length
-                            ? s.githubUrls.map((l, i) => (
-                                <a key={i} href={l} target="_blank" rel="noreferrer" className="mr-2 break-all text-emerald-700 underline dark:text-emerald-400">{l}</a>
-                              ))
-                            : <span className="text-neutral-400">{t('not provided')}</span>}
-                        </div>
+                        {s.githubUrls?.length ? (
+                          <div>
+                            <span className="font-medium">{t('GitHub:')}</span>{' '}
+                            {s.githubUrls.map((l, i) => (
+                              <a key={i} href={l} target="_blank" rel="noreferrer" className="mr-2 break-all text-emerald-700 underline dark:text-emerald-400">{l}</a>
+                            ))}
+                          </div>
+                        ) : null}
                         <div>
                           <span className="font-medium">{t('Social media:')}</span>{' '}
-                          {s.socialLinks.length
+                          {s.socialLinks?.length
                             ? s.socialLinks.map((l, i) => (
                                 <a key={i} href={l} target="_blank" rel="noreferrer" className="mr-2 break-all text-emerald-700 underline dark:text-emerald-400">{l}</a>
                               ))
@@ -153,10 +171,14 @@ export function SubmittersDirectory() {
                       </div>
                     </div>
                   </div>
-                  {/* §2.1 — full funding-proposal portfolio + headline stats. */}
-                  <div className="w-full border-t border-neutral-200 pt-3 dark:border-neutral-800">
-                    <SubmitterPortfolioSection submitterId={s.id} />
-                  </div>
+                  {/* §2.1 — full funding-proposal portfolio + headline stats. Funding edition only
+                      (Innovation & Growth DAO); the DRep Council / governance edition has no funding
+                      proposals, so the block is hidden there. */}
+                  {brand.kind === 'funding' ? (
+                    <div className="w-full border-t border-neutral-200 pt-3 dark:border-neutral-800">
+                      <SubmitterPortfolioSection submitterId={s.id} />
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </section>

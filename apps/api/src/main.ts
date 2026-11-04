@@ -32,6 +32,10 @@ async function bootstrap() {
   expressApp.set('trust proxy', 1);
   expressApp.disable('x-powered-by');
 
+  // Proposal-checker template uploads carry a document (PDF/DOCX) inline as a base64 data URL, which
+  // can exceed the 2 MB default; give just that path a higher cap (parsed first, so the global parser
+  // below sees the body already-parsed and skips it). Everything else stays at 2 MB.
+  app.use('/api/v1/proposal-checker/templates/upload', json({ limit: '12mb' }));
   app.use(json({ limit: '2mb' }));
   app.use(urlencoded({ extended: true, limit: '2mb' }));
   app.use(cookieParser());

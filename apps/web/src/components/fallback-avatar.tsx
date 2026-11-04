@@ -33,6 +33,18 @@ function hash(name: string): number {
   return h;
 }
 
+/**
+ * §2.1 — render a user's photo when they have one, else the generated placeholder. Used wherever a
+ * person appears by name (comments, votes, authored documents). `src` is a data URL (or null).
+ */
+export function Avatar({ src, name, className = 'h-6 w-6 shrink-0 rounded-full' }: { src?: string | null; name: string; className?: string }) {
+  if (src) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={src} alt="" className={`object-cover ${className}`} />;
+  }
+  return <FallbackAvatar name={name} className={className} />;
+}
+
 export function FallbackAvatar({ name, className = 'h-9 w-9 rounded' }: { name: string; className?: string }) {
   const initial = AVATAR_FILES.length ? AVATAR_FILES[hash(name) % AVATAR_FILES.length] : INLINE_FALLBACK;
   const [src, setSrc] = useState(initial);

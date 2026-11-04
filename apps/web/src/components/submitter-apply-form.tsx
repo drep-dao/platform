@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { submitterApi, daoApi, type MySubmitter, type DaoMember } from '@/lib/api';
+import { submitterApi, daoApi, type MySubmitter, type DaoMember, type SubmitterProduct } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { useT } from '@/lib/prefs-context';
 import { brand } from '@/lib/brand';
@@ -13,6 +13,11 @@ import { resizeImageFile } from './photo-upload';
 const MIN_WORDS = 100;
 const wordCount = (s: string) => s.trim().split(/\s+/).filter(Boolean).length;
 const inputCls = 'w-full rounded border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900';
+// §2.1 — a product needs a link; drop blanks, trim the rest (used for dirty-check + submit).
+const cleanProducts = (ps: SubmitterProduct[]): SubmitterProduct[] =>
+  ps
+    .map((p) => ({ url: (p.url ?? '').trim(), description: (p.description ?? '').trim(), ...(p.iconDataUrl ? { iconDataUrl: p.iconDataUrl } : {}) }))
+    .filter((p) => p.url);
 
 /** §2.1 — apply for the submitter role. The board approves/rejects; only then can you submit. */
 export function SubmitterApplyForm({ onChange }: { onChange?: () => void }) {
@@ -32,6 +37,7 @@ export function SubmitterApplyForm({ onChange }: { onChange?: () => void }) {
   const [noSelfVote, setNoSelfVote] = useState(false);
   const [telegram, setTelegram] = useState('');
   const [prevFunding, setPrevFunding] = useState('');
+  const [products, setProducts] = useState<SubmitterProduct[]>([]);
   const [email, setEmail] = useState('');
   const [logo, setLogo] = useState('');
   const [country, setCountry] = useState('');
@@ -51,8 +57,8 @@ export function SubmitterApplyForm({ onChange }: { onChange?: () => void }) {
 
   // §2 — dirty-check: when editing an existing record, Save is enabled only when something changed.
   // The baseline (savedSig) is pinned each time the record is (re)loaded; consent isn't a profile field.
-  const sig = (f: { name: string; desc: string; githubs: string[]; socials: string[]; conflict: string; noSelfVote: boolean; telegram: string; prevFunding: string; email: string; logo: string; country: string; linkedDrepId: string }) =>
-    JSON.stringify({ name: f.name.trim(), desc: f.desc.trim(), githubs: f.githubs.map((s) => s.trim()).filter(Boolean), socials: f.socials.map((s) => s.trim()).filter(Boolean), conflict: f.conflict.trim(), noSelfVote: f.noSelfVote, telegram: f.telegram.trim(), prevFunding: f.prevFunding.trim(), email: f.email.trim(), logo: f.logo, country: f.country, linkedDrepId: f.linkedDrepId });
+  const sig = (f: { name: string; desc: string; githubs: string[]; socials: string[]; conflict: string; noSelfVote: boolean; telegram: string; prevFunding: string; products: SubmitterProduct[]; email: string; logo: string; country: string; linkedDrepId: string }) =>
+    JSON.stringify({ name: f.name.trim(), desc: f.desc.trim(), githubs: f.githubs.map((s) => s.trim()).filter(Boolean), socials: f.socials.map((s) => s.trim()).filter(Boolean), conflict: f.conflict.trim(), noSelfVote: f.noSelfVote, telegram: f.telegram.trim(), prevFunding: f.prevFunding.trim(), products: cleanProducts(f.products), email: f.email.trim(), logo: f.logo, country: f.country, linkedDrepId: f.linkedDrepId });
 
   const load = () =>
     submitterApi.mine().then((m) => {
@@ -63,10 +69,11 @@ export function SubmitterApplyForm({ onChange }: { onChange?: () => void }) {
         setConflict(m.conflictOfInterest ?? ''); setNoSelfVote(!!m.noSelfVotePledge);
         setTelegram(m.telegram ?? ''); setEmail(m.email ?? '');
         setPrevFunding(m.previousFunding ?? '');
+        setProducts(m.products ?? []);
         setLinkedDrepId(m.linkedDrepIdOnchain ?? '');
         setLinkMember(!!m.linkedDrepIdOnchain);
         setLinkedDaoMember(m.linkedDaoMember ?? null);
-        setSavedSig(sig({ name: m.displayName, desc: m.description, githubs: m.githubUrls ?? [], socials: m.socialLinks ?? [], conflict: m.conflictOfInterest ?? '', noSelfVote: !!m.noSelfVotePledge, telegram: m.telegram ?? '', prevFunding: m.previousFunding ?? '', email: m.email ?? '', logo: m.logoDataUrl ?? '', country: m.country, linkedDrepId: m.linkedDrepIdOnchain ?? '' }));
+        setSavedSig(sig({ name: m.displayName, desc: m.description, githubs: m.githubUrls ?? [], socials: m.socialLinks ?? [], conflict: m.conflictOfInterest ?? '', noSelfVote: !!m.noSelfVotePledge, telegram: m.telegram ?? '', prevFunding: m.previousFunding ?? '', products: m.products ?? [], email: m.email ?? '', logo: m.logoDataUrl ?? '', country: m.country, linkedDrepId: m.linkedDrepIdOnchain ?? '' }));
       } else if (profile?.user.displayName) {
         // Convenience prefill for a NEW application — editable, fully independent.
         setName(profile.user.displayName);
@@ -85,6 +92,17 @@ export function SubmitterApplyForm({ onChange }: { onChange?: () => void }) {
     }
   };
 
+  // §2.1 — a product's icon (client-resized like the logo), set on that row.
+  const onProductIcon = async (index: number, file: File) => {
+    try {
+      const dataUrl = await resizeImageFile(file);
+      setProducts((arr) => arr.map((v, idx) => (idx === index ? { ...v, iconDataUrl: dataUrl } : v)));
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('Could not process the image.'));
+    }
+  };
+
   const words = wordCount(desc);
   // §2.1 — the 100-word minimum gates a NEW application the board reviews; an already-approved
   // member can update their profile with any non-empty description.
@@ -94,7 +112,8 @@ export function SubmitterApplyForm({ onChange }: { onChange?: () => void }) {
   const needsConsent = mine?.status !== 'APPROVED';
   const canSubmit = !!trimmedName && !!country && !!desc.trim() && !!conflict.trim() && !!telegram.trim() && emailOk && (!needsConsent || agreePersist) && (!needsFullDesc || words >= MIN_WORDS);
   // A new application (no saved baseline) always submits; an edit requires an actual change.
-  const formSig = sig({ name, desc, githubs, socials, conflict, noSelfVote, telegram, prevFunding, email, logo, country, linkedDrepId: linkMember ? linkedDrepId : '' });
+  const formSig = sig({ name, desc, githubs, socials, conflict, noSelfVote, telegram, prevFunding, products, email, logo, country, linkedDrepId: linkMember ? linkedDrepId : '' });
+  const isBuilder = prevFunding.trim() !== '' || cleanProducts(products).length > 0;
   const dirty = savedSig === null || formSig !== savedSig;
 
   const submit = async (e: React.FormEvent) => {
@@ -116,6 +135,7 @@ export function SubmitterApplyForm({ onChange }: { onChange?: () => void }) {
         telegram: telegram.trim(),
         email: email.trim(),
         previousFunding: prevFunding.trim(),
+        products: cleanProducts(products),
         logoDataUrl: logo || undefined,
         country,
         agreePersist,
@@ -199,21 +219,6 @@ export function SubmitterApplyForm({ onChange }: { onChange?: () => void }) {
           ) : null}
         </div>
 
-        <div>
-          <span className="text-sm font-medium">{t('GitHub links')} <span className="text-xs font-normal text-neutral-500">{t('(optional)')}</span></span>
-          <div className="mt-1 space-y-1">
-            {githubs.map((g, i) => (
-              <div key={i} className="flex gap-2">
-                <input value={g} onChange={(e) => setGithubs((arr) => arr.map((v, idx) => (idx === i ? e.target.value : v)))} maxLength={500} className={inputCls} placeholder="https://github.com/…" />
-                <button type="button" onClick={() => setGithubs((arr) => arr.filter((_, idx) => idx !== i))} className="rounded border border-neutral-300 px-2 text-sm dark:border-neutral-700">✕</button>
-              </div>
-            ))}
-            <button type="button" onClick={() => setGithubs((arr) => [...arr, ''])} className="rounded border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-100 dark:border-neutral-700">
-              + {t('Add')} {githubs.length === 0 ? t('a GitHub link') : t('another link')}
-            </button>
-          </div>
-        </div>
-
         {/* §2.1 — disclosure + contact (board may need to reach the team). */}
         <MarkdownEditor
           value={conflict}
@@ -229,16 +234,6 @@ export function SubmitterApplyForm({ onChange }: { onChange?: () => void }) {
           <input type="checkbox" checked={noSelfVote} onChange={(e) => setNoSelfVote(e.target.checked)} className="mt-0.5" />
           <span>{t('I will not vote for my own proposal')} <span className="text-xs text-neutral-500">{t('(informative — optional)')}</span></span>
         </label>
-
-        <MarkdownEditor
-          value={prevFunding}
-          onChange={setPrevFunding}
-          title={t('Previous funding')}
-          hint={t('optional — please keep it updated')}
-          subtitle={t('List ALL previous funding you received in the Cardano ecosystem — Catalyst, Treasury Withdrawals, Builder DAO, or other funding vehicles. Update this regularly. Supports bold, italics, headers, lists.')}
-          placeholder={t('e.g. Catalyst F11 — Project X, 50k ₳ (2024); Builder DAO grant — 10k ₳ (2025)…')}
-          minRows={3}
-        />
 
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block">
@@ -275,6 +270,75 @@ export function SubmitterApplyForm({ onChange }: { onChange?: () => void }) {
             {logo ? <button type="button" onClick={() => setLogo('')} className="rounded border border-neutral-300 px-2 py-1 text-xs dark:border-neutral-700">{t('Remove')}</button> : null}
           </div>
         </div>
+
+        {/* §2.1 — FOR BUILDERS: everything below is optional. A plain requestor skips this whole box.
+            Filling in previous funding or a product auto-labels the applicant BUILDER. */}
+        <fieldset className="rounded-lg border-2 border-dashed border-indigo-300 p-3 dark:border-indigo-800">
+          <legend className="px-1 text-xs font-bold uppercase tracking-wide text-indigo-700 dark:text-indigo-300">{t('For builders')}</legend>
+          <p className="text-xs text-neutral-500">
+            {t('Optional — only if you build in the ecosystem. A plain requestor can skip this. Filling in any of it labels you a')} <strong className="text-indigo-700 dark:text-indigo-300">BUILDER</strong>.
+          </p>
+
+          <div className="mt-3">
+            <MarkdownEditor
+              value={prevFunding}
+              onChange={setPrevFunding}
+              title={t('Previous funding')}
+              hint={t('optional — please keep it updated')}
+              subtitle={t('List ALL previous funding you received in the Cardano ecosystem — Catalyst, Treasury Withdrawals, Builder DAO, or other funding vehicles. Update this regularly. Supports bold, italics, headers, lists.')}
+              placeholder={t('e.g. Catalyst F11 — Project X, 50k ₳ (2024); Builder DAO grant — 10k ₳ (2025)…')}
+              minRows={3}
+            />
+          </div>
+
+          <div className="mt-3">
+            <span className="text-sm font-medium">{t('GitHub links')} <span className="text-xs font-normal text-neutral-500">{t('(optional)')}</span></span>
+            <div className="mt-1 space-y-1">
+              {githubs.map((g, i) => (
+                <div key={i} className="flex gap-2">
+                  <input value={g} onChange={(e) => setGithubs((arr) => arr.map((v, idx) => (idx === i ? e.target.value : v)))} maxLength={500} className={inputCls} placeholder="https://github.com/…" />
+                  <button type="button" onClick={() => setGithubs((arr) => arr.filter((_, idx) => idx !== i))} className="rounded border border-neutral-300 px-2 text-sm dark:border-neutral-700">✕</button>
+                </div>
+              ))}
+              <button type="button" onClick={() => setGithubs((arr) => [...arr, ''])} className="rounded border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-100 dark:border-neutral-700">
+                + {t('Add')} {githubs.length === 0 ? t('a GitHub link') : t('another link')}
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-3">
+            <span className="text-sm font-medium">{t('Products and protocols')} <span className="text-xs font-normal text-neutral-500">{t('(optional)')}</span></span>
+            <p className="text-xs text-neutral-500">{t('Live apps (dApps) / protocols you have shipped — a link, a short description, and optionally the product icon.')}</p>
+            <div className="mt-1 space-y-2">
+              {products.map((p, i) => (
+                <div key={i} className="flex items-start gap-2 rounded border border-neutral-200 p-2 dark:border-neutral-800">
+                  <div className="flex shrink-0 flex-col items-center gap-1">
+                    {p.iconDataUrl ? <img src={p.iconDataUrl} alt="" className="h-10 w-10 rounded object-cover" /> : <div className="flex h-10 w-10 items-center justify-center rounded border border-dashed border-neutral-300 text-[10px] text-neutral-400 dark:border-neutral-700">{t('icon')}</div>}
+                    <label className="cursor-pointer text-[10px] text-emerald-700 hover:underline dark:text-emerald-400">
+                      {p.iconDataUrl ? t('change') : t('add')}
+                      <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void onProductIcon(i, f); e.target.value = ''; }} />
+                    </label>
+                    {p.iconDataUrl ? <button type="button" onClick={() => setProducts((arr) => arr.map((v, idx) => (idx === i ? { ...v, iconDataUrl: null } : v)))} className="text-[10px] text-neutral-400 hover:underline">{t('remove')}</button> : null}
+                  </div>
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <input value={p.url} onChange={(e) => setProducts((arr) => arr.map((v, idx) => (idx === i ? { ...v, url: e.target.value } : v)))} maxLength={500} className={inputCls} placeholder="https://myapp.io" />
+                    <input value={p.description} onChange={(e) => setProducts((arr) => arr.map((v, idx) => (idx === i ? { ...v, description: e.target.value } : v)))} maxLength={500} className={inputCls} placeholder={t('Short description — what it does')} />
+                  </div>
+                  <button type="button" onClick={() => setProducts((arr) => arr.filter((_, idx) => idx !== i))} className="shrink-0 rounded border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700">✕</button>
+                </div>
+              ))}
+              <button type="button" onClick={() => setProducts((arr) => [...arr, { url: '', description: '' }])} className="rounded border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-100 dark:border-neutral-700">
+                + {t('Add')} {products.length === 0 ? t('a product / protocol') : t('another product')}
+              </button>
+            </div>
+          </div>
+
+          {isBuilder ? (
+            <p className="mt-3 inline-flex items-center gap-1 rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300">
+              🛠 {t('You will be labelled')} BUILDER
+            </p>
+          ) : null}
+        </fieldset>
 
         {error ? <div className="text-xs text-red-600">{error}</div> : null}
         {!canSubmit ? <div className="text-xs text-amber-600">{!trimmedName ? t('Display name is required. ') : ''}{!country ? t('Country is required. ') : ''}{!conflict.trim() ? t('Conflict-of-interest disclosure is required. ') : ''}{!telegram.trim() ? t('Telegram is required. ') : ''}{!emailOk ? t('A valid email is required. ') : ''}{needsConsent && !agreePersist ? t('You must agree to profile persistence. ') : ''}{!desc.trim() ? t('Description is required. ') : needsFullDesc && words < MIN_WORDS ? `${t('Description needs at least')} ${MIN_WORDS} ${t('words')} (${words}/${MIN_WORDS}).` : ''}</div> : null}

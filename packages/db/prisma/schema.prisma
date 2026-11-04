@@ -22,6 +22,9 @@ model AppUser {
   stakeKeyHash         String   @unique @map("stake_key_hash")
   stakeAddress         String   @map("stake_address")
   displayName          String?  @map("display_name")
+  // §2.1 — user-uploaded profile photo (data URL) for a plain viewer/any account; shown on comments,
+  // votes and authored documents. Takes precedence over a role photo (Drep/Expert/Submitter) when set.
+  avatarDataUrl        String?  @map("avatar_data_url")
   drepKeyHash          String?  @unique @map("drep_key_hash") // SEC-01: unique among non-null (one user per DRep key); Postgres allows many NULLs
   drepRegistered       Boolean  @default(false) @map("drep_registered") // verified on-chain (registered + active) at last login
   drepKeyProvenAt      DateTime? @map("drep_key_proven_at") // SEC-01: when the DRep key was cryptographically proven (CIP-95 signData), null = unproven
@@ -107,6 +110,10 @@ model SubmitterApplication {
   // §2.1 — all previous Cardano-ecosystem funding (Catalyst, Treasury Withdrawals, Builder
   // DAO, …). Optional, expected to be kept up to date.
   previousFunding     String    @default("") @map("previous_funding")
+  // §2.1 — "FOR BUILDERS": products/protocols the applicant has shipped, as
+  // [{url, description, iconDataUrl?}]. Optional. A non-empty previousFunding OR products ⇒
+  // the applicant is auto-labelled BUILDER; a plain requestor leaves this empty.
+  products            Json?     @map("products")
   // §2 — the same entity may register a DAO-member profile on a DIFFERENT wallet. When this
   // submitter declares "I'm also a DAO member", we store that member's on-chain DRep id here so
   // the two profiles cross-link. Self-declared (board may override). Null = no link.
@@ -137,6 +144,7 @@ model SubmitterApplicationHistory {
   telegram           String   @default("")
   email              String   @default("")
   previousFunding    String   @default("") @map("previous_funding")
+  products           Json?    @map("products") // §2.1 — snapshot of the FOR BUILDERS products list
   snapshotAt         DateTime @default(now()) @map("snapshot_at") @db.Timestamptz(6) // when this version was replaced
 
   @@index([userId])
@@ -510,6 +518,12 @@ model Proposal {
   deliveryRemindedAt     DateTime? @map("delivery_reminded_at") @db.Timestamptz(6)
   pollOptions            Json?     @map("poll_options")
   thresholdKind          String?   @map("threshold_kind")
+  // §30 — "Document for public comment": who may post comments — DREPS (registered DReps only) or
+  // ANY_WALLET (anyone signed in with a wallet). Null = the default open behaviour (any signed-in user).
+  commentAudience        String?   @map("comment_audience")
+  // §30 — who may edit the document + its attachments while it is in DRAFT/COMMENT — PROPOSER (the
+  // author only) or PROPOSER_BOARD (author + board). Null = proposer only. Locked once voting opens.
+  docEditableBy          String?   @map("doc_editable_by")
   // §10 — PUBLIC by default; PRIVATE makes an internal proposal visible + votable to board only.
   isPrivate              Boolean   @default(false) @map("is_private")
   // §14 — board-member election: an INSTRUCTIVE internal proposal whose 5 actors are the
@@ -577,10 +591,35 @@ model Proposal {
   stopFundings         StopFundingProposal[]
   ruleDocument         RuleDocument?           @relation("RuleDocProposals", fields: [ruleDocumentId], references: [id])
   decision             Decision?               @relation("DecisionProposals", fields: [decisionId], references: [id])
+  linkedRequests       Request[]               @relation("RequestLinkedProposal")
+  attachments          ProposalAttachment[]
 
   @@index([roundId, status])
   @@index([type, status])
   @@map("proposal")
+}
+
+// §30 — files/links attached to a "document for public comment" internal proposal. A proposal can
+// carry several: UPLOAD (a PDF/DOCX/MD/TXT stored as a base64 data URL + extracted text) or LINK (an
+// external/Google-Drive URL; we try to fetch + extract text too). Mirrors the scoring-tool template
+// upload shape. Editable while the proposal is in DRAFT/COMMENT; frozen once voting opens.
+model ProposalAttachment {
+  id            String   @id @default(uuid()) @db.Uuid
+  proposalId    String   @map("proposal_id") @db.Uuid
+  source        String // 'UPLOAD' | 'LINK'
+  title         String?
+  sourceUrl     String?  @map("source_url") // when LINK
+  fileName      String?  @map("file_name") // when UPLOAD
+  mimeType      String?  @map("mime_type")
+  fileDataUrl   String?  @map("file_data_url") @db.Text // base64 data URL of the original (UPLOAD)
+  extractedText String   @default("") @map("extracted_text") @db.Text
+  sortIdx       Int      @default(0) @map("sort_idx")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  proposal Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@index([proposalId, sortIdx])
+  @@map("proposal_attachment")
 }
 
 // §27 — Rule Documents: a DRep authors a document of rules. It starts PRIVATE (owner-only), is
@@ -991,6 +1030,139 @@ model PlatformSecret {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("platform_secret")
+}
+
+// Proposal checker — a board-uploaded "template": a document listing the requirements/questions a
+// good Cardano on-chain governance action should answer. Original kept as a base64 data URL (when
+// uploaded) or a URL (when linked); extractedText is the plain text used for display + AI judging.
+model ProposalCheckTemplate {
+  id            String                @id @default(uuid()) @db.Uuid
+  title         String
+  source        String // 'UPLOAD' | 'LINK' | 'RULE_DOC'
+  sourceUrl     String?               @map("source_url") // when LINK; 'ruledoc:<id>' when RULE_DOC
+  fileName      String?               @map("file_name") // when UPLOAD
+  mimeType      String?               @map("mime_type")
+  fileDataUrl   String?               @map("file_data_url") @db.Text // base64 data URL of the original (UPLOAD)
+  extractedText String                @map("extracted_text") @db.Text
+  // A fixed, numbered requirement checklist compiled once from extractedText, so every proposal is
+  // scored against the SAME items (stable count, comparable across proposals). [{id, item}].
+  rubric        Json?
+  active        Boolean               @default(true)
+  createdBy     String?               @map("created_by") @db.Uuid
+  createdAt     DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  results       ProposalCheckResult[]
+
+  @@index([active, createdAt(sort: Desc)])
+  @@map("proposal_check_template")
+}
+
+// Proposal checker — the stored result of an AI judging a governance action against a template.
+// `questions` is a JSON array: [{ question, status: 'FULL'|'PARTIAL'|'NONE', note }]. Public read-only.
+// Persistent cache of a gov action's resolved CIP-108 metadata. Anchors are content-addressed
+// (immutable), so once fetched it never needs re-reading — this survives restarts and, by cutting
+// IPFS gateway calls to near zero, keeps the shared gateways from rate-limiting the server.
+model GovActionMeta {
+  proposalId String   @id @map("proposal_id") // bech32 gov_action1…
+  metaUrl    String?  @map("meta_url")
+  json       Json
+  fetchedAt  DateTime @default(now()) @map("fetched_at") @db.Timestamptz(6)
+
+  @@map("gov_action_meta")
+}
+
+model ProposalCheckResult {
+  id             String                @id @default(uuid()) @db.Uuid
+  templateId     String                @map("template_id") @db.Uuid
+  govActionId    String                @map("gov_action_id") // bech32 gov_action1...
+  govActionTitle String?               @map("gov_action_title")
+  govActionType  String?               @map("gov_action_type")
+  amountAda      Decimal?              @map("amount_ada") @db.Decimal(20, 6) // TreasuryWithdrawals total requested, in ADA (drives ask-size tiering)
+  submittedAt    DateTime?             @map("submitted_at") @db.Timestamptz(6) // on-chain submission time (gov action blockTime) — for submission-date ordering independent of the live Koios fetch
+  scorePct       Int                   @map("score_pct") // Template coverage %
+  templateFindings Json?               @map("template_findings") // per-requirement coverage detail
+  visionPct      Int?                  @map("vision_pct") // Cardano Vision 2030 alignment %
+  visionFindings Json?                 @map("vision_findings") // per-question Vision 2030 detail
+  summary        String?               @db.Text
+  questions      Json // Triangle Forces framework findings
+  prompt         String?               @db.Text // the exact prompt sent to the AI (board-only log)
+  rawResponse    String?               @map("raw_response") @db.Text // the raw AI response (board-only log)
+  model          String?
+  createdBy      String?               @map("created_by") @db.Uuid
+  createdAt      DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  template       ProposalCheckTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId, createdAt(sort: Desc)])
+  @@index([govActionId, createdAt(sort: Desc)])
+  @@map("proposal_check_result")
+}
+
+// Public paid proposal-scan: a submitter pays a fee in ADA to run the proposal-checker engine on a
+// DRAFT proposal (pasted CIP-108 fields) BEFORE submitting it on-chain. Keyed by the connected wallet
+// so a returning wallet sees its past scans. One payment = one scan (fee_tx_hash is unique). The
+// result columns mirror ProposalCheckResult; board/admin read everything, the user reads their own.
+model PublicScan {
+  id                String    @id @default(uuid()) @db.Uuid
+  walletStakeAddr   String    @map("wallet_stake_addr") // stake1… — the user's identity
+  walletPaymentAddr String?   @map("wallet_payment_addr") // a used payment address, for sender matching
+  // CIP-108 draft fields the user pasted
+  title             String    @db.Text
+  abstract          String    @db.Text
+  motivation        String    @db.Text
+  rationale         String    @db.Text
+  extraLinks        String[]  @map("extra_links")
+  // Requested treasury amount in ADA (optional — only withdrawal actions state one). Part of the
+  // proposal, so it is fed into the scored text.
+  amountAda         Decimal?  @map("amount_ada") @db.Decimal(20, 6)
+  // Payment
+  priceAda          BigInt    @map("price_ada") // lovelace charged at creation
+  toAddress         String    @map("to_address") // treasury address the fee must be paid to
+  // feeTxHash/feeSeenOnchainAt are legacy single-tx fields; payments[] is the source of truth. The fee
+  // is met when the sum of confirmed payments ≥ priceAda. feeSeenOnchainAt = when that first happened.
+  feeTxHash         String?   @unique @map("fee_tx_hash")
+  feeSeenOnchainAt  DateTime? @map("fee_seen_onchain_at") @db.Timestamptz(6)
+  payments          PublicScanPayment[]
+  // Lifecycle: PENDING_PAYMENT → PAID → DONE | FAILED_RETRY | FAILED_CONTACT_ADMIN
+  status            String    @default("PENDING_PAYMENT")
+  attempts          Int       @default(0) // scan attempts used (one payment grants up to 2)
+  error             String?   @db.Text // last failure reason (shown to the user; lets admins spot refunds)
+  // Result — same shape as ProposalCheckResult
+  scorePct          Int?      @map("score_pct") // Template coverage %
+  templateFindings  Json?     @map("template_findings")
+  questions         Json? // Triangle Forces findings
+  visionPct         Int?      @map("vision_pct")
+  visionFindings    Json?     @map("vision_findings")
+  model             String?
+  prompt            String?   @db.Text // board-only log
+  rawResponse       String?   @map("raw_response") @db.Text // board-only log
+  // Versioning: "Edit and Rescan" forks a DONE scan into a new PENDING version that copies its content,
+  // keeps the old one, and links back to its parent. version = parent.version + 1.
+  parentScanId      String?     @map("parent_scan_id") @db.Uuid
+  parent            PublicScan? @relation("ScanVersions", fields: [parentScanId], references: [id], onDelete: SetNull)
+  versions          PublicScan[] @relation("ScanVersions")
+  version           Int         @default(1)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([walletStakeAddr, createdAt(sort: Desc)])
+  @@index([status, feeSeenOnchainAt])
+  @@map("public_scan")
+}
+
+/// One fee payment toward a PublicScan. A scan can collect several (e.g. two 200 ₳ txs → 400 ₳), and
+/// unlocks when the confirmed total ≥ the fee. txHash is globally unique so one tx funds only one scan.
+/// lovelace/sender/seenAt are null until the tx is seen on-chain (the poller fills them in).
+model PublicScanPayment {
+  id        String     @id @default(uuid()) @db.Uuid
+  scanId    String     @map("scan_id") @db.Uuid
+  scan      PublicScan @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  txHash    String     @unique @map("tx_hash") // one tx funds at most one scan (global)
+  lovelace  BigInt? // amount this tx paid to the fee address; null until confirmed on-chain
+  sender    String? // the funding address (txSenderAddress), for refunds
+  seenAt    DateTime?  @map("seen_at") @db.Timestamptz(6) // when confirmed on-chain
+  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([scanId])
+  @@map("public_scan_payment")
 }
 
 model QuickPoll {
@@ -1666,17 +1838,21 @@ model Request {
   title              String
   description        String
   expectedResponseAt DateTime? @map("expected_response_at") @db.Timestamptz(6) // §R — submitter's requested response-by time
-  status             String    @default("DRAFT") // DRAFT | PENDING_FEE | ACTIVE | DONE | REJECTED | DELETED
+  status             String    @default("DRAFT") // DRAFT | PENDING_FEE | ACTIVE(New) | ACCEPTED | DONE(Complete) | REJECTED | DELETED
   feeTxHash          String?   @map("fee_tx_hash")
   feeSeenOnchainAt   DateTime? @map("fee_seen_onchain_at") @db.Timestamptz(6)
   publishedAt        DateTime? @map("published_at") @db.Timestamptz(6) // §R — locked once published
+  // §R — optional link to an internal proposal, when the board escalates a request to a vote.
+  // Default flow is notification + status only; the link is what turns a request into a proposal.
+  linkedProposalId   String?   @map("linked_proposal_id") @db.Uuid
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   decidedAt          DateTime? @map("decided_at") @db.Timestamptz(6)
   decidedByUserId    String?   @map("decided_by_user_id") @db.Uuid
 
-  submitter AppUser          @relation("RequestSubmitter", fields: [submitterUserId], references: [id])
-  type      RequestType?     @relation(fields: [typeId], references: [id])
-  comments  RequestComment[]
+  submitter      AppUser          @relation("RequestSubmitter", fields: [submitterUserId], references: [id])
+  type           RequestType?     @relation(fields: [typeId], references: [id])
+  linkedProposal Proposal?        @relation("RequestLinkedProposal", fields: [linkedProposalId], references: [id])
+  comments       RequestComment[]
 
   @@index([status, createdAt])
   @@map("request")

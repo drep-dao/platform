@@ -24,6 +24,88 @@ export interface AddressTx {
   outLovelace: bigint; // gross lovelace the queried addresses SPENT in this tx
 }
 
+/** A Cardano on-chain governance action (gov action / proposal) — for the Proposal checker. */
+export interface GovAction {
+  proposalId: string; // bech32 gov_action1…
+  type: string; // ParameterChange | TreasuryWithdrawals | InfoAction | …
+  blockTime: number; // unix seconds submitted
+  metaUrl: string | null; // CIP-108 metadata anchor
+  metaHash: string | null;
+  expiration: number | null; // epoch it expires
+  status: 'active' | 'enacted' | 'ratified' | 'expired' | 'dropped';
+  withdrawalAda?: number | null; // TreasuryWithdrawals: total requested, converted from on-chain lovelace to ADA
+}
+/** Parsed CIP-108 governance-action metadata (the proposal text the AI judges). */
+export interface GovActionMeta {
+  available: boolean;
+  title?: string;
+  abstract?: string;
+  motivation?: string;
+  rationale?: string;
+  references?: { label?: string; uri?: string }[];
+  raw?: string; // the full anchor JSON as text (capped), for the AI when fields are thin
+}
+
+// ── CIP-129 governance-action id (bech32) ─────────────────────────────────────────
+// Koios returns a proposal's id as bech32 `gov_action1…` (= tx_hash||index). Blockfrost's
+// governance endpoints identify the same proposal by (tx_hash, cert_index) with no bech32,
+// so to present Blockfrost rows with the SAME id the rest of the platform keys on, we encode
+// it here. Standard bech32 (not bech32m); verified against known mainnet proposals.
+const BECH32_CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+function bech32Polymod(values: number[]): number {
+  const GEN = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
+  let chk = 1;
+  for (const v of values) {
+    const top = chk >>> 25;
+    chk = ((chk & 0x1ffffff) << 5) ^ v;
+    for (let i = 0; i < 5; i++) if ((top >> i) & 1) chk ^= GEN[i];
+  }
+  return chk;
+}
+function bech32HrpExpand(hrp: string): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < hrp.length; i++) out.push(hrp.charCodeAt(i) >> 5);
+  out.push(0);
+  for (let i = 0; i < hrp.length; i++) out.push(hrp.charCodeAt(i) & 31);
+  return out;
+}
+function convertBits(data: number[], from: number, to: number, pad: boolean): number[] {
+  let acc = 0, bits = 0;
+  const out: number[] = [];
+  const maxv = (1 << to) - 1;
+  for (const v of data) {
+    acc = (acc << from) | v;
+    bits += from;
+    while (bits >= to) { bits -= to; out.push((acc >> bits) & maxv); }
+  }
+  if (pad && bits) out.push((acc << (to - bits)) & maxv);
+  return out;
+}
+function bech32Encode(hrp: string, words: number[]): string {
+  const pm = bech32Polymod(bech32HrpExpand(hrp).concat(words, [0, 0, 0, 0, 0, 0])) ^ 1;
+  const chk: number[] = [];
+  for (let i = 0; i < 6; i++) chk.push((pm >> (5 * (5 - i))) & 31);
+  return `${hrp}1${words.concat(chk).map((d) => BECH32_CHARSET[d]).join('')}`;
+}
+/** bech32 gov_action1… id from a 32-byte tx hash (hex) and the proposal index. */
+function govActionId(txHash: string, index: number): string {
+  const bytes = [...Buffer.from(txHash, 'hex'), index & 0xff];
+  return bech32Encode('gov_action', convertBits(bytes, 8, 5, true));
+}
+/** Map Blockfrost's snake_case governance_type to the PascalCase Koios uses (so the type filter matches). */
+function mapBlockfrostGovType(t: string): string {
+  switch (t) {
+    case 'treasury_withdrawals': return 'TreasuryWithdrawals';
+    case 'parameter_change': return 'ParameterChange';
+    case 'hard_fork_initiation': return 'HardForkInitiation';
+    case 'info_action': return 'InfoAction';
+    case 'new_constitution': return 'NewConstitution';
+    case 'no_confidence': return 'NoConfidence';
+    case 'update_committee': return 'UpdateCommittee';
+    default: return t || 'Unknown';
+  }
+}
+
 /**
  * Read-only on-chain queries via Koios (free, no key). Used to verify that a
  * DRep ID is actually registered on-chain (§22.4) before seating/admitting it.
@@ -137,11 +219,18 @@ export class CardanoQueryService {
     }
   }
 
-  /** A Koios fetch — prepends the base and adds the Bearer token when one is configured. */
-  private koiosFetch(pathAndQuery: string, init?: RequestInit): Promise<Response> {
+  /** A Koios fetch — prepends the base and adds the Bearer token when one is configured.
+   *  Retries a 429/503 twice with a short backoff (300ms, 1200ms) so a transient throttle under
+   *  burst doesn't surface as an outage; the final response (ok or not) is returned to the caller. */
+  private async koiosFetch(pathAndQuery: string, init?: RequestInit): Promise<Response> {
     const headers: Record<string, string> = { ...((init?.headers as Record<string, string>) ?? {}) };
     if (this.koiosToken) headers['Authorization'] = `Bearer ${this.koiosToken}`;
-    return fetch(`${this.base}${pathAndQuery}`, { ...init, headers });
+    let res = await fetch(`${this.base}${pathAndQuery}`, { ...init, headers });
+    for (let attempt = 0; (res.status === 429 || res.status === 503) && attempt < 2; attempt++) {
+      await new Promise((r) => setTimeout(r, 300 * (attempt + 1) * (attempt + 1)));
+      res = await fetch(`${this.base}${pathAndQuery}`, { ...init, headers });
+    }
+    return res;
   }
 
   /** Broadcast a signed tx (CBOR hex) via Koios /submittx, AUTHENTICATED with the Koios token when one
@@ -1432,6 +1521,150 @@ export class CardanoQueryService {
       max_val_size: Number(p.max_val_size ?? 0),
       coins_per_utxo_size: String(p.coins_per_utxo_size ?? '0'),
     };
+  }
+
+  // ── Cardano on-chain GOVERNANCE ACTIONS (for the Proposal checker) ──────────────
+  /** List governance actions via Koios /proposal_list, newest first (keyless). Best-effort → []. */
+  async listGovActions(limit = 60): Promise<GovAction[]> {
+    const n = Math.max(1, Math.min(200, limit));
+    try {
+      return await this.fromSources('listGovActions', {
+        koios: () => this.listGovActionsViaKoios(n),
+        blockfrost: () => this.listGovActionsViaBlockfrost(n),
+      });
+    } catch (e) {
+      this.logger.warn(`listGovActions failed: ${e instanceof Error ? e.message : e}`);
+      return [];
+    }
+  }
+
+  private async listGovActionsViaKoios(n: number): Promise<GovAction[]> {
+    const res = await this.koiosFetch(`/proposal_list?order=block_time.desc&limit=${n}`);
+    if (!res.ok) throw new Error(`koios /proposal_list ${res.status}`);
+    const rows = (await res.json()) as Record<string, unknown>[];
+    return rows.map((r) => this.mapGovAction(r)).filter((g): g is GovAction => !!g);
+  }
+
+  /** Blockfrost fallback for the gov-action list. Degraded on purpose: the list endpoint gives only
+   *  (tx_hash, cert_index, governance_type), so blockTime/status/metaUrl aren't populated here (status
+   *  defaults to 'active', time 0). Enough for the page to render + an action to be picked when Koios is
+   *  down; per-action metadata is still resolved from its anchor. Only used when 'blockfrost' is in the
+   *  source order and a key is set. */
+  private async listGovActionsViaBlockfrost(n: number): Promise<GovAction[]> {
+    const res = await this.blockfrostFetch(`/governance/proposals?order=desc&count=${Math.min(100, n)}`);
+    if (!res.ok) throw new Error(`blockfrost /governance/proposals ${res.status}`);
+    const rows = (await res.json()) as Record<string, unknown>[];
+    return rows
+      .map((r): GovAction | null => {
+        const tx = typeof r.tx_hash === 'string' ? r.tx_hash : null;
+        const idx = typeof r.cert_index === 'number' ? r.cert_index : null;
+        if (!tx || idx == null) return null;
+        return {
+          proposalId: govActionId(tx, idx),
+          type: mapBlockfrostGovType(typeof r.governance_type === 'string' ? r.governance_type : ''),
+          blockTime: 0,
+          metaUrl: null,
+          metaHash: null,
+          expiration: null,
+          status: 'active',
+        };
+      })
+      .filter((g): g is GovAction => !!g);
+  }
+
+  /** One governance action by its bech32 id (gov_action1…), or null. */
+  async getGovAction(proposalId: string): Promise<GovAction | null> {
+    const all = await this.listGovActions(200);
+    return all.find((g) => g.proposalId === proposalId) ?? null;
+  }
+
+  private mapGovAction(r: Record<string, unknown>): GovAction | null {
+    const id = typeof r.proposal_id === 'string' ? r.proposal_id : null;
+    if (!id) return null;
+    const ep = (k: string) => (typeof r[k] === 'number' ? (r[k] as number) : null);
+    const status: GovAction['status'] =
+      ep('enacted_epoch') != null ? 'enacted'
+      : ep('ratified_epoch') != null ? 'ratified'
+      : ep('expired_epoch') != null ? 'expired'
+      : ep('dropped_epoch') != null ? 'dropped'
+      : 'active';
+    // Treasury-withdrawal total: Koios `withdrawal` is [{amount: "<lovelace>", stake_address}]. Sum the
+    // lovelace and convert to ADA (÷ 1,000,000) — the board sets its tier thresholds in ADA, never lovelace.
+    let withdrawalAda: number | null = null;
+    if (Array.isArray(r.withdrawal) && r.withdrawal.length) {
+      let lovelace = 0n;
+      for (const w of r.withdrawal as { amount?: unknown }[]) { try { lovelace += BigInt(String(w?.amount ?? '0')); } catch { /* skip */ } }
+      withdrawalAda = Math.round(Number(lovelace) / 10_000) / 100; // lovelace → ADA, 2dp
+    }
+    return {
+      proposalId: id,
+      type: typeof r.proposal_type === 'string' ? r.proposal_type : 'Unknown',
+      blockTime: typeof r.block_time === 'number' ? r.block_time : 0,
+      metaUrl: typeof r.meta_url === 'string' ? r.meta_url : null,
+      metaHash: typeof r.meta_hash === 'string' ? r.meta_hash : null,
+      expiration: ep('expiration'),
+      status,
+      withdrawalAda,
+    };
+  }
+
+  /** Fetch + parse a gov action's CIP-108 metadata anchor JSON. Best-effort → { available:false }. */
+  async govActionMetadata(metaUrl: string | null): Promise<GovActionMeta> {
+    if (!metaUrl) return { available: false };
+    const json = await this.fetchAnchorJson(metaUrl);
+    if (!json) return { available: false };
+    const body = (json.body && typeof json.body === 'object' ? json.body : json) as Record<string, unknown>;
+    const refs = Array.isArray(body.references)
+      ? (body.references as Record<string, unknown>[])
+          .map((x) => ({ label: cip119Str(x.label), uri: cip119Str(x.uri) }))
+          .filter((x) => x.label || x.uri)
+      : undefined;
+    return {
+      available: true,
+      title: cip119Str(body.title),
+      abstract: cip119Str(body.abstract),
+      motivation: cip119Str(body.motivation),
+      rationale: cip119Str(body.rationale),
+      references: refs,
+      raw: JSON.stringify(json).slice(0, 20000),
+    };
+  }
+
+  /** Fetch an anchor URL's JSON. ipfs:// → gateway fallback (ipfs.io now 429s); http(s) direct.
+   *  AbortSignal timeout + 512 KB cap; null on any failure. */
+  private async fetchAnchorJson(url: string): Promise<Record<string, unknown> | null> {
+    let candidates: string[] = [];
+    if (url.startsWith('ipfs://')) {
+      const cid = url.slice('ipfs://'.length).replace(/^ipfs\//, '');
+      candidates = [
+        `https://gateway.pinata.cloud/ipfs/${cid}`,
+        `https://${cid}.ipfs.dweb.link`,
+        `https://ipfs.io/ipfs/${cid}`,
+        `https://nftstorage.link/ipfs/${cid}`,
+        `https://w3s.link/ipfs/${cid}`,
+      ];
+    } else if (url.startsWith('https://') || url.startsWith('http://')) {
+      candidates = [url];
+    } else {
+      return null;
+    }
+    const tryOne = async (c: string): Promise<Record<string, unknown> | null> => {
+      try {
+        const res = await fetch(c, { signal: AbortSignal.timeout(15000), redirect: 'follow', headers: { Accept: 'application/json' } });
+        if (!res.ok) return null;
+        const buf = Buffer.from(await res.arrayBuffer());
+        if (buf.length > 512 * 1024) return null; // anchors are tiny; a huge body is suspect
+        return JSON.parse(buf.toString('utf8')) as Record<string, unknown>;
+      } catch { return null; }
+    };
+    // Two passes with a short wait — the shared IPFS gateways rate-limit the server's IP in bursts, so
+    // a brief retry often catches an open window on one of them. (Each result is persisted upstream, so
+    // this cost is paid at most once per anchor.)
+    for (let pass = 0; pass < 2; pass++) {
+      for (const c of candidates) { const j = await tryOne(c); if (j) return j; }
+      if (pass === 0) await new Promise((r) => setTimeout(r, 1500));
+    }
+    return null;
   }
 }
 

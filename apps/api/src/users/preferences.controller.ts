@@ -13,6 +13,12 @@ export class RewardAddressDto {
   @IsOptional() @IsString() @MaxLength(200) address?: string | null;
 }
 
+// §2.1 — the "Viewer" public profile: a display name + photo any signed-in wallet can set.
+export class ProfileDto {
+  @IsOptional() @IsString() @MaxLength(120) displayName?: string | null;
+  @IsOptional() @IsString() @MaxLength(700_000) avatarDataUrl?: string | null;
+}
+
 /** §20 — per-user personal preferences (My area). */
 @Controller()
 @UseGuards(JwtAuthGuard)
@@ -41,6 +47,16 @@ export class PreferencesController {
       return await this.users.setRewardPaymentAddress(ctx.userId, dto.address ?? null);
     } catch (e) {
       throw new BadRequestException(e instanceof Error ? e.message : 'invalid address');
+    }
+  }
+
+  /** §2.1 — set the public display name + photo (the Viewer profile; any signed-in wallet). */
+  @Patch('me/profile')
+  async setProfile(@CurrentUser() ctx: AuthContext, @Body() dto: ProfileDto) {
+    try {
+      return await this.users.setProfile(ctx.userId, dto);
+    } catch (e) {
+      throw new BadRequestException(e instanceof Error ? e.message : 'invalid profile');
     }
   }
 }

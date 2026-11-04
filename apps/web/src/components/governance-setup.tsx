@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { governanceApi, requestsApi, subcategoriesApi, type GovParam, type RequestTypeView, type Subcategory } from '@/lib/api';
+import { governanceApi, requestsApi, subcategoriesApi, type EntryTestResult, type GovParam, type RequestTypeView, type Subcategory } from '@/lib/api';
 import { invalidateConfig } from '@/lib/explorer';
 import { invalidateSubcategories } from '@/lib/subcategories';
 import { useT } from '@/lib/prefs-context';
@@ -203,8 +203,133 @@ export function GovernanceSetup() {
         </div>
       )}
 
+      <EntryGatingTester />
       <RequestTypesManager />
       <SubcategoryManager />
+    </div>
+  );
+}
+
+// §14.1 — board tester: type a DRep ID (and optionally its own stake address) and VERIFY whether that
+// DRep would pass the on-chain entry gates as currently SAVED. Sits right under the parameter table so
+// the board can set the gates above, then check a concrete DRep against them.
+function EntryGatingTester() {
+  const t = useT();
+  const [drepId, setDrepId] = useState('');
+  const [stake, setStake] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [res, setRes] = useState<EntryTestResult | null>(null);
+
+  const verify = async () => {
+    setBusy(true);
+    setErr(null);
+    setRes(null);
+    try {
+      setRes(await governanceApi.entryTest(drepId.trim(), stake.trim() || undefined));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : t('failed'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3 pt-4">
+      <div>
+        <h3 className="font-semibold">{t('Entry eligibility tester')}</h3>
+        <p className="text-sm text-neutral-500">
+          {t('Check whether a specific DRep would be allowed to join the Council under the entry gates above. Save your changes first — the test uses the currently saved values. Enter a DRep ID and click Verify.')}
+        </p>
+      </div>
+      {err ? <div className="text-sm text-red-600">{err}</div> : null}
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="text-xs">
+          <span className="mb-0.5 block text-neutral-500">{t('DRep ID')}</span>
+          <input
+            value={drepId}
+            onChange={(e) => setDrepId(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && drepId.trim()) verify(); }}
+            placeholder="drep1… / 56-hex key hash"
+            className="w-96 max-w-full rounded-md border border-neutral-300 px-2 py-1 font-mono text-xs dark:border-neutral-700 dark:bg-neutral-900"
+          />
+        </label>
+        <label className="text-xs">
+          <span className="mb-0.5 block text-neutral-500">{t('Stake address (optional — enables the own-voting-power check)')}</span>
+          <input
+            value={stake}
+            onChange={(e) => setStake(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && drepId.trim()) verify(); }}
+            placeholder="stake1…"
+            className="w-96 max-w-full rounded-md border border-neutral-300 px-2 py-1 font-mono text-xs dark:border-neutral-700 dark:bg-neutral-900"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={verify}
+          disabled={busy || !drepId.trim()}
+          className="rounded-md border border-emerald-500 px-2.5 py-1 text-xs text-emerald-700 hover:bg-emerald-50 disabled:opacity-40 dark:text-emerald-300 dark:hover:bg-emerald-950"
+        >
+          {busy ? t('Verifying…') : t('Verify')}
+        </button>
+      </div>
+
+      {res ? (
+        <div className="space-y-2">
+          {/* On-chain DRep identity (CIP-119), for confirmation that the right DRep was looked up. */}
+          <div className="flex items-center gap-2">
+            {res.image ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={res.image}
+                alt=""
+                className="h-9 w-9 shrink-0 rounded-full object-cover"
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              />
+            ) : (
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-dashed border-neutral-300 text-[10px] text-neutral-400 dark:border-neutral-700">
+                {t('DRep')}
+              </div>
+            )}
+            <div className="min-w-0">
+              <div className="text-sm font-medium">{res.name || t('(no on-chain name set)')}</div>
+              <div className="truncate font-mono text-[10px] text-neutral-500">{res.drepId}</div>
+            </div>
+          </div>
+
+          {!res.gatingEnabled ? (
+            <div className="rounded-md border border-neutral-300 bg-neutral-50 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+              {t('Entry gating is off — every registered DRep can join right now, so there is nothing to check.')}
+            </div>
+          ) : (
+          <div
+            className={`rounded-md border px-3 py-2 text-sm ${
+              res.eligible
+                ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30'
+                : 'border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30'
+            }`}
+          >
+            <div className="font-medium">
+              {res.eligible
+                ? t('This DRep would be allowed to join the Council.')
+                : t('This DRep would NOT be allowed to join the Council yet.')}
+            </div>
+            <ul className="mt-1.5 space-y-1">
+              {res.requirements.map((r) => (
+                <li key={r.group} className="flex gap-2">
+                  <span className={r.met ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}>
+                    {r.met ? '✓' : '✗'}
+                  </span>
+                  <span>
+                    <strong>{r.label}:</strong> {r.detail}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -15,11 +15,13 @@ import { ResetService } from './reset.service';
 import { SysadminConfigController } from './sysadmin-config.controller';
 import { SysadminMaintenanceController } from './sysadmin-maintenance.controller';
 import { SysadminGroupsController } from './sysadmin-groups.controller';
+import { SysadminEmailController } from './sysadmin-email.controller';
 import { GroupsModule } from '../groups/groups.module';
 import { GovernanceModule } from '../governance/governance.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [GovernanceModule, GroupsModule],
+  imports: [GovernanceModule, GroupsModule, NotificationsModule],
   controllers: [
     SysadminAuthController,
     SysadminGenesisController,
@@ -30,6 +32,7 @@ import { GovernanceModule } from '../governance/governance.module';
     SysadminConfigController,
     SysadminMaintenanceController,
     SysadminGroupsController,
+    SysadminEmailController,
   ],
   providers: [AdminAuthService, AdminAuditService, AdminService, GenesisService, AdminGuard, StepUpGuard, ResetService],
   exports: [AdminAuthService],

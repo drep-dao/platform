@@ -18,6 +18,11 @@ import {
   decisionsApi,
   type RuleDocSummary,
   type DecisionSummary,
+  commentsApi,
+  type CommentNode,
+  type InternalAttachment,
+  type AddAttachmentInput,
+  type OpenVotingInput,
 } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { useT } from '@/lib/prefs-context';
@@ -26,7 +31,11 @@ import { useUrlNav } from '@/lib/use-url-nav';
 import { ShareLinkButton } from './share-link-button';
 import { BackButton, StatusBadge, PROPOSAL_STATUS_CLS, fmtDateTime, toLocalInput, DateField, RationaleText, useNow, fmtCountdown } from './round-ui';
 import { Markdown, MarkdownEditor } from './markdown';
+import { renderMarkdown } from '@/lib/markdown';
 import { DocHashRow } from './doc-hash-row';
+import { ConfirmDialog } from './confirm-dialog';
+import { DiscussionThread, type DiscComment } from './discussion-thread';
+import { Avatar } from './fallback-avatar';
 
 
 const field = 'w-full rounded-md border border-neutral-300 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900';
@@ -38,6 +47,22 @@ const TYPE_LABEL: Record<string, string> = {
   SPENDING: 'Spending (treasury payment on approval)',
   RULE_APPROVAL: 'Approval of a rule document',
   DECISION_APPROVAL: 'Approval of a decision',
+  DOCUMENT: 'Document for public comment',
+};
+// §30 — for the "Open voting" picker: the real vote types a document can become (no RULE/DECISION).
+const OPEN_VOTE_TYPES: Record<string, string> = {
+  INFORMATIVE: 'Informative (yes / no decision)',
+  POLL: 'Poll (choose option(s))',
+  INSTRUCTIVE: 'Instructive (names actors to act)',
+  SPENDING: 'Spending (treasury payment on approval)',
+};
+const COMMENT_AUDIENCE_LABEL: Record<string, string> = {
+  DREPS: 'Registered DReps only',
+  ANY_WALLET: 'Anyone signed in with a wallet',
+};
+const DOC_EDITABLE_LABEL: Record<string, string> = {
+  PROPOSER: 'Only me (the author)',
+  PROPOSER_BOARD: 'Me and board members',
 };
 const SCOPE_LABEL: Record<string, string> = {
   DREPS_ONLY: 'Non-board DReps only',
@@ -76,10 +101,12 @@ export function InternalProposals() {
   const canSubmit = !!profile && (profile.roles.includes('DAO_MEMBER') || profile.roles.includes('BOARD'));
   const [items, setItems] = useState<InternalProposalSummary[] | null>(null);
   const [creating, setCreating] = useState(false);
+  // §30 — creating a "document for public comment" (a separate, dedicated form).
+  const [creatingDoc, setCreatingDoc] = useState(false);
   // §10 — editing a saved draft (its id) vs creating a fresh proposal (null).
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
   // §10 — status filter (default All), ID/title search, 50-per-page pager.
-  const [statusTab, setStatusTab] = useState<'' | 'ACTIVE' | 'APPROVED' | 'REJECTED' | 'DRAFT'>('');
+  const [statusTab, setStatusTab] = useState<'' | 'ACTIVE' | 'APPROVED' | 'REJECTED' | 'DRAFT' | 'DELETED'>('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   // §14 — sub-menu splits the regular Council-governance proposals from board-member elections.
@@ -114,9 +141,19 @@ export function InternalProposals() {
   }
 
   const isElection = subTab === 'election';
-  const closeEditor = () => { setCreating(false); setEditingDraftId(null); if (newRule) setParams({ newRule: null }); if (newDecision) setParams({ newDecision: null }); };
+  const closeEditor = () => { setCreating(false); setCreatingDoc(false); setEditingDraftId(null); if (newRule) setParams({ newRule: null }); if (newDecision) setParams({ newDecision: null }); };
   // Dedicated full-page editor: clicking "New …" or a draft row shows only the form. Submitting
   // or cancelling returns to the default list + filter view.
+  if (creatingDoc) {
+    return (
+      <div className="space-y-3">
+        <button onClick={closeEditor} className="text-sm text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200">← {tr('back to internal proposals')}</button>
+        <section className={card}>
+          <DocumentForm onCancel={closeEditor} onDone={(id) => { closeEditor(); setParams({ ip: id }); }} />
+        </section>
+      </div>
+    );
+  }
   if (creating) {
     return (
       <div className="space-y-3">
@@ -141,9 +178,16 @@ export function InternalProposals() {
   // All/Active/Approved/Rejected. The Draft tab itself appears only when the viewer has a draft.
   const inTab = all.filter((p) => (isElection ? p.isBoardElection : !p.isBoardElection));
   const hasDrafts = inTab.some((p) => p.status === 'DRAFT');
-  const statusTabs = hasDrafts ? [...STATUS_TABS, { key: 'DRAFT', label: 'Draft' } as const] : STATUS_TABS;
+  // §10 — deleted proposals are only returned to board viewers, so the Deleted tab shows for them.
+  const hasDeleted = inTab.some((p) => p.status === 'DELETED');
+  const statusTabs = [
+    ...STATUS_TABS,
+    ...(hasDrafts ? [{ key: 'DRAFT', label: 'Draft' } as const] : []),
+    ...(hasDeleted ? [{ key: 'DELETED', label: 'Deleted' } as const] : []),
+  ];
   const filtered = inTab
-    .filter((p) => (statusTab === 'DRAFT' ? p.status === 'DRAFT' : statusTab ? p.status === statusTab : p.status !== 'DRAFT'))
+    // DRAFT and DELETED each show only under their own tab; "All" and the outcome tabs exclude both.
+    .filter((p) => (statusTab === 'DRAFT' || statusTab === 'DELETED' ? p.status === statusTab : statusTab ? p.status === statusTab : p.status !== 'DRAFT' && p.status !== 'DELETED'))
     .filter((p) => matchesProposalSearch(search, { title: p.title, proposer: p.submitter, publicId: p.publicId }));
   const pages = Math.max(1, Math.ceil(filtered.length / LIST_PAGE_SIZE));
   const safePage = Math.min(page, pages);
@@ -176,9 +220,17 @@ export function InternalProposals() {
           </p>
         </div>
         {canSubmit ? (
-          <button onClick={() => { setEditingDraftId(null); setCreating(true); }} className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
-            {isElection ? tr('New election') : tr('New internal proposal')}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            {/* §30 — a "document for public comment" is a regular-tab action only (not for elections). */}
+            {!isElection ? (
+              <button onClick={() => { setEditingDraftId(null); setCreatingDoc(true); }} className="rounded-md border border-emerald-600 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40">
+                {tr('New document')}
+              </button>
+            ) : null}
+            <button onClick={() => { setEditingDraftId(null); setCreating(true); }} className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
+              {isElection ? tr('New election') : tr('New internal proposal')}
+            </button>
+          </div>
         ) : (
           <span className="text-xs text-neutral-500">{tr('Only DReps can submit internal proposals.')}</span>
         )}
@@ -240,8 +292,11 @@ export function InternalProposals() {
                   </div>
                 </div>
                 <div className="mt-1 text-xs text-neutral-500">
-                  {tr(TYPE_LABEL[p.internalType] ?? p.internalType)} · {tr(SCOPE_LABEL[p.votersScope] ?? p.votersScope)} · {tr(VTYPE_LABEL[p.votingType] ?? p.votingType)}
-                  {p.tally.kind === 'THRESHOLD' ? ` · ${tr('threshold')} ${p.thresholdPct ?? '?'}%` : ''}
+                  {tr(TYPE_LABEL[p.internalType] ?? p.internalType)}
+                  {/* §30 — a document still open for comment has no vote config yet; don't show it. */}
+                  {p.internalType === 'DOCUMENT' && p.status === 'COMMENT'
+                    ? ` · ${tr('open for comment')}`
+                    : <> · {tr(SCOPE_LABEL[p.votersScope] ?? p.votersScope)} · {tr(VTYPE_LABEL[p.votingType] ?? p.votingType)}{p.tally.kind === 'THRESHOLD' ? ` · ${tr('threshold')} ${p.thresholdPct ?? '?'}%` : ''}</>}
                   {p.submitter ? ` · ${tr('by')} ${p.submitter}` : ''}
                   {p.status === 'ACTIVE' && p.votingEndAt ? (
                     <span className={new Date(p.votingEndAt).getTime() - Date.now() <= 24 * 3600_000 ? 'font-semibold text-red-600 dark:text-red-400' : ''}>
@@ -698,7 +753,7 @@ function SubmitInternalForm({ onDone, onCancel, draftId = null, election = false
             <li><span className="font-medium">{t('Voting type:')}</span> {t('adjusted voting power')}</li>
             <li><span className="font-medium">{t('Threshold:')}</span> IMPORTANT{iThresh != null ? ` (${iThresh}%)` : ''}</li>
             <li><span className="font-medium">{t('Visibility:')}</span> {t('public')}</li>
-            <li>{t('When approved + the installation date hits, the platform replaces the board with the 5 elected candidates automatically. Any current board member can also install them earlier from the proposal page.')}</li>
+            <li>{t('When approved + the installation date hits, the platform replaces the board with the {n} elected candidates automatically. Any current board member can also install them earlier from the proposal page.').replace('{n}', String(boardSize))}</li>
           </ul>
         </div>
       ) : null}
@@ -809,6 +864,368 @@ function SubmitInternalForm({ onDone, onCancel, draftId = null, election = false
   );
 }
 
+// §30 — map a proposal CommentNode (author object) to the DiscussionThread's DiscComment shape.
+function commentToDisc(n: CommentNode): DiscComment {
+  return {
+    id: n.id,
+    authorName: n.author.displayName ?? 'Anonymous',
+    authorRole: n.author.role,
+    authorAvatar: n.author.avatarUrl ?? null,
+    isMine: !!n.isMine,
+    contentMd: n.contentMd,
+    deleted: n.deleted,
+    createdAt: n.createdAt,
+    replies: n.replies?.map(commentToDisc),
+  };
+}
+
+// §30 — read a File into a data: URL (base64), the shape the upload endpoint expects.
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(new Error('read failed'));
+    r.readAsDataURL(file);
+  });
+}
+
+/** §30 — build the attachment list (files + links) for a document, shared by create + edit. The link
+ *  draft is CONTROLLED by the parent so a URL typed but not yet "added" is never silently lost — the
+ *  create form flushes a pending draft on save. Adding a file/link is delegated to the parent (which
+ *  probes the link in create mode, or hits the API in live mode). Items may carry a readability note. */
+function AttachmentEditor({
+  items, linkDraft, setLinkDraft, onAddFile, onAddLink, onRemove, onInsertBody, disabled,
+}: {
+  items: { id?: string; source: string; title?: string | null; fileName?: string | null; sourceUrl?: string | null; note?: string | null; ok?: boolean }[];
+  linkDraft: string;
+  setLinkDraft: (v: string) => void;
+  onAddFile: (dataUrl: string, fileName: string) => void | Promise<void>;
+  onAddLink: (url: string) => void | Promise<void>;
+  onRemove: (index: number, id?: string) => void | Promise<void>;
+  onInsertBody?: (index: number) => void | Promise<void>;
+  disabled?: boolean;
+}) {
+  const t = useT();
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const addLink = async () => {
+    const url = linkDraft.trim();
+    if (!url) return;
+    setBusy(true);
+    try { await onAddLink(url); setLinkDraft(''); } finally { setBusy(false); }
+  };
+  const onFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setBusy(true);
+    try {
+      for (const file of Array.from(files)) {
+        const dataUrl = await fileToDataUrl(file);
+        await onAddFile(dataUrl, file.name);
+      }
+    } finally { setBusy(false); if (fileRef.current) fileRef.current.value = ''; }
+  };
+  return (
+    <div className="space-y-2">
+      {items.length ? (
+        <ul className="space-y-1">
+          {items.map((a, i) => (
+            <li key={a.id ?? i} className="flex items-center justify-between gap-2 rounded-md border border-neutral-200 px-2.5 py-1.5 text-sm dark:border-neutral-800">
+              <span className="min-w-0 truncate">
+                <span className="mr-1.5 rounded bg-neutral-100 px-1 text-[10px] font-semibold uppercase text-neutral-500 dark:bg-neutral-800">{a.source === 'LINK' ? t('link') : t('file')}</span>
+                {a.source === 'LINK'
+                  ? <a href={a.sourceUrl ?? '#'} target="_blank" rel="noopener noreferrer" className="text-emerald-700 underline dark:text-emerald-400">{a.title || a.sourceUrl}</a>
+                  : <span>{a.fileName || a.title}</span>}
+                {a.note ? <span className={`ml-2 text-[11px] ${a.ok === false ? 'text-amber-600' : 'text-neutral-400'}`}>{a.note}</span> : null}
+              </span>
+              {!disabled ? (
+                <span className="flex shrink-0 items-center gap-2">
+                  {onInsertBody && a.source === 'LINK' && a.ok ? (
+                    <button type="button" onClick={() => void onInsertBody(i)} className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700">{t('Insert content into body')}</button>
+                  ) : null}
+                  <button type="button" onClick={() => onRemove(i, a.id)} className="rounded-md bg-rose-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-rose-700">{t('Remove')}</button>
+                </span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : <p className="text-xs text-neutral-500">{t('No files or links yet.')}</p>}
+      {!disabled ? (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <input ref={fileRef} type="file" multiple accept=".pdf,.docx,.txt,.md,.csv,.json,.html" onChange={(e) => onFiles(e.target.files)} disabled={busy} className="text-sm" />
+          </div>
+          <div className="flex gap-2">
+            <input
+              value={linkDraft}
+              onChange={(e) => setLinkDraft(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void addLink(); } }}
+              placeholder="https://… (Google Doc / Drive / any link)"
+              disabled={busy}
+              className={field}
+            />
+            <button type="button" onClick={() => void addLink()} disabled={busy || !linkDraft.trim()} className="shrink-0 rounded-md border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800">{t('Add link')}</button>
+          </div>
+          {busy ? <p className="text-xs text-neutral-500">{t('Checking…')}</p> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// §30 — one attachment in the detail view: open a link, download an uploaded file, peek at the text,
+// and (for an editor) import its extracted text into the document content. A readability line tells
+// everyone whether we could read the source on our side (so it can be shown/commented here).
+function AttachmentView({ proposalId, a, onImport }: { proposalId: string; a: InternalAttachment; onImport?: (text: string) => void }) {
+  const t = useT();
+  const [showText, setShowText] = useState(false);
+  const readable = !!a.extractedText?.trim();
+  const download = async () => {
+    const f = await internalProposalsApi.attachmentFile(proposalId, a.id);
+    const el = document.createElement('a'); el.href = f.dataUrl; el.download = f.fileName || a.fileName || 'document'; el.click();
+  };
+  return (
+    <li className="rounded-md border border-neutral-200 p-2 text-sm dark:border-neutral-800">
+      <div className="flex items-center justify-between gap-2">
+        <span className="min-w-0 truncate">
+          <span className="mr-1.5 rounded bg-neutral-100 px-1 text-[10px] font-semibold uppercase text-neutral-500 dark:bg-neutral-800">{a.source === 'LINK' ? t('link') : t('file')}</span>
+          {a.source === 'LINK'
+            ? <a href={a.sourceUrl ?? '#'} target="_blank" rel="noopener noreferrer" className="text-emerald-700 underline dark:text-emerald-400">{a.title || a.sourceUrl}</a>
+            : <span>{a.fileName || a.title}</span>}
+          <span className={`ml-2 text-[11px] ${readable ? 'text-neutral-400' : 'text-amber-600'}`}>{readable ? `✓ ${t('readable here')}` : `· ${t('link only (not readable on our side)')}`}</span>
+        </span>
+        <span className="flex shrink-0 items-center gap-2">
+          {a.hasFile ? <button onClick={download} className="text-xs text-emerald-700 hover:underline dark:text-emerald-400">{t('Download')}</button> : null}
+          {readable ? <button onClick={() => setShowText((v) => !v)} className="text-xs text-neutral-500 hover:underline">{showText ? t('Hide text') : t('View text')}</button> : null}
+          {readable && onImport ? <button onClick={() => onImport(a.extractedText)} className="text-xs text-emerald-700 hover:underline dark:text-emerald-400">{t('Import into content')}</button> : null}
+        </span>
+      </div>
+      {showText && a.extractedText ? (
+        <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap rounded bg-neutral-50 p-2 text-xs text-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">{a.extractedText}</pre>
+      ) : null}
+    </li>
+  );
+}
+
+/** §30 — the author (or board) opens voting on a document and picks the real vote type + its params.
+ *  A compact version of the submit form's vote config; title/content/attachments are already set. */
+function OpenVotingPanel({ id, onDone }: { id: string; onDone: () => void }) {
+  const t = useT();
+  const [internalType, setInternalType] = useState('INFORMATIVE');
+  const [votersScope, setVotersScope] = useState('BOTH');
+  const [thresholdKind, setThresholdKind] = useState('DEFAULT');
+  const [votingType, setVotingType] = useState('BALANCED');
+  const [votingEndAt, setVotingEndAt] = useState(() => {
+    // Default to 7 days from now at midnight (local) — the author only adjusts it if they want a
+    // different deadline (e.g. open today → next week, same weekday).
+    const d = new Date(Date.now() + 7 * 86400_000);
+    d.setHours(0, 0, 0, 0);
+    return toLocalInput(d.toISOString());
+  });
+  const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
+  const [pollMultiple, setPollMultiple] = useState(false);
+  const [actors, setActors] = useState('');
+  const [deliveryDate, setDeliveryDate] = useState('');
+  const [spendingAmountAda, setSpendingAmountAda] = useState('');
+  const [spendingDestAddress, setSpendingDestAddress] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const isPoll = internalType === 'POLL';
+  const isSpending = internalType === 'SPENDING';
+  const isInstructive = internalType === 'INSTRUCTIVE';
+  const open = async () => {
+    setError(null);
+    if (!votingEndAt) { setError(t('Pick a voting end date.')); return; }
+    const input: OpenVotingInput = {
+      internalType, votersScope, thresholdKind, votingType,
+      votingEndAt: new Date(votingEndAt).toISOString(),
+      ...(isPoll ? { pollOptions: pollOptions.map((o) => o.trim()).filter(Boolean), pollMultiple } : {}),
+      ...(isInstructive ? { actors: actors.split(',').map((a) => a.trim()).filter(Boolean), deliveryDate: deliveryDate ? new Date(deliveryDate).toISOString() : undefined } : {}),
+      ...(isSpending ? { spendingAmountAda: Number(spendingAmountAda) || 0, spendingDestAddress: spendingDestAddress.trim() } : {}),
+    };
+    setBusy(true);
+    try { await internalProposalsApi.openVoting(id, input); onDone(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'failed'); } finally { setBusy(false); }
+  };
+  return (
+    <div className={card}>
+      <h3 className="text-base font-semibold">{t('Open voting on this document')}</h3>
+      <p className="text-xs text-neutral-500">{t('Pick the vote type and settings. Once voting opens, the document and its attachments are locked.')}</p>
+      {error ? <div className="mt-2 text-sm text-red-600">{error}</div> : null}
+      <div className="mt-2 grid gap-3 sm:grid-cols-2">
+        <div>
+          <label className="mb-1 block text-xs font-medium">{t('Vote type')}</label>
+          <select className={field} value={internalType} onChange={(e) => setInternalType(e.target.value)}>
+            {Object.entries(OPEN_VOTE_TYPES).map(([k, v]) => <option key={k} value={k}>{t(v)}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium">{t('Voting ends')}</label>
+          <DateField value={votingEndAt} onChange={setVotingEndAt} min={toLocalInput(new Date(Date.now() + 3600_000).toISOString())} required />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium">{t('Who votes')}</label>
+          <select className={field} value={votersScope} onChange={(e) => setVotersScope(e.target.value)}>
+            {Object.entries(SCOPE_LABEL).map(([k, v]) => <option key={k} value={k}>{t(v)}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium">{t('Voting power')}</label>
+          <select className={field} value={votingType} onChange={(e) => setVotingType(e.target.value)}>
+            {Object.entries(VTYPE_LABEL).map(([k, v]) => <option key={k} value={k}>{t(v)}</option>)}
+          </select>
+        </div>
+        {!isPoll ? (
+          <div>
+            <label className="mb-1 block text-xs font-medium">{t('Threshold')}</label>
+            <select className={field} value={thresholdKind} onChange={(e) => setThresholdKind(e.target.value)}>
+              <option value="DEFAULT">{t('Default')}</option>
+              <option value="IMPORTANT">{t('Important (higher)')}</option>
+            </select>
+          </div>
+        ) : null}
+      </div>
+      {isPoll ? (
+        <div className="mt-2 space-y-1.5">
+          <label className="block text-xs font-medium">{t('Options')}</label>
+          {pollOptions.map((o, i) => (
+            <input key={i} value={o} onChange={(e) => setPollOptions((s) => s.map((x, idx) => idx === i ? e.target.value : x))} className={field} placeholder={`${t('Option')} ${i + 1}`} />
+          ))}
+          <div className="flex items-center gap-3">
+            <button type="button" onClick={() => setPollOptions((s) => [...s, ''])} className="text-xs text-emerald-700 hover:underline dark:text-emerald-400">+ {t('Add option')}</button>
+            <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={pollMultiple} onChange={(e) => setPollMultiple(e.target.checked)} /> {t('Allow multiple choices')}</label>
+          </div>
+        </div>
+      ) : null}
+      {isInstructive ? (
+        <div className="mt-2 grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-xs font-medium">{t('Actors (comma-separated)')}</label>
+            <input value={actors} onChange={(e) => setActors(e.target.value)} className={field} placeholder="Alice, Bob" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium">{t('Delivery date (optional)')}</label>
+            <DateField value={deliveryDate} onChange={setDeliveryDate} />
+          </div>
+        </div>
+      ) : null}
+      {isSpending ? (
+        <div className="mt-2 grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-xs font-medium">{t('Amount (ADA)')}</label>
+            <input value={spendingAmountAda} onChange={(e) => setSpendingAmountAda(e.target.value)} type="number" min={1} className={field} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium">{t('Destination address')}</label>
+            <input value={spendingDestAddress} onChange={(e) => setSpendingDestAddress(e.target.value)} className={field} placeholder="addr1…" />
+          </div>
+        </div>
+      ) : null}
+      <button disabled={busy} onClick={open} className="mt-3 rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-40">
+        {busy ? t('Opening…') : t('Open voting')}
+      </button>
+    </div>
+  );
+}
+
+/** §30 — create a "document for public comment": upload files / paste links, pick who may comment
+ *  and who may edit, then publish it for comment (voting is opened later from the document page). */
+function DocumentForm({ onCancel, onDone }: { onCancel: () => void; onDone: (id: string) => void }) {
+  const t = useT();
+  const [title, setTitle] = useState('');
+  const [contentMd, setContentMd] = useState('');
+  const [commentAudience, setCommentAudience] = useState('ANY_WALLET');
+  const [docEditableBy, setDocEditableBy] = useState('PROPOSER');
+  const [isPrivate, setIsPrivate] = useState(false);
+  // Each pending attachment carries a readability note (links are probed on add; files are read on save).
+  const [attachments, setAttachments] = useState<(AddAttachmentInput & { note?: string; ok?: boolean })[]>([]);
+  const [linkDraft, setLinkDraft] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const canSave = title.trim().length >= 3 && !busy;
+  // Probe a link as it's added so the author sees whether we can read + display it on-platform.
+  const addLink = async (url: string) => {
+    let note = t('checking…'); let ok: boolean | undefined;
+    try { const p = await internalProposalsApi.probeLink(url); ok = p.ok; note = p.ok ? `✓ ${t('readable')} (${p.chars.toLocaleString()} ${t('chars')})` : `✗ ${p.note ?? t('could not read')}`; }
+    catch { ok = false; note = `✗ ${t('could not read')}`; }
+    setAttachments((s) => [...s, { source: 'LINK', url, note, ok }]);
+  };
+  const addFile = (dataUrl: string, fileName: string) => setAttachments((s) => [...s, { source: 'UPLOAD', dataUrl, fileName, note: t('will be read on save') }]);
+  // Pull a readable link's full text straight into the body, so the author can just set a Title and
+  // let the content be exactly what's in the link (overwrites existing content, with a heads-up).
+  const insertBody = async (index: number) => {
+    const a = attachments[index];
+    if (!a?.url) return;
+    if (contentMd.trim() && !window.confirm(t('Replace the current description with the full content of this document?'))) return;
+    setBusy(true); setError(null);
+    try { const { text } = await internalProposalsApi.fetchLinkText(a.url); setContentMd(text); }
+    catch (e) { setError(e instanceof Error ? e.message : t('could not read the link')); }
+    finally { setBusy(false); }
+  };
+  const save = async () => {
+    setError(null); setBusy(true);
+    try {
+      // Flush a link typed but not yet added, so a URL left in the box is never silently lost.
+      const finalAtts = [...attachments];
+      if (linkDraft.trim()) finalAtts.push({ source: 'LINK', url: linkDraft.trim() });
+      const payload: AddAttachmentInput[] = finalAtts.map((a) => ({ source: a.source, dataUrl: a.dataUrl, fileName: a.fileName, url: a.url, title: a.title }));
+      const d = await internalProposalsApi.createDocument({ title: title.trim(), contentMd: contentMd.trim() || undefined, commentAudience, docEditableBy, isPrivate, attachments: payload });
+      onDone(d.id);
+    } catch (e) { setError(e instanceof Error ? e.message : 'failed'); } finally { setBusy(false); }
+  };
+  return (
+    <div className="space-y-4">
+      <h2 className="text-lg font-semibold">{t('New document for public comment')}</h2>
+      <p className="text-sm text-neutral-500">{t('Publish a document (files or links) for people to comment on. No vote yet — you can open voting later and choose the vote type.')}</p>
+      {error ? <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">{error}</div> : null}
+      <div>
+        <label className="mb-1 block text-sm font-medium">{t('Title')}</label>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} className={field} placeholder={t('A short, descriptive title')} />
+      </div>
+      <div>
+        <label className="mb-1 block text-sm font-medium">{t('Description (optional)')}</label>
+        <MarkdownEditor value={contentMd} onChange={setContentMd} title={t('Description')} minRows={3} placeholder={t('Intro / context for the document (optional). The files and links below hold the substance.')} />
+      </div>
+      <div>
+        <label className="mb-1 block text-sm font-medium">{t('Files & links')}</label>
+        <p className="mb-1 text-xs text-neutral-500">{t('Links are checked on add — a ✓ means we can read and show the content on this site.')}</p>
+        <AttachmentEditor
+          items={attachments.map((a) => ({ source: a.source, fileName: a.fileName, sourceUrl: a.url, title: a.title, note: a.note, ok: a.ok }))}
+          linkDraft={linkDraft}
+          setLinkDraft={setLinkDraft}
+          onAddFile={addFile}
+          onAddLink={addLink}
+          onRemove={(i) => setAttachments((s) => s.filter((_, idx) => idx !== i))}
+          onInsertBody={insertBody}
+        />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label className="mb-1 block text-sm font-medium">{t('Who can comment')}</label>
+          <select className={field} value={commentAudience} onChange={(e) => setCommentAudience(e.target.value)}>
+            {Object.entries(COMMENT_AUDIENCE_LABEL).map(([k, v]) => <option key={k} value={k}>{t(v)}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium">{t('Who can edit the document')}</label>
+          <select className={field} value={docEditableBy} onChange={(e) => setDocEditableBy(e.target.value)}>
+            {Object.entries(DOC_EDITABLE_LABEL).map(([k, v]) => <option key={k} value={k}>{t(v)}</option>)}
+          </select>
+        </div>
+      </div>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={isPrivate} onChange={(e) => setIsPrivate(e.target.checked)} />
+        {t('Private — visible to board members only')}
+      </label>
+      <div className="flex items-center gap-2">
+        <button disabled={!canSave} onClick={save} className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-40">
+          {busy ? t('Publishing…') : t('Save for public comment')}
+        </button>
+        <button onClick={onCancel} className="rounded-md border border-neutral-300 px-4 py-2 text-sm dark:border-neutral-600">{t('Cancel')}</button>
+      </div>
+    </div>
+  );
+}
+
 function InternalDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const t = useT();
   const { profile } = useAuth();
@@ -824,11 +1241,27 @@ function InternalDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const [changing, setChanging] = useState(false);
   // §10 — new voting deadline the viewer is proposing (datetime-local), when extension is allowed.
   const [extendTo, setExtendTo] = useState('');
+  // §10 — board-only soft-delete (kept as DELETED for the record); confirm first.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // §30 — comments on a document proposal (loaded only when the proposal carries attachments or is a
+  // DOCUMENT; other internal proposals keep their existing vote-only view).
+  const [comments, setComments] = useState<CommentNode[] | null>(null);
+  // §30 — live link draft for the in-detail attachment editor, and the "edit document" sub-form.
+  const [attLinkDraft, setAttLinkDraft] = useState('');
+  const [editingDoc, setEditingDoc] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editContent, setEditContent] = useState('');
 
   const load = useCallback(() => {
     internalProposalsApi.get(id).then((d) => { setP(d); setPicked(d.myVotes); }).catch((e) => setError(e instanceof Error ? e.message : 'failed'));
   }, [id]);
   useEffect(load, [load]);
+
+  const isDoc = p ? (p.internalType === 'DOCUMENT' || (p.attachments?.length ?? 0) > 0) : false;
+  const loadComments = useCallback(() => {
+    commentsApi.list(id).then(setComments).catch(() => setComments([]));
+  }, [id]);
+  useEffect(() => { if (isDoc) loadComments(); }, [isDoc, loadComments]);
 
   // §10 — live countdown to the voting end. The backend finalizes an internal proposal on every
   // read, so when the end passes while the page is open we refetch once (status flips to
@@ -866,6 +1299,70 @@ function InternalDetail({ id, onBack }: { id: string; onBack: () => void }) {
     setError(null); setBusy(true);
     try { await fn(); load(); } catch (e) { setError(e instanceof Error ? e.message : 'failed'); } finally { setBusy(false); }
   };
+  // §30 — open/close the "edit document" sub-form (title + content), seeded from the current values.
+  const openEdit = (seedContent?: string) => { setEditTitle(p.title); setEditContent(seedContent ?? p.contentMd); setEditingDoc(true); };
+  const saveEdit = () => act(async () => {
+    await internalProposalsApi.updateDocument(id, { title: editTitle.trim(), contentMd: editContent, commentAudience: p.commentAudience ?? 'ANY_WALLET', docEditableBy: p.docEditableBy ?? 'PROPOSER', isPrivate: p.isPrivate });
+    setEditingDoc(false);
+  });
+  // §30 — import an attachment's extracted text into the document content (opens the edit form).
+  const importToContent = (text: string) => { const base = p.contentMd.trim(); openEdit(base ? `${base}\n\n${text}` : text); };
+  // §30 — export the on-platform content so an approved document can be uploaded to external storage.
+  const exportDoc = (fmt: 'md' | 'json' | 'pdf' | 'txt') => {
+    const name = (p.publicId || p.title || 'document').replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+    if (fmt === 'pdf') {
+      // Print via a hidden iframe rather than window.open — a popup gets caught by popup blockers
+      // (and after "Allow once" the browser just reopens a blank about:blank), while an iframe prints
+      // the content inline so the user only sees the native print → "Save as PDF" dialog.
+      const esc = (s: string) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
+      // Render the markdown to formatted HTML (same renderer as the on-screen view). It emits Tailwind
+      // classes that aren't loaded in the print frame, so we style the plain tags here instead.
+      const css = `
+        body{font:13px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;color:#111;max-width:46rem;margin:1.5rem auto;padding:0 1.25rem}
+        h1{font-size:1.5rem;font-weight:700;margin:0 0 .4rem}
+        h2{font-size:1.25rem;font-weight:700;margin:1.3em 0 .4em;border-bottom:1px solid #e5e7eb;padding-bottom:.15em}
+        h3{font-size:1.1rem;font-weight:600;margin:1.1em 0 .35em}
+        h4{font-size:1rem;font-weight:600;margin:.9em 0 .3em}
+        p{margin:.55em 0}
+        ul,ol{margin:.45em 0;padding-left:1.5em}
+        li{margin:.15em 0}
+        a{color:#047857;text-decoration:underline}
+        strong{font-weight:700}
+        code{background:#f3f4f6;border-radius:3px;padding:0 .25em;font-size:.9em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+        table{width:100%;border-collapse:collapse;margin:.7em 0;font-size:.92em}
+        th,td{border:1px solid #d1d5db;padding:.35em .55em;text-align:left;vertical-align:top}
+        th{background:#f9fafb;font-weight:600}
+        hr{border:0;border-top:1px solid #e5e7eb;margin:1.1em 0}
+        @media print{a{color:#047857}table,tr,td,th{page-break-inside:avoid}h1,h2,h3,h4{page-break-after:avoid}}
+      `;
+      const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(p.title)}</title><style>${css}</style></head><body><h1>${esc(p.title)}</h1>${renderMarkdown(p.contentMd)}</body></html>`;
+      const iframe = document.createElement('iframe');
+      iframe.setAttribute('aria-hidden', 'true');
+      Object.assign(iframe.style, { position: 'fixed', right: '0', bottom: '0', width: '0', height: '0', border: '0', opacity: '0' });
+      iframe.onload = () => {
+        const win = iframe.contentWindow;
+        if (!win) { iframe.remove(); return; }
+        const done = () => { try { iframe.remove(); } catch { /* already gone */ } };
+        win.onafterprint = done;
+        win.focus();
+        win.print();
+        // Fallback cleanup (onafterprint is unreliable across browsers); long enough not to cancel print.
+        setTimeout(done, 60_000);
+      };
+      iframe.srcdoc = html;
+      document.body.appendChild(iframe);
+      return;
+    }
+    const content = fmt === 'json'
+      ? JSON.stringify({ publicId: p.publicId, title: p.title, content: p.contentMd, attachments: (p.attachments ?? []).map((a) => ({ source: a.source, title: a.title, fileName: a.fileName, sourceUrl: a.sourceUrl })) }, null, 2)
+      : fmt === 'txt'
+        ? `${p.title}\n\n${p.contentMd}` // plain text — the title without the markdown '#'
+        : `# ${p.title}\n\n${p.contentMd}`;
+    const blob = new Blob([content], { type: fmt === 'json' ? 'application/json' : fmt === 'txt' ? 'text/plain' : 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `${name}.${fmt}`; a.click();
+    URL.revokeObjectURL(url);
+  };
   // After a successful (re)vote, lock the card again and clear the editor.
   const afterVote = () => { setChanging(false); setRationale(''); };
   const voteThreshold = (choice: 'YES' | 'NO' | 'ABSTAIN') =>
@@ -893,8 +1390,46 @@ function InternalDetail({ id, onBack }: { id: string; onBack: () => void }) {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
         <BackBtn onBack={onBack} />
-        <ShareLinkButton />
+        <div className="flex items-center gap-2">
+          <ShareLinkButton />
+          {/* §30 — the author (or the board, when the document allows it) edits title + content while it
+              is still open for comment. Prominent here so it's found without scrolling past a long doc. */}
+          {isDoc && p.canEditDocument && !editingDoc ? (
+            <button
+              onClick={() => openEdit()}
+              className="rounded-md border border-emerald-300 px-3 py-1.5 text-sm font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+            >
+              {t('Edit document')}
+            </button>
+          ) : null}
+          {/* §10 — a board member may delete a submitted proposal (e.g. one created by mistake). The
+              row is kept as DELETED for the record and only hidden from the normal lists. */}
+          {isBoard && p.status !== 'DELETED' && !p.isBoardElection ? (
+            <button
+              onClick={() => setConfirmingDelete(true)}
+              className="rounded-md border border-red-300 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/40"
+            >
+              {t('Delete')}
+            </button>
+          ) : null}
+        </div>
       </div>
+      {p.status === 'DELETED' ? (
+        <div className="rounded-md border border-neutral-300 bg-neutral-50 px-3 py-2 text-sm font-medium text-neutral-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">
+          {t('This proposal was deleted. It is kept for the record and shown under the Deleted filter (board only).')}
+        </div>
+      ) : null}
+      <ConfirmDialog
+        open={confirmingDelete}
+        tone="danger"
+        title={t('Delete this proposal?')}
+        message={p.status === 'ACTIVE'
+          ? t('Voting is still open. Deleting removes it from the lists (kept for the record as DELETED) and ends its visibility to voters. This cannot be undone from the UI.')
+          : t('It will be removed from the lists but kept for the record as DELETED, visible under the Deleted filter (board only).')}
+        confirmLabel={t('Delete')}
+        onCancel={() => setConfirmingDelete(false)}
+        onConfirm={async () => { setConfirmingDelete(false); await act(async () => { await internalProposalsApi.remove(id); onBack(); }); }}
+      />
       {error ? <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">{error}</div> : null}
       {p.status === 'ACTIVE' && expired ? (
         <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
@@ -905,7 +1440,7 @@ function InternalDetail({ id, onBack }: { id: string; onBack: () => void }) {
         <div className="flex flex-wrap items-start justify-between gap-2">
           <h2 className="text-lg font-semibold">
             {p.title}
-            {p.submitter ? <span className="ml-2 text-sm font-normal text-neutral-500">{t('by')} {p.submitter}</span> : null}
+            {p.submitter ? <span className="ml-2 inline-flex items-center gap-1.5 align-middle text-sm font-normal text-neutral-500"><Avatar src={p.submitterAvatar} name={p.submitter} className="h-5 w-5 shrink-0 rounded-full" />{t('by')} {p.submitter}</span> : null}
           </h2>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-500">
             {p.publicId ? <span>{t('ID:')} <span className="rounded bg-neutral-100 px-1.5 py-0.5 font-mono text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">{p.publicId}</span></span> : null}
@@ -914,22 +1449,80 @@ function InternalDetail({ id, onBack }: { id: string; onBack: () => void }) {
           </div>
         </div>
         <div className="mt-1 text-xs text-neutral-500">
-          {t(TYPE_LABEL[p.internalType] ?? p.internalType)} · {t(SCOPE_LABEL[p.votersScope] ?? p.votersScope)} · {t(VTYPE_LABEL[p.votingType] ?? p.votingType)}
-          {p.tally.kind === 'THRESHOLD' ? ` · ${t('threshold')} ${p.thresholdPct ?? '?'}%` : ''}
-          {' · '}{p.status === 'ACTIVE'
-            ? (expired
-                ? <span className="font-medium text-amber-600">{t('voting ended — finalizing…')}</span>
-                : <>{t('voting ends in')} <span className={endMs != null && endMs - now <= 2 * 3600_000 ? 'font-semibold text-red-600' : 'font-medium text-neutral-700 dark:text-neutral-300'}>{fmtCountdown((endMs ?? now) - now)}</span></>)
-            : `${t('voting')} ${fmtDateTime(p.votingStartAt)} → ${fmtDateTime(p.votingEndAt)}`}
+          {t(TYPE_LABEL[p.internalType] ?? p.internalType)}
+          {/* §30 — a document still open for comment has no vote config/timing yet. */}
+          {p.internalType === 'DOCUMENT' && p.status === 'COMMENT' ? (
+            <> · {t('open for comment')}{p.commentAudience ? ` · ${t('comments:')} ${t(COMMENT_AUDIENCE_LABEL[p.commentAudience] ?? p.commentAudience)}` : ''}</>
+          ) : (
+            <>
+              {' · '}{t(SCOPE_LABEL[p.votersScope] ?? p.votersScope)} · {t(VTYPE_LABEL[p.votingType] ?? p.votingType)}
+              {p.tally.kind === 'THRESHOLD' ? ` · ${t('threshold')} ${p.thresholdPct ?? '?'}%` : ''}
+              {' · '}{p.status === 'ACTIVE'
+                ? (expired
+                    ? <span className="font-medium text-amber-600">{t('voting ended — finalizing…')}</span>
+                    : <>{t('voting ends in')} <span className={endMs != null && endMs - now <= 2 * 3600_000 ? 'font-semibold text-red-600' : 'font-medium text-neutral-700 dark:text-neutral-300'}>{fmtCountdown((endMs ?? now) - now)}</span></>)
+                : `${t('voting')} ${fmtDateTime(p.votingStartAt)} → ${fmtDateTime(p.votingEndAt)}`}
+            </>
+          )}
         </div>
 
+        {/* §30 — the on-platform content IS the readable body of a document: it is what people comment
+            on and what the author/board edit. In edit mode (while open for comment) show the editor. */}
         <div className="mt-3">
-          <Markdown className="text-sm text-neutral-700 dark:text-neutral-300">{p.contentMd}</Markdown>
+          {editingDoc && p.canEditDocument ? (
+            <div className="space-y-2">
+              <input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} className={field} placeholder={t('Title')} />
+              <MarkdownEditor value={editContent} onChange={setEditContent} title={t('Content')} minRows={8} placeholder={t('The document content shown and commented on this site.')} />
+              <div className="flex gap-2">
+                <button disabled={busy || editTitle.trim().length < 3} onClick={saveEdit} className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-40">{busy ? t('Saving…') : t('Save changes')}</button>
+                <button onClick={() => setEditingDoc(false)} className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm dark:border-neutral-600">{t('Cancel')}</button>
+              </div>
+            </div>
+          ) : (
+            <Markdown className="text-sm text-neutral-700 dark:text-neutral-300">{p.contentMd}</Markdown>
+          )}
         </div>
+
+        {/* §30 — document toolbar: edit the content (author/board, while open for comment) + export. */}
+        {isDoc && !editingDoc ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-neutral-400">{t('Export:')}</span>
+            <button onClick={() => exportDoc('md')} className="rounded border border-neutral-300 px-2 py-1 hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800">.md</button>
+            <button onClick={() => exportDoc('txt')} className="rounded border border-neutral-300 px-2 py-1 hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800">.txt</button>
+            <button onClick={() => exportDoc('json')} className="rounded border border-neutral-300 px-2 py-1 hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800">.json</button>
+            <button onClick={() => exportDoc('pdf')} className="rounded border border-neutral-300 px-2 py-1 hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800">PDF</button>
+          </div>
+        ) : null}
+
+        {/* §30 — document attachments (files / links). Visible to everyone; the author/board edit them
+            while the document is still open for comment, and can import a readable one into the content. */}
+        {(p.attachments?.length || p.canEditDocument) ? (
+          <div className="mt-3">
+            <h3 className="text-sm font-semibold">{t('Document files & links')}</h3>
+            {p.attachments?.length ? (
+              <ul className="mt-1 space-y-1.5">
+                {p.attachments.map((a) => <AttachmentView key={a.id} proposalId={p.id} a={a} onImport={p.canEditDocument ? importToContent : undefined} />)}
+              </ul>
+            ) : null}
+            {p.canEditDocument ? (
+              <div className="mt-2 rounded-md border border-dashed border-neutral-300 p-2 dark:border-neutral-700">
+                <p className="mb-1 text-xs text-neutral-500">{t('Add or remove files/links (while open for comment)')}</p>
+                <AttachmentEditor
+                  items={(p.attachments ?? []).map((a) => ({ id: a.id, source: a.source, title: a.title, fileName: a.fileName, sourceUrl: a.sourceUrl, note: a.extractedText?.trim() ? `✓ ${t('readable')}` : t('link only'), ok: !!a.extractedText?.trim() }))}
+                  linkDraft={attLinkDraft}
+                  setLinkDraft={setAttLinkDraft}
+                  onAddFile={(dataUrl, fileName) => act(async () => { await internalProposalsApi.addAttachment(id, { source: 'UPLOAD', dataUrl, fileName }); })}
+                  onAddLink={(url) => act(async () => { await internalProposalsApi.addAttachment(id, { source: 'LINK', url }); })}
+                  onRemove={(_, aid) => { if (aid) return act(async () => { await internalProposalsApi.removeAttachment(id, aid); }); }}
+                />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         {p.isBoardElection ? (
           <div className="mt-3 space-y-1 rounded-md border border-neutral-200 px-3 py-2 text-xs dark:border-neutral-800">
-            <div><span className="font-medium">{t('Candidates (5):')}</span> {p.candidates?.map((c) => c.displayName).join(', ') ?? '—'}</div>
+            <div><span className="font-medium">{t('Candidates ({n}):').replace('{n}', String(p.candidates?.length ?? 0))}</span> {p.candidates?.map((c) => c.displayName).join(', ') ?? '—'}</div>
             <div><span className="font-medium">{t('Installation date:')}</span> {fmtDateTime(p.deliveryDate)}</div>
             {p.boardInstalledAt ? (
               <div className="text-emerald-700 dark:text-emerald-400">{t('✓ Board installed')} {fmtDateTime(p.boardInstalledAt)}</div>
@@ -993,7 +1586,8 @@ function InternalDetail({ id, onBack }: { id: string; onBack: () => void }) {
         ) : null}
       </div>
 
-      {/* Tally */}
+      {/* Tally — hidden while a document is still open for comment (no vote has been opened yet). */}
+      {p.status !== 'COMMENT' ? (
       <div className={card}>
         <h3 className="text-base font-semibold">{t('Result')}</h3>
         {p.tally.kind === 'THRESHOLD' ? (
@@ -1036,9 +1630,38 @@ function InternalDetail({ id, onBack }: { id: string; onBack: () => void }) {
         {p.anchorTxHash ? (
           <div className="mt-2 text-xs"><a href={txUrl(p.anchorTxHash)} target="_blank" rel="noreferrer" className="text-emerald-700 underline dark:text-emerald-400">{t('on-chain record ↗')}</a></div>
         ) : p.status !== 'ACTIVE' && p.anchorHash ? (
-          <div className="mt-2 text-xs text-neutral-400">{t('on-chain anchor recorded (pending submission)')}</div>
+          <div className="mt-2 text-xs text-neutral-400">{t('on-chain anchor recorded — posted automatically in the next batch')}</div>
         ) : null}
       </div>
+      ) : null}
+
+      {/* §30 — open voting on a document (author / board), shown while it is open for comment. */}
+      {p.canOpenVoting ? <OpenVotingPanel id={id} onDone={load} /> : null}
+
+      {/* §30 — discussion thread for document proposals (comment-only while open; stays through voting). */}
+      {isDoc ? (
+        <div className={card}>
+          <DiscussionThread
+            comments={(comments ?? []).map(commentToDisc)}
+            canComment={!!profile && (p.commentAudience !== 'DREPS' || profile.roles.includes('DAO_MEMBER') || profile.roles.includes('BOARD') || profile.onchainDrep.registered)}
+            canModerate={false}
+            onPost={(md, pid) => commentsApi.create(id, md, pid).then(() => loadComments())}
+            onDelete={(cid) => commentsApi.remove(cid).then(() => loadComments())}
+            label={t('Comments')}
+            submitLabel={t('Post comment')}
+            placeholder={t('Comment on this document… (supports **bold**, *italics*, lists, [links](https://…))')}
+            emptyText={p.commentAudience === 'DREPS' ? t('No comments yet. Registered DReps can comment.') : t('No comments yet.')}
+            composerHint={profile && !profile.user.displayName ? (
+              <p className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+                {t('You’ll appear as “Anonymous”.')}{' '}
+                <button type="button" onClick={() => setParams({ view: 'me', tab: 'profile', ip: null })} className="font-medium underline">{t('Set a display name & photo')}</button>{' '}
+                {t('so people see who you are.')}
+              </p>
+            ) : undefined}
+          />
+          {!profile ? <p className="mt-2 text-xs text-neutral-500">{t('Connect your wallet to comment.')}</p> : null}
+        </div>
+      ) : null}
 
       {/* Per-voter breakdown — who voted how + their rationale. */}
       {p.voters.length > 0 ? (
@@ -1049,9 +1672,10 @@ function InternalDetail({ id, onBack }: { id: string; onBack: () => void }) {
             {p.voters.map((v, i) => (
               <li key={`${v.drep}-${i}`} className={`rounded-md border p-2 text-sm ${v.superseded ? 'border-neutral-200/60 opacity-60 dark:border-neutral-800/60' : 'border-neutral-200 dark:border-neutral-800'}`}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className={v.superseded ? 'line-through' : ''}>
+                  <span className={`flex items-center gap-2 ${v.superseded ? 'line-through' : ''}`}>
+                    <Avatar src={v.avatarUrl} name={v.displayName ?? '?'} className="h-6 w-6 shrink-0 rounded-full" />
                     <span className="font-medium">{v.displayName ?? t('(unknown)')}</span>
-                    <span className="ml-2 break-all font-mono text-[10px] text-neutral-400">{v.drep}</span>
+                    <span className="break-all font-mono text-[10px] text-neutral-400">{v.drep}</span>
                   </span>
                   <span className="flex items-center gap-2">
                     <span className="text-[10px] text-neutral-400">{fmtDateTime(v.castAt)}</span>

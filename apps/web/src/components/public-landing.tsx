@@ -21,7 +21,7 @@ const STAGES = [
 // A governance Council runs a continuous cycle rather than budgeted rounds.
 const GOV_FLOW = ['Join', 'Propose', 'Vote', 'Act'];
 
-export function PublicLanding({ onConnect, onExplore, onOpenVote, onOpenGroupVote }: { onConnect: () => void; onExplore: () => void; onOpenVote?: (id: string) => void; onOpenGroupVote?: (groupKey: string, id: string) => void }) {
+export function PublicLanding({ onConnect, onExplore, onOpenVote, onOpenGroupVote, onOpenScore }: { onConnect: () => void; onExplore: () => void; onOpenVote?: (id: string) => void; onOpenGroupVote?: (groupKey: string, id: string) => void; onOpenScore?: () => void }) {
   const { t } = usePrefs();
   const [data, setData] = useState<PublicOverview | null>(null);
   const [failed, setFailed] = useState(false);
@@ -196,6 +196,27 @@ export function PublicLanding({ onConnect, onExplore, onOpenVote, onOpenGroupVot
         </a>
         );
       })() : null}
+
+      {/* ---- On-chain Proposal Score — public, read-only; governance edition only. Open to everyone,
+             no wallet needed (scoring/setup stay board-only inside the app). ---- */}
+      {governance && onOpenScore ? (
+        <button onClick={onOpenScore}
+          className="flex w-full flex-wrap items-center justify-between gap-3 rounded-2xl border border-indigo-200 bg-indigo-50 px-5 py-4 text-left transition hover:bg-indigo-100 dark:border-indigo-900/60 dark:bg-indigo-950/30 dark:hover:bg-indigo-950/50">
+          <span className="flex items-center gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-indigo-600 text-white">
+              <ScoreCardIcon />
+            </span>
+            <span className="min-w-0">
+              <span className="block font-semibold text-indigo-900 dark:text-indigo-100">
+                {t('On-chain Proposal Score')}
+                <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 align-middle text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">{t('Experimental')}</span>
+              </span>
+              <span className="block text-[13px] text-indigo-800/70 dark:text-indigo-200/60">{t('See how Treasury Withdrawal proposals score against the Council template and the review framework.')}</span>
+            </span>
+          </span>
+          <span className="shrink-0 rounded-full bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:brightness-105">{t('View scores')}</span>
+        </button>
+      ) : null}
 
       {/* ---- Votes in progress: live internal votes + group (e.g. OG) proposals, end date + result chart ---- */}
       {governance && data && (data.activeVotes.length > 0 || data.activeGroupVotes.length > 0) ? (
@@ -377,6 +398,16 @@ function TelegramIcon() {
   return (
     <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden="true">
       <path d="M21.94 4.9 18.9 19.3c-.23 1.02-.84 1.27-1.7.79l-4.7-3.46-2.27 2.18c-.25.25-.46.46-.95.46l.34-4.8 8.73-7.9c.38-.34-.08-.53-.59-.19L6.72 13.2 2.07 11.75c-1.01-.32-1.03-1.01.21-1.5L20.63 3.4c.84-.31 1.58.2 1.31 1.5z" />
+    </svg>
+  );
+}
+
+function ScoreCardIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <path d="M14 2v6h6" />
+      <path d="m9 15 2 2 4-4" />
     </svg>
   );
 }

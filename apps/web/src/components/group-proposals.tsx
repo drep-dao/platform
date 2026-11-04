@@ -390,7 +390,7 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
         {p.anchorTxHash ? (
           <div className="mt-2 text-xs"><a href={txUrl(p.anchorTxHash)} target="_blank" rel="noreferrer" className="text-emerald-700 underline dark:text-emerald-400">{t('on-chain record ↗')}</a></div>
         ) : p.status !== 'ACTIVE' ? (
-          <div className="mt-2 text-xs text-neutral-400">{t('on-chain anchor recorded (pending submission)')}</div>
+          <div className="mt-2 text-xs text-neutral-400">{t('on-chain anchor recorded — posted automatically in the next batch')}</div>
         ) : null}
       </div>
 
@@ -656,7 +656,7 @@ function BulkSection({ p, id, onChange }: { p: GroupProposalDetail; id: string; 
           {p.anchorTxHash ? (
             <div className="text-xs"><a href={txUrl(p.anchorTxHash)} target="_blank" rel="noreferrer" className="text-emerald-700 underline dark:text-emerald-400">{t('on-chain record ↗')}</a></div>
           ) : (
-            <div className="text-xs text-neutral-400">{t('on-chain anchor recorded (pending submission)')}</div>
+            <div className="text-xs text-neutral-400">{t('on-chain anchor recorded — posted automatically in the next batch')}</div>
           )}
         </div>
       ) : null}

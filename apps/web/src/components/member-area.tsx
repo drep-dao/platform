@@ -22,6 +22,8 @@ import { BoardReviewPanel } from './board-review-panel';
 import { ExpertReviewPanel } from './expert-review-panel';
 import { ExpertApplyForm } from './expert-apply-form';
 import { SubmitterApplyForm } from './submitter-apply-form';
+import { ViewerProfileForm } from './viewer-profile-form';
+import { Avatar } from './fallback-avatar';
 import { SubmitterReviewPanel } from './submitter-review-panel';
 import { RemovalPanel } from './removal-panel';
 import { RemovalBanner } from './removal-banner';
@@ -571,6 +573,9 @@ function EmptyHint({ text }: { text: string }) {
 /** §14 — both participation routes; pick one (until accepted). */
 function ApplyOptions({ registeredDRep, onExpertChange, onSubmitterChange, showSubmitterCard }: { registeredDRep: boolean; onExpertChange: () => void; onSubmitterChange: () => void; showSubmitterCard: boolean }) {
   const t = useT();
+  const { profile } = useAuth();
+  // §2.1 — once a viewer has set a name or photo, the card becomes "edit" instead of "join".
+  const hasViewerProfile = !!(profile?.user.displayName || profile?.user.avatarUrl);
   const [mode, setMode] = useState<string>('choose');
   // §29 — configurable groups appear here as "Apply as <Name> member" options.
   const [groups, setGroups] = useState<GroupConfig[]>([]);
@@ -616,6 +621,15 @@ function ApplyOptions({ registeredDRep, onExpertChange, onSubmitterChange, showS
       </div>
     );
   }
+  // §2.1 — the lightest participation: a Viewer sets just a display name + photo.
+  if (mode === 'viewer') {
+    return (
+      <div className="space-y-2">
+        <BackButton onBack={() => setMode('choose')} />
+        <ViewerProfileForm onDone={() => setMode('choose')} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">
@@ -635,6 +649,13 @@ function ApplyOptions({ registeredDRep, onExpertChange, onSubmitterChange, showS
             <div className="text-xs text-neutral-500">{t('To submit proposals. Fill in a short profile; a board member approves it, then you can submit.')}</div>
           </button>
         ) : null}
+        <button onClick={() => setMode('viewer')} className="flex items-center gap-3 rounded-lg border border-neutral-200 p-3 text-left hover:border-emerald-400 dark:border-neutral-700">
+          {hasViewerProfile ? <Avatar src={profile?.user.avatarUrl} name={profile?.user.displayName ?? '?'} className="h-9 w-9 shrink-0 rounded-full" /> : null}
+          <div>
+            <div className="font-medium">{hasViewerProfile ? t('Edit your profile') : t('Join as a viewer')}</div>
+            <div className="text-xs text-neutral-500">{hasViewerProfile ? t('Update the display name and photo shown next to your comments and votes.') : t('Just follow and comment. Set a display name and photo so your comments show who you are — no registration needed.')}</div>
+          </div>
+        </button>
         {groupOptions.map(({ g, status }) => (
           status === 'PENDING' ? (
             <div key={g.key} className="rounded-lg border border-amber-200 p-3 text-left dark:border-amber-900">

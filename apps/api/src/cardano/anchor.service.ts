@@ -154,6 +154,27 @@ export class AnchorService implements OnModuleInit {
     await this.prisma.platformConfig.upsert({ where: { key: 'ANCHOR_SWEEP_HOURS' }, update: { value: String(h) }, create: { key: 'ANCHOR_SWEEP_HOURS', value: String(h) } });
     return h;
   }
+
+  /**
+   * §24 (KI-7) — when pending anchors will next be swept on-chain, so the UI can show an expected
+   * window instead of a bare "pending" that reads like a failure. In 'scheduled' mode the sweep runs
+   * once the configured interval has elapsed since the last run: nextAnchorAt = lastAnchorAt + interval
+   * (null when it has never run yet → it fires on the next job cycle, within minutes). In 'immediate'
+   * mode anchors post as they are recorded, so there is no pending wait.
+   */
+  async anchorSchedule(): Promise<{ mode: 'scheduled' | 'immediate'; sweepHours: number; lastAnchorAt: string | null; nextAnchorAt: string | null }> {
+    const mode = await this.getAnchorMode();
+    const sweepHours = await this.getSweepHours();
+    const row = await this.prisma.platformConfig.findUnique({ where: { key: 'JOB_LAST_RUN:anchor_sweep' } });
+    const last = row ? Number(row.value) : 0;
+    const hasLast = Number.isFinite(last) && last > 0;
+    return {
+      mode,
+      sweepHours,
+      lastAnchorAt: hasLast ? new Date(last).toISOString() : null,
+      nextAnchorAt: hasLast ? new Date(last + sweepHours * 3_600_000).toISOString() : null,
+    };
+  }
   /**
    * §24 — inline submit gate. In 'immediate' mode a freshly-recorded anchor is pushed to the chain
    * right away; in 'scheduled' mode it is left pending (txHash=null) for the next cheap batch sweep.

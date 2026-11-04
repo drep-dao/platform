@@ -10,6 +10,7 @@ import { AdminsPanel } from '@/components/admin/admins-panel';
 import { WalletPanel } from '@/components/admin/wallet-panel';
 import { ResetPanel } from '@/components/admin/reset-panel';
 import { MaintenancePanel } from '@/components/admin/maintenance-panel';
+import { EmailPanel } from '@/components/admin/email-panel';
 import { GroupsPanel } from '@/components/admin/groups-panel';
 import { GROUPS_ENABLED } from '@/lib/features';
 import { fmtDateTime } from '@/components/round-ui';
@@ -86,6 +87,9 @@ export default function AdminDashboard() {
       </section>
 
       <MaintenancePanel />
+
+      {/* §20.3 — outbound (send-only) email/SMTP config; works before a board is elected. */}
+      <EmailPanel />
 
       {/* §29 OG — the whole Groups surface, admin panel included, is gated on NEXT_PUBLIC_GROUPS_ENABLED
           so an instance can ship the feature dormant (default off here) and enable it later. */}

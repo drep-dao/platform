@@ -158,6 +158,17 @@ export interface AdminGroupMember {
   since: string | null;
 }
 
+export interface EmailStatus {
+  enabled: boolean;
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  from: string;
+  hasPassword: boolean;
+  configured: boolean;
+}
+
 export const adminApi = {
   login: (username: string, password: string) =>
     request<LoginResult>('/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
@@ -199,6 +210,13 @@ export const adminApi = {
     get: () => request<MaintenanceState>('/maintenance'),
     enable: () => request<MaintenanceState>('/maintenance/enable', { method: 'POST' }),
     disable: () => request<MaintenanceState>('/maintenance/disable', { method: 'POST' }),
+  },
+  // §20.3 — outbound-only email (SMTP relay) config. The platform only sends; it never receives.
+  email: {
+    get: () => request<EmailStatus>('/email'),
+    save: (cfg: Partial<Omit<EmailStatus, 'hasPassword' | 'configured'>> & { password?: string }) =>
+      request<EmailStatus>('/email', { method: 'PATCH', body: JSON.stringify(cfg) }),
+    test: (to: string) => request<{ sent: boolean }>('/email/test', { method: 'POST', body: JSON.stringify({ to }) }),
   },
   // §29 — configurable groups (e.g. OG). Create → HIDDEN; set status ACTIVE to turn on.
   groups: {

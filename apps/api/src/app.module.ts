@@ -25,6 +25,8 @@ import { DeployModule } from './deploy/deploy.module';
 import { RuleDocumentsModule } from './rule-documents/rule-documents.module';
 import { SubcategoriesModule } from './subcategories/subcategories.module';
 import { DecisionsModule } from './decisions/decisions.module';
+import { ProposalCheckerModule } from './proposal-checker/proposal-checker.module';
+import { CommentsModule } from './comments/comments.module';
 
 @Module({
   imports: [
@@ -58,6 +60,8 @@ import { DecisionsModule } from './decisions/decisions.module';
     RuleDocumentsModule,
     SubcategoriesModule,
     DecisionsModule,
+    ProposalCheckerModule,
+    CommentsModule,
   ],
 })
 export class AppModule {}

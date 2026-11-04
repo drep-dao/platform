@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
-import { PLATFORM_CONFIG_DEFAULTS, ROUND_SETTING_DEFAULTS, ProposalStage, ProposalStatus, RoundStatus, VoteChoice, VotePhase } from '@drep-dao/shared';
+import { ROUND_SETTING_DEFAULTS, ProposalStage, ProposalStatus, RoundStatus, VoteChoice, VotePhase } from '@drep-dao/shared';
 import { GovSubject, VotingStyle } from '@drep-dao/cardano';
 import { PrismaService } from '../prisma/prisma.service';
 import { rankReviewerCandidates } from '../proposals/candidate-ranking';
@@ -611,7 +611,8 @@ export class MilestonesService {
     if (outcome === 'REJECTED') {
       try {
         const cfgRow = await this.prisma.platformConfig.findUnique({ where: { key: 'MILESTONE_MAX_REJECTIONS' } });
-        const max = typeof cfgRow?.value === 'number' ? cfgRow.value : (PLATFORM_CONFIG_DEFAULTS.MILESTONE_MAX_REJECTIONS as number);
+        // Funding-only escalation; not a Council (governance) parameter, so no platform-config default here.
+        const max = typeof cfgRow?.value === 'number' ? cfgRow.value : 3;
         const fresh = await this.prisma.milestone.findUnique({ where: { id: milestoneId }, select: { autoExtendedCount: true } });
         const rejections = fresh?.autoExtendedCount ?? 0;
         if (max > 0 && rejections >= max) {

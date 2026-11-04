@@ -2,8 +2,12 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { PrismaService } from '../prisma/prisma.service';
 import { CardanoQueryService } from '../cardano/cardano-query.service';
 import { TreasuryBucketsService } from '../treasury/treasury-buckets.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 const LOVELACE = 1_000_000n;
+
+// §R — unified queue labels. DB values stay ACTIVE/DONE for history; these are what people see.
+const REQUEST_STATUS_LABEL: Record<string, string> = { ACTIVE: 'New', ACCEPTED: 'Accepted', DONE: 'Complete', REJECTED: 'Rejected' };
 
 /**
  * §R — Submitter Requests (DRep DAO edition).
@@ -24,7 +28,15 @@ export class RequestsService {
     private readonly prisma: PrismaService,
     private readonly cardano: CardanoQueryService,
     private readonly buckets: TreasuryBucketsService,
+    private readonly notifications: NotificationsService,
   ) {}
+
+  /** §R/§20.3 — tell the board a request has entered their queue (fired once, on the ACTIVE transition). */
+  private async notifyBoardOfNewRequest(id: string, title: string) {
+    await this.notifications
+      .notifyBoard('request_new', id, { title: 'New request', body: title, requestId: id })
+      .catch(() => undefined);
+  }
 
   private async isBoard(userId: string): Promise<boolean> {
     const u = await this.prisma.appUser.findUnique({ where: { id: userId }, select: { drepKeyHash: true } });
@@ -182,6 +194,7 @@ export class RequestsService {
       data: { status: paid ? 'PENDING_FEE' : 'ACTIVE', publishedAt: new Date(), feeTxHash: feeTxHash?.trim() || r.feeTxHash },
     });
     if (paid) await this.tryVerifyFee(id).catch(() => undefined);
+    else await this.notifyBoardOfNewRequest(id, r.title); // free requests enter the queue immediately
     return this.get(id, userId);
   }
 
@@ -225,6 +238,7 @@ export class RequestsService {
         where: { id },
         data: { status: 'ACTIVE', feeSeenOnchainAt: new Date() },
       });
+      await this.notifyBoardOfNewRequest(id, req.title); // paid request enters the queue once the fee verifies
       return true;
     }
     return false;
@@ -256,13 +270,14 @@ export class RequestsService {
       include: {
         type: true,
         submitter: { select: { id: true, displayName: true } },
+        linkedProposal: { select: { id: true, publicId: true, title: true, status: true } },
       },
     });
     return rows
       .filter((r) => {
         if (r.status === 'DRAFT') return r.submitterUserId === userId; // drafts are private to the author
         if (r.status === 'PENDING_FEE') return board || r.submitterUserId === userId;
-        return true; // ACTIVE / DONE / REJECTED / DELETED (deleted stays findable in history)
+        return true; // ACTIVE / ACCEPTED / DONE / REJECTED / DELETED (deleted stays findable in history)
       })
       .map((r) => this.view(r, board || r.submitterUserId === userId, userId));
   }
@@ -270,7 +285,7 @@ export class RequestsService {
   async get(id: string, userId: string | null) {
     const r = await this.prisma.request.findUnique({
       where: { id },
-      include: { type: true, submitter: { select: { id: true, displayName: true } } },
+      include: { type: true, submitter: { select: { id: true, displayName: true } }, linkedProposal: { select: { id: true, publicId: true, title: true, status: true } } },
     });
     if (!r) throw new NotFoundException('request not found');
     const board = userId ? await this.isBoard(userId) : false;
@@ -289,6 +304,7 @@ export class RequestsService {
       publishedAt: Date | null; feeTxHash: string | null; feeSeenOnchainAt: Date | null; submitterUserId: string;
       type: { id: string; name: string; priceAda: bigint } | null;
       submitter: { id: string; displayName: string | null };
+      linkedProposal?: { id: string; publicId: string | null; title: string; status: string } | null;
     },
     full: boolean,
     viewerId?: string | null,
@@ -310,24 +326,59 @@ export class RequestsService {
       free: !r.type,
       feeTxHash: full ? r.feeTxHash : r.feeTxHash ? `${r.feeTxHash.slice(0, 12)}…` : null,
       feeVerified: !!r.feeSeenOnchainAt,
+      linkedProposal: r.linkedProposal
+        ? { id: r.linkedProposal.id, publicId: r.linkedProposal.publicId, title: r.linkedProposal.title, status: r.linkedProposal.status }
+        : null,
     };
   }
 
-  /** §R — only board members change a request's status (Done / Rejected / re-Activate). */
+  /**
+   * §R — only board members change a request's status. The queue lifecycle is
+   * New (ACTIVE) → Accepted (ACCEPTED) → Complete (DONE), or Rejected (REJECTED) at any point;
+   * the board can also move it back to New/Accepted. ACCEPTED is an intermediate "we've taken this
+   * on" state — the request is not decided yet, so it stays in the open queue.
+   */
   async setStatus(userId: string, id: string, status: string) {
     if (!(await this.isBoard(userId))) throw new ForbiddenException('board members only');
-    if (!['ACTIVE', 'DONE', 'REJECTED'].includes(status)) {
-      throw new BadRequestException('status must be ACTIVE, DONE or REJECTED');
+    if (!['ACTIVE', 'ACCEPTED', 'DONE', 'REJECTED'].includes(status)) {
+      throw new BadRequestException('status must be ACTIVE, ACCEPTED, DONE or REJECTED');
     }
-    const r = await this.prisma.request.findUnique({ where: { id }, select: { status: true } });
+    const r = await this.prisma.request.findUnique({ where: { id }, select: { status: true, title: true, submitterUserId: true } });
     if (!r) throw new NotFoundException('request not found');
     if (r.status === 'PENDING_FEE') {
       throw new ConflictException('the fee has not been verified yet — the request is not in the queue');
     }
+    const open = status === 'ACTIVE' || status === 'ACCEPTED'; // still in the queue, not decided
     await this.prisma.request.update({
       where: { id },
-      data: { status, decidedAt: status === 'ACTIVE' ? null : new Date(), decidedByUserId: status === 'ACTIVE' ? null : userId },
+      data: { status, decidedAt: open ? null : new Date(), decidedByUserId: open ? null : userId },
     });
+    // §20.3 — tell the submitter their request moved (once per distinct status via the kind).
+    if (status !== r.status) {
+      const label = REQUEST_STATUS_LABEL[status] ?? status;
+      await this.notifications
+        .notifyUsers([r.submitterUserId], `request_status_${status}`, id, { title: `Request ${label.toLowerCase()}`, body: r.title, requestId: id })
+        .catch(() => undefined);
+    }
+    return this.get(id, userId);
+  }
+
+  /**
+   * §R — board escalates a request to a vote by linking it to an INTERNAL proposal (optional).
+   * The default request flow is notification + status only; linking is what carries it to voting.
+   * Pass proposalId=null to unlink. Only published (non-draft) requests can be linked.
+   */
+  async setLinkedProposal(userId: string, id: string, proposalId: string | null) {
+    if (!(await this.isBoard(userId))) throw new ForbiddenException('board members only');
+    const r = await this.prisma.request.findUnique({ where: { id }, select: { status: true } });
+    if (!r) throw new NotFoundException('request not found');
+    if (['DRAFT', 'PENDING_FEE'].includes(r.status)) throw new BadRequestException('publish the request before linking a proposal');
+    if (proposalId) {
+      const p = await this.prisma.proposal.findUnique({ where: { id: proposalId }, select: { type: true } });
+      if (!p) throw new NotFoundException('proposal not found');
+      if (p.type !== 'INTERNAL') throw new BadRequestException('only an internal proposal can be linked to a request');
+    }
+    await this.prisma.request.update({ where: { id }, data: { linkedProposalId: proposalId } });
     return this.get(id, userId);
   }
 

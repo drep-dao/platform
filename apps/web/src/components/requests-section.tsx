@@ -1,9 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { requestsApi, submitterApi, type RequestTypeView, type RequestView } from '@/lib/api';
+import { internalProposalsApi, requestsApi, submitterApi, type InternalProposalSummary, type RequestTypeView, type RequestView } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { useT } from '@/lib/prefs-context';
+import { useUrlNav } from '@/lib/use-url-nav';
 import { card } from '@/lib/ui';
 import { CopyButton } from './copy-button';
 import { Markdown, MarkdownEditor } from './markdown';
@@ -17,16 +18,18 @@ import { DiscussionThread } from './discussion-thread';
  * at any time — it stays findable in History, marked Deleted.
  */
 
+// §R — unified queue labels: New (ACTIVE) → Accepted (ACCEPTED) → Complete (DONE); Rejected at any point.
 const STATUS_CLS: Record<string, string> = {
   DRAFT: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300',
   ACTIVE: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300',
+  ACCEPTED: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300',
   DONE: 'bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300',
   REJECTED: 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300',
   PENDING_FEE: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300',
   DELETED: 'bg-neutral-200 text-neutral-500 line-through dark:bg-neutral-800 dark:text-neutral-400',
 };
 const STATUS_LABEL: Record<string, string> = {
-  DRAFT: 'Draft', ACTIVE: 'Active', DONE: 'Done', REJECTED: 'Rejected', PENDING_FEE: 'Awaiting fee', DELETED: 'Deleted',
+  DRAFT: 'Draft', ACTIVE: 'New', ACCEPTED: 'Accepted', DONE: 'Complete', REJECTED: 'Rejected', PENDING_FEE: 'Awaiting fee', DELETED: 'Deleted',
 };
 
 function StatusChip({ status }: { status: string }) {
@@ -63,7 +66,7 @@ export function RequestsSection({ scope = 'all' }: { scope?: 'all' | 'mine' }) {
   const visible = mineRows.filter((r) =>
     filter === 'all' ? true
       : filter === 'drafts' ? r.status === 'DRAFT'
-      : filter === 'open' ? r.status === 'ACTIVE' || r.status === 'PENDING_FEE'
+      : filter === 'open' ? r.status === 'ACTIVE' || r.status === 'ACCEPTED' || r.status === 'PENDING_FEE'
       : r.status === 'DONE' || r.status === 'REJECTED' || r.status === 'DELETED');
 
   return (
@@ -169,15 +172,19 @@ function RequestCard({ r, isBoard, mine, onEdit, onChanged }: { r: RequestView; 
           ) : null}
           {r.decidedAt && r.status !== 'DRAFT' ? <p className="text-xs text-neutral-500">{r.status === 'DELETED' ? t('Deleted on') : t('Decided on')} {new Date(r.decidedAt).toLocaleDateString()}</p> : null}
 
-          {/* §R — DReps discuss a published request. */}
-          {['ACTIVE', 'DONE', 'REJECTED'].includes(d.status) ? <RequestComments r={d} onChanged={() => { loadDetail(); onChanged(); }} /> : null}
+          {/* §R — the internal proposal this request was escalated to (shown to everyone; set by the board). */}
+          {['ACTIVE', 'ACCEPTED', 'DONE', 'REJECTED'].includes(d.status) ? <LinkedProposal r={d} isBoard={isBoard} onChanged={() => { loadDetail(); onChanged(); }} /> : null}
 
-          {/* §R — board moves a published request between Active / Done / Rejected. */}
-          {isBoard && ['ACTIVE', 'DONE', 'REJECTED'].includes(r.status) ? (
+          {/* §R — DReps discuss a published request. */}
+          {['ACTIVE', 'ACCEPTED', 'DONE', 'REJECTED'].includes(d.status) ? <RequestComments r={d} onChanged={() => { loadDetail(); onChanged(); }} /> : null}
+
+          {/* §R — board moves a published request: New → Accepted → Complete, or Rejected. */}
+          {isBoard && ['ACTIVE', 'ACCEPTED', 'DONE', 'REJECTED'].includes(r.status) ? (
             <div className="flex flex-wrap items-center gap-2">
-              {r.status !== 'DONE' ? <button disabled={busy} onClick={() => act(() => requestsApi.setStatus(r.id, 'DONE'))} className="rounded-md bg-sky-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-sky-700 disabled:opacity-50">{t('Mark done')}</button> : null}
+              {r.status === 'ACTIVE' ? <button disabled={busy} onClick={() => act(() => requestsApi.setStatus(r.id, 'ACCEPTED'))} className="rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50">{t('Accept')}</button> : null}
+              {r.status !== 'DONE' ? <button disabled={busy} onClick={() => act(() => requestsApi.setStatus(r.id, 'DONE'))} className="rounded-md bg-sky-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-sky-700 disabled:opacity-50">{t('Mark complete')}</button> : null}
               {r.status !== 'REJECTED' ? <button disabled={busy} onClick={() => act(() => requestsApi.setStatus(r.id, 'REJECTED'))} className="rounded-md bg-rose-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-rose-700 disabled:opacity-50">{t('Reject')}</button> : null}
-              {r.status !== 'ACTIVE' ? <button disabled={busy} onClick={() => act(() => requestsApi.setStatus(r.id, 'ACTIVE'))} className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs font-medium hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800">{t('Re-activate')}</button> : null}
+              {r.status !== 'ACTIVE' ? <button disabled={busy} onClick={() => act(() => requestsApi.setStatus(r.id, 'ACTIVE'))} className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs font-medium hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800">{t('Set to New')}</button> : null}
             </div>
           ) : null}
 
@@ -208,6 +215,63 @@ function RequestComments({ r, onChanged }: { r: RequestView; onChanged: () => vo
       placeholder={t('Write a comment… (supports **bold**, *italics*, ## headings, lists, [links](https://…))')}
       emptyText={t('No comments yet.')}
     />
+  );
+}
+
+/**
+ * §R — optional link from a request to an internal proposal (escalation to a vote). The default
+ * request flow is notification + status only; the board links a proposal here when a request should
+ * go to a vote. Everyone sees the link; only the board sets or clears it.
+ */
+function LinkedProposal({ r, isBoard, onChanged }: { r: RequestView; isBoard: boolean; onChanged: () => void }) {
+  const t = useT();
+  const { setParams } = useUrlNav();
+  const [editing, setEditing] = useState(false);
+  const [options, setOptions] = useState<InternalProposalSummary[] | null>(null);
+  const [pick, setPick] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const openPicker = () => {
+    setEditing(true);
+    if (options === null) internalProposalsApi.list().then(setOptions).catch(() => setOptions([]));
+  };
+  const link = async (proposalId: string | null) => {
+    setBusy(true); setErr(null);
+    try { await requestsApi.setLinkedProposal(r.id, proposalId); setEditing(false); onChanged(); }
+    catch (e) { setErr((e as Error).message); }
+    setBusy(false);
+  };
+
+  const lp = r.linkedProposal;
+  if (!lp && !isBoard) return null; // nothing to show a non-board viewer when unlinked
+  return (
+    <div className="rounded-md border border-neutral-200 bg-neutral-50/60 p-2 text-xs dark:border-neutral-800 dark:bg-neutral-900/40">
+      {lp ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-neutral-500">{t('Linked proposal:')}</span>
+          <button onClick={() => setParams({ view: 'internal', ip: lp.id })} className="font-medium text-emerald-700 hover:underline dark:text-emerald-400">
+            {lp.publicId ? `${lp.publicId} · ` : ''}{lp.title}
+          </button>
+          <span className="rounded bg-neutral-200 px-1.5 py-0.5 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">{lp.status}</span>
+          {isBoard ? <button disabled={busy} onClick={() => link(null)} className="text-rose-600 hover:underline disabled:opacity-50 dark:text-rose-400">{t('Unlink')}</button> : null}
+        </div>
+      ) : isBoard ? (
+        editing ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <select value={pick} onChange={(e) => setPick(e.target.value)} className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs dark:border-neutral-700 dark:bg-neutral-900">
+              <option value="">{options === null ? t('Loading…') : t('Choose an internal proposal…')}</option>
+              {(options ?? []).map((p) => <option key={p.id} value={p.id}>{p.publicId ? `${p.publicId} · ` : ''}{p.title}</option>)}
+            </select>
+            <button disabled={busy || !pick} onClick={() => link(pick)} className="rounded-md bg-emerald-600 px-2.5 py-1 font-medium text-white hover:bg-emerald-700 disabled:opacity-50">{t('Link')}</button>
+            <button disabled={busy} onClick={() => setEditing(false)} className="rounded-md border border-neutral-300 px-2.5 py-1 font-medium hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800">{t('Cancel')}</button>
+          </div>
+        ) : (
+          <button onClick={openPicker} className="text-neutral-600 hover:underline dark:text-neutral-300">{t('Link an internal proposal (escalate to a vote)')}</button>
+        )
+      ) : null}
+      {err ? <p className="mt-1 text-rose-600">{err}</p> : null}
+    </div>
   );
 }
 
@@ -262,6 +326,7 @@ function SubmitRequestForm({ editId, onDone }: { editId: string | null; onDone: 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [expectedResponseAt, setExpectedResponseAt] = useState(''); // datetime-local
+  const [wantExpected, setWantExpected] = useState(false); // only ask for a date when the user opts in
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => { requestsApi.types().then(setTypes).catch(() => setTypes([])); }, []);
@@ -269,6 +334,7 @@ function SubmitRequestForm({ editId, onDone }: { editId: string | null; onDone: 
     if (!editId) return;
     requestsApi.get(editId).then((r) => {
       setTitle(r.title); setDescription(r.description); setTypeId(r.type?.id ?? '');
+      setWantExpected(!!r.expectedResponseAt);
       setExpectedResponseAt(r.expectedResponseAt ? new Date(r.expectedResponseAt).toISOString().slice(0, 16) : '');
     }).catch(() => undefined);
   }, [editId]);
@@ -277,7 +343,7 @@ function SubmitRequestForm({ editId, onDone }: { editId: string | null; onDone: 
 
   const save = async () => {
     setBusy(true); setErr(null);
-    const iso = expectedResponseAt ? new Date(expectedResponseAt).toISOString() : undefined;
+    const iso = wantExpected && expectedResponseAt ? new Date(expectedResponseAt).toISOString() : undefined;
     try {
       if (editId) await requestsApi.update(editId, { title: title.trim(), description: description.trim(), typeId: typeId || undefined, expectedResponseAt: iso ?? null });
       else await requestsApi.submit({ title: title.trim(), description: description.trim(), typeId: typeId || undefined, expectedResponseAt: iso });
@@ -309,12 +375,20 @@ function SubmitRequestForm({ editId, onDone }: { editId: string | null; onDone: 
           <span className="mb-1 block text-xs font-medium text-neutral-600 dark:text-neutral-400">{t('Description')}</span>
           <MarkdownEditor value={description} onChange={setDescription} title="Description" minRows={6} placeholder={t('Describe your request… (supports **bold**, *italics*, ## headings, lists, [links](https://…))')} />
         </div>
-        <label className="block text-sm">
-          <span className="mb-1 block text-xs font-medium text-neutral-600 dark:text-neutral-400">{t('Expected response by')} <span className="font-normal text-neutral-400">({t('optional')})</span></span>
-          <input type="datetime-local" value={expectedResponseAt} min={new Date().toISOString().slice(0, 16)} onChange={(e) => setExpectedResponseAt(e.target.value)} className="w-full max-w-xs rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
-        </label>
+        <div className="text-sm">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={wantExpected} onChange={(e) => setWantExpected(e.target.checked)} />
+            <span className="text-xs font-medium text-neutral-600 dark:text-neutral-400">{t('Set expected response date')}</span>
+          </label>
+          {wantExpected ? (
+            <div className="mt-2">
+              <input type="datetime-local" value={expectedResponseAt} min={new Date().toISOString().slice(0, 16)} onChange={(e) => setExpectedResponseAt(e.target.value)} required className="w-full max-w-xs rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+              {!expectedResponseAt ? <p className="mt-1 text-xs text-neutral-400">{t('Pick a date and time, or uncheck the box above.')}</p> : null}
+            </div>
+          ) : null}
+        </div>
         <div className="flex items-center gap-2">
-          <button disabled={busy || title.trim().length < 4 || !description.trim()} onClick={save} className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
+          <button disabled={busy || title.trim().length < 4 || !description.trim() || (wantExpected && !expectedResponseAt)} onClick={save} className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
             {busy ? t('Saving…') : editId ? t('Save draft') : t('Create draft')}
           </button>
           {err ? <p className="text-xs text-rose-600">{err}</p> : null}

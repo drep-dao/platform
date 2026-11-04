@@ -10,3 +10,17 @@
 :root.dark {
   color-scheme: dark;
 }
+
+/* Platform-wide contrast: the lightest muted greys (neutral-400/500) read as grey-on-grey on grey
+   backgrounds. Bump them one step darker in LIGHT mode only (comes after @tailwind utilities and is
+   more specific, so it wins). Dark mode is untouched — its muted text uses `dark:` variants, which
+   these `html:not(.dark)` selectors never match. Opacity-modified (`/70`) and hover variants are
+   left alone on purpose. */
+html:not(.dark) .text-neutral-400 { color: rgb(115 115 115 / var(--tw-text-opacity, 1)); } /* → neutral-500 */
+html:not(.dark) .text-neutral-500 { color: rgb(82 82 82 / var(--tw-text-opacity, 1)); }    /* → neutral-600 */
+
+/* Each home shell renders its own language/theme controls so they scroll with the page; hide the
+   global fixed switcher so it's not duplicated. Public shell: all sizes (its cluster works on mobile
+   too). Member shell: desktop only (mobile keeps the global switcher). */
+body.shell-public [data-global-switcher] { display: none; }
+@media (min-width: 1024px) { body.shell-member [data-global-switcher] { display: none; } }

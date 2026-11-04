@@ -5,6 +5,7 @@ import { drepIdFromKeyHashHex, drepKeyHashFromPubKeyHex } from '@drep-dao/cardan
 import { PrismaService } from '../prisma/prisma.service';
 import { CardanoQueryService } from '../cardano/cardano-query.service';
 import { isProvenDrepRequired } from '../auth/drep-link.service';
+import { resolveAvatar } from '../common/avatar';
 
 export interface UserProfile {
   user: {
@@ -12,6 +13,8 @@ export interface UserProfile {
     stakeAddress: string;
     stakeKeyHash: string;
     displayName: string | null;
+    /** §2.1 — profile photo (data URL) resolved from the account avatar or a role photo; null = none. */
+    avatarUrl: string | null;
     createdAt: Date;
   };
   /** §2 — the submitter profile's own name (may differ from the DAO-member name). */
@@ -163,10 +166,32 @@ export class UsersService {
     return this.getRewardPaymentAddress(userId);
   }
 
+  /** §2.1 — a signed-in wallet sets its public display name + photo (the "Viewer" profile). Any
+   *  account may use it; a plain viewer who sets a name stops showing as "Anonymous" everywhere
+   *  (names resolve live). Returns the refreshed profile. Each field is optional: omit to leave as-is. */
+  async setProfile(userId: string, dto: { displayName?: string | null; avatarDataUrl?: string | null }): Promise<UserProfile | null> {
+    const data: { displayName?: string | null; avatarDataUrl?: string | null } = {};
+    if (dto.displayName !== undefined) {
+      const name = (dto.displayName ?? '').trim();
+      if (name.length > 120) throw new Error('display name must be 120 characters or fewer');
+      data.displayName = name || null;
+    }
+    if (dto.avatarDataUrl !== undefined) {
+      const url = dto.avatarDataUrl ?? null;
+      if (url) {
+        if (!/^data:image\/(png|jpeg|webp|gif);base64,/.test(url)) throw new Error('avatar must be a PNG, JPEG, WebP or GIF image');
+        if (url.length > 700_000) throw new Error('avatar image is too large');
+      }
+      data.avatarDataUrl = url;
+    }
+    if (Object.keys(data).length) await this.prisma.appUser.update({ where: { id: userId }, data });
+    return this.getProfile(userId);
+  }
+
   async getProfile(userId: string): Promise<UserProfile | null> {
     const user = await this.prisma.appUser.findUnique({
       where: { id: userId },
-      include: { drep: { include: { boardMemberships: true } }, experts: true, submitterApplication: { select: { status: true, displayName: true } } },
+      include: { drep: { include: { boardMemberships: true } }, experts: true, submitterApplication: { select: { status: true, displayName: true, logoDataUrl: true } } },
     });
     if (!user) return null;
 
@@ -233,6 +258,8 @@ export class UsersService {
         stakeAddress: user.stakeAddress,
         stakeKeyHash: user.stakeKeyHash,
         displayName,
+        // §2.1 — the photo shown next to this user on comments/votes (account avatar → role photo).
+        avatarUrl: resolveAvatar({ avatarDataUrl: user.avatarDataUrl, drep: user.drep, experts: user.experts, submitterApplication: user.submitterApplication }),
         createdAt: user.createdAt,
       },
       // §2 — the submitter's own profile name (may differ from the DAO-member

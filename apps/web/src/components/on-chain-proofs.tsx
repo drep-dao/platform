@@ -1,11 +1,23 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { boardProofsApi, daoApi, type OnChainProof } from '@/lib/api';
+import { boardProofsApi, daoApi, type AnchorSchedule, type OnChainProof } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { useT } from '@/lib/prefs-context';
 import { useExplorer } from '@/lib/explorer';
 import { fmtDateTime } from './round-ui';
+
+/** A short "~Xh Ym" / "~Xm" / "shortly" from now until the given ISO time (never negative). */
+function untilText(iso: string | null): string {
+  if (!iso) return 'shortly';
+  const ms = new Date(iso).getTime() - Date.now();
+  if (!Number.isFinite(ms) || ms <= 60_000) return 'shortly';
+  const mins = Math.round(ms / 60_000);
+  if (mins < 60) return `~${mins}m`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m > 0 ? `~${h}h ${m}m` : `~${h}h`;
+}
 
 /** Everything the platform has anchored on-chain — human-readable + verifiable. */
 export function OnChainProofs() {
@@ -14,12 +26,14 @@ export function OnChainProofs() {
   const { profile } = useAuth();
   const isBoard = profile?.roles.includes('BOARD') ?? false;
   const [proofs, setProofs] = useState<OnChainProof[] | null>(null);
+  const [schedule, setSchedule] = useState<AnchorSchedule | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
   const load = useCallback(() => {
     daoApi.proofs().then(setProofs).catch((e) => setError(e instanceof Error ? e.message : t('Failed to load')));
+    daoApi.anchorSchedule().then(setSchedule).catch(() => setSchedule(null));
   }, [t]);
   useEffect(load, [load]);
 
@@ -78,6 +92,15 @@ export function OnChainProofs() {
           </button>
         ) : null}
       </div>
+      {/* §24 (KI-7) — explain the pending state so it doesn't read like a failure. */}
+      {pending > 0 ? (
+        <div className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">
+          {schedule?.mode === 'immediate'
+            ? t('Decisions are recorded now and posted on-chain automatically — nothing is broken.')
+            : `${t('Decisions are recorded now and posted on-chain automatically in cheap batches')}${schedule ? ` (${t('about every')} ${schedule.sweepHours}h)` : ''} — ${t('nothing is broken.')} ${t('Next batch')} ${untilText(schedule?.nextAnchorAt ?? null)}.`}
+          {isBoard ? ` ${t('Board members can post them now with the buttons below.')}` : ''}
+        </div>
+      ) : null}
       {error ? <div className="text-sm text-red-600">{error}</div> : null}
       {msg ? <div className="text-sm text-emerald-600">{msg}</div> : null}
       {!proofs ? (
@@ -101,7 +124,7 @@ export function OnChainProofs() {
                   </a>
                 ) : (
                   <>
-                    <span className="text-amber-600">{t('anchor pending (not yet submitted)')}</span>
+                    <span className="text-amber-600">{schedule?.mode === 'immediate' ? t('anchoring…') : t('will be posted on-chain in the next batch')}</span>
                     {/* §18 — board can enforce submission for this record. */}
                     {isBoard ? (
                       <button

@@ -3,7 +3,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { CurrentUser, AuthContext } from '../auth/current-user.decorator';
 import { RequestsService } from './requests.service';
-import { CreateRequestDto, CreateRequestTypeDto, PublishRequestDto, RequestCommentBodyDto, SetRequestStatusDto, SubmitRequestFeeDto, UpdateRequestDto, UpdateRequestTypeDto } from './dto';
+import { CreateRequestDto, CreateRequestTypeDto, PublishRequestDto, RequestCommentBodyDto, SetLinkedProposalDto, SetRequestStatusDto, SubmitRequestFeeDto, UpdateRequestDto, UpdateRequestTypeDto } from './dto';
 
 /** §R — submitter Requests: queue + history, fee flow, and the board price list. */
 @Controller('requests')
@@ -87,6 +87,13 @@ export class RequestsController {
   @Post(':id/status')
   setStatus(@CurrentUser() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SetRequestStatusDto) {
     return this.svc.setStatus(ctx.userId, id, dto.status);
+  }
+
+  // board-only inside the service — link/unlink an internal proposal (escalate to a vote)
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/linked-proposal')
+  setLinkedProposal(@CurrentUser() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SetLinkedProposalDto) {
+    return this.svc.setLinkedProposal(ctx.userId, id, dto.proposalId ?? null);
   }
 
   @UseGuards(JwtAuthGuard)

@@ -1,8 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { useT } from '@/lib/prefs-context';
 import { Markdown, MarkdownEditor } from './markdown';
+import { Avatar } from './fallback-avatar';
 
 /**
  * One discussion/feedback thread, shared by Requests, Rule Documents and Decisions so all three
@@ -15,6 +17,7 @@ export interface DiscComment {
   id: string;
   authorName: string;
   authorRole: string | null;
+  authorAvatar?: string | null; // §2.1 — the author's photo; null/absent = generated placeholder
   isMine: boolean;
   contentMd: string | null;
   deleted: boolean;
@@ -74,7 +77,7 @@ function Card({
     <div>
       <div className="rounded border border-neutral-200 p-2 text-sm dark:border-neutral-800">
         <div className="mb-0.5 flex items-center justify-between text-xs text-neutral-500">
-          <span className="flex items-center gap-1.5"><span className="font-semibold text-blue-600 dark:text-blue-400">{c.authorName}</span>{(() => { const r = roleTone(c.authorRole); return <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${r.cls}`}>{t(r.label)}</span>; })()}</span>
+          <span className="flex items-center gap-1.5"><Avatar src={c.authorAvatar} name={c.authorName} className="h-5 w-5 shrink-0 rounded-full" /><span className="font-semibold text-blue-600 dark:text-blue-400">{c.authorName}</span>{(() => { const r = roleTone(c.authorRole); return <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${r.cls}`}>{t(r.label)}</span>; })()}</span>
           <span className="flex items-center gap-2">
             <span>{new Date(c.createdAt).toLocaleString()}</span>
             {!c.deleted && (c.isMine || canModerate) ? <button onClick={() => onDelete(c.id)} className="text-rose-600 hover:underline">{t('Delete')}</button> : null}
@@ -113,7 +116,7 @@ function Card({
 export function DiscussionThread({
   comments, canComment, canModerate, onPost, onDelete,
   label = 'Discussion', submitLabel = 'Comment',
-  placeholder, emptyText,
+  placeholder, emptyText, composerHint,
   collapsibleSection = false, defaultSectionOpen = false,
 }: {
   comments: DiscComment[];
@@ -125,6 +128,8 @@ export function DiscussionThread({
   submitLabel?: string;
   placeholder?: string;
   emptyText?: string;
+  /** §2.1 — a note shown above the composer (e.g. "you appear as Anonymous — set a display name"). */
+  composerHint?: ReactNode;
   collapsibleSection?: boolean;
   defaultSectionOpen?: boolean;
 }) {
@@ -163,6 +168,7 @@ export function DiscussionThread({
 
   const composer = canComment ? (
     <div className="mt-3">
+      {composerHint ? <div className="mb-1.5">{composerHint}</div> : null}
       <MarkdownEditor value={text} onChange={setText} title={t(label === 'Feedback' ? 'Add feedback' : 'Add a comment')} minRows={3} placeholder={placeholder ?? t('Write a comment… (supports **bold**, *italics*, ## headings, lists, [links](https://…))')} />
       <button disabled={busy || !text.trim()} onClick={() => post(text)} className="mt-1 rounded bg-emerald-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-40">{busy ? t('Posting…') : t(submitLabel)}</button>
     </div>

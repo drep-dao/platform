@@ -6,6 +6,7 @@ import { card } from '@/lib/ui';
 import { DEFAULT_SUBCATEGORIES, canCommentOnProposal, commentAuthorTone } from '@drep-dao/shared';
 import { useAuth } from '@/lib/auth-context';
 import { useExplorer } from '@/lib/explorer';
+import { Avatar } from './fallback-avatar';
 import {
   proposalsApi,
   proposalVersionsApi,
@@ -3306,7 +3307,8 @@ function CommentItem({
   return (
     <li className={`rounded border p-2 text-sm ${commentTint(c)}`}>
       <div className="flex items-center justify-between gap-2 text-xs text-neutral-500">
-        <span className="font-medium text-neutral-700 dark:text-neutral-300">
+        <span className="flex items-center gap-1.5 font-medium text-neutral-700 dark:text-neutral-300">
+          <Avatar src={c.author.avatarUrl} name={nameOf(c.author)} className="h-5 w-5 shrink-0 rounded-full" />
           {nameOf(c.author)}
           {c.isSubmitter ? <TeamBadge /> : null}
           <RoleBadge role={c.author.role} />

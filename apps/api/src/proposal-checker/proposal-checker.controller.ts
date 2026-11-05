@@ -121,8 +121,10 @@ export class ProposalCheckerController {
   }
 
   // ── ask-size tiers (extra template requirements for larger withdrawals) ─────────
+  // Public read: the extra requirements are part of the governance standard and must be visible to
+  // everyone (incl. logged-out visitors), like the base template. Editing stays board-only below.
   @Get('template-tiers')
-  @UseGuards(JwtAuthGuard, BoardGuard)
+  @UseGuards(OptionalJwtAuthGuard)
   templateTiers() {
     return this.svc.templateTiersConfig();
   }

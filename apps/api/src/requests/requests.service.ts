@@ -269,7 +269,7 @@ export class RequestsService {
       orderBy: { createdAt: 'desc' },
       include: {
         type: true,
-        submitter: { select: { id: true, displayName: true } },
+        submitter: { select: { id: true, displayName: true, submitterApplication: { select: { logoDataUrl: true, email: true, telegram: true, socialLinks: true } } } },
         linkedProposal: { select: { id: true, publicId: true, title: true, status: true } },
       },
     });
@@ -285,7 +285,7 @@ export class RequestsService {
   async get(id: string, userId: string | null) {
     const r = await this.prisma.request.findUnique({
       where: { id },
-      include: { type: true, submitter: { select: { id: true, displayName: true } }, linkedProposal: { select: { id: true, publicId: true, title: true, status: true } } },
+      include: { type: true, submitter: { select: { id: true, displayName: true, submitterApplication: { select: { logoDataUrl: true, email: true, telegram: true, socialLinks: true } } } }, linkedProposal: { select: { id: true, publicId: true, title: true, status: true } } },
     });
     if (!r) throw new NotFoundException('request not found');
     const board = userId ? await this.isBoard(userId) : false;
@@ -303,12 +303,13 @@ export class RequestsService {
       id: string; title: string; description: string; expectedResponseAt: Date | null; status: string; createdAt: Date; decidedAt: Date | null;
       publishedAt: Date | null; feeTxHash: string | null; feeSeenOnchainAt: Date | null; submitterUserId: string;
       type: { id: string; name: string; priceAda: bigint } | null;
-      submitter: { id: string; displayName: string | null };
+      submitter: { id: string; displayName: string | null; submitterApplication?: { logoDataUrl: string | null; email: string; telegram: string; socialLinks: string[] } | null };
       linkedProposal?: { id: string; publicId: string | null; title: string; status: string } | null;
     },
     full: boolean,
     viewerId?: string | null,
   ) {
+    const app = r.submitter.submitterApplication ?? null;
     return {
       id: r.id,
       title: r.title,
@@ -322,6 +323,12 @@ export class RequestsService {
       decidedAt: r.decidedAt,
       submitter: r.submitter.displayName ?? 'Submitter',
       submitterUserId: r.submitterUserId,
+      // §R — submitter identity + contact, so a reader can reach them from the request. The submitter
+      // directory already shows these publicly, so exposing them here is no new disclosure.
+      submitterAvatar: app?.logoDataUrl ?? null,
+      submitterEmail: app?.email || null,
+      submitterTelegram: app?.telegram || null,
+      submitterSocialLinks: app?.socialLinks ?? [],
       type: r.type ? { id: r.type.id, name: r.type.name, priceAda: Number(r.type.priceAda) / Number(LOVELACE) } : null,
       free: !r.type,
       feeTxHash: full ? r.feeTxHash : r.feeTxHash ? `${r.feeTxHash.slice(0, 12)}…` : null,

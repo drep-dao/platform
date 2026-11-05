@@ -9,6 +9,7 @@ import { card } from '@/lib/ui';
 import { CopyButton } from './copy-button';
 import { Markdown, MarkdownEditor } from './markdown';
 import { DiscussionThread } from './discussion-thread';
+import { FallbackAvatar } from './fallback-avatar';
 
 /**
  * §R — the Requests view. Approved submitters ask the DReps for something with a title + a rich
@@ -118,6 +119,7 @@ export function RequestsSection({ scope = 'all' }: { scope?: 'all' | 'mine' }) {
 
 function RequestCard({ r, isBoard, mine, onEdit, onChanged }: { r: RequestView; isBoard: boolean; mine: boolean; onEdit: () => void; onChanged: () => void }) {
   const t = useT();
+  const { setParams } = useUrlNav();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -152,8 +154,30 @@ function RequestCard({ r, isBoard, mine, onEdit, onChanged }: { r: RequestView; 
       </button>
       {open ? (
         <div className="mt-3 space-y-3 border-t border-neutral-200 pt-3 dark:border-neutral-800">
+          {/* §R — submitter identity: avatar + name, click through to their full profile. */}
+          <button onClick={() => setParams({ view: 'submitters', sub: d.submitterUserId })} className="flex items-center gap-2 text-left">
+            {d.submitterAvatar
+              ? <img src={d.submitterAvatar} alt="" className="h-8 w-8 rounded object-cover" />
+              : <FallbackAvatar name={d.submitter} className="h-8 w-8 rounded" />}
+            <span className="text-sm font-medium text-emerald-700 hover:underline dark:text-emerald-400">{d.submitter}</span>
+            <span className="text-xs text-neutral-400">{t('view profile →')}</span>
+          </button>
           <div className="prose prose-sm max-w-none text-sm dark:prose-invert"><Markdown>{r.description}</Markdown></div>
           {r.expectedResponseAt ? <p className="text-xs text-neutral-500">{t('Response expected by:')} <span className={`font-medium ${new Date(r.expectedResponseAt).getTime() < Date.now() && r.status === 'ACTIVE' ? 'text-red-600 dark:text-red-400' : 'text-neutral-700 dark:text-neutral-300'}`}>{new Date(r.expectedResponseAt).toLocaleString()}</span></p> : null}
+
+          {/* §R — submitter contact, so a reader can reach them directly. Same data as the public directory. */}
+          {d.submitterEmail || d.submitterTelegram || d.submitterSocialLinks?.length ? (
+            <div className="rounded-md border border-neutral-200 bg-neutral-50/60 p-2 text-xs dark:border-neutral-800 dark:bg-neutral-900/40">
+              <p className="mb-1 font-semibold text-neutral-600 dark:text-neutral-300">{t('Contact the submitter')}</p>
+              <div className="flex flex-col gap-0.5">
+                {d.submitterEmail ? <span className="text-neutral-600 dark:text-neutral-400">{t('Email:')} <a href={`mailto:${d.submitterEmail}`} className="text-emerald-700 underline dark:text-emerald-400">{d.submitterEmail}</a></span> : null}
+                {d.submitterTelegram ? <span className="text-neutral-600 dark:text-neutral-400">{t('Telegram:')} <span className="font-mono">{d.submitterTelegram}</span></span> : null}
+                {d.submitterSocialLinks?.length ? (
+                  <span className="flex flex-wrap items-center gap-x-2 text-neutral-600 dark:text-neutral-400">{t('Links:')} {d.submitterSocialLinks.map((l, i) => <a key={i} href={/^https?:\/\//i.test(l) ? l : `https://${l}`} target="_blank" rel="noreferrer" className="text-emerald-700 underline dark:text-emerald-400">{l}</a>)}</span>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
 
           {/* §R — author's draft controls: edit, publish (locks it), or delete. */}
           {mine && r.status === 'DRAFT' ? (

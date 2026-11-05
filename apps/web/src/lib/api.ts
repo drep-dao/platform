@@ -2505,6 +2505,11 @@ export interface RequestView {
   decidedAt: string | null;
   submitter: string;
   submitterUserId: string;
+  // §R — submitter identity + contact (same data as the public submitters directory).
+  submitterAvatar: string | null;
+  submitterEmail: string | null;
+  submitterTelegram: string | null;
+  submitterSocialLinks: string[];
   type: { id: string; name: string; priceAda: number } | null;
   free: boolean;
   feeTxHash: string | null;

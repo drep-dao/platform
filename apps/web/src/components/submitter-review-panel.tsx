@@ -1,4 +1,5 @@
 'use client';
+import { safeHref } from '@/lib/safe-url';
 
 import { useCallback, useEffect, useState } from 'react';
 import { boardSubmittersApi, type SubmitterApplication } from '@/lib/api';
@@ -69,7 +70,7 @@ export function SubmitterReviewPanel({ onChange, history = false }: { onChange?:
                   {a.products.map((p, i) => (
                     <li key={i} className="flex items-center gap-2">
                       {p.iconDataUrl ? <img src={p.iconDataUrl} alt="" className="h-5 w-5 rounded object-cover" /> : null}
-                      <a href={p.url} target="_blank" rel="noreferrer" className="break-all text-emerald-700 underline dark:text-emerald-400">{p.url}</a>
+                      <a href={safeHref(p.url)} target="_blank" rel="noreferrer" className="break-all text-emerald-700 underline dark:text-emerald-400">{p.url}</a>
                       {p.description ? <span className="text-neutral-500">— {p.description}</span> : null}
                     </li>
                   ))}
@@ -87,7 +88,7 @@ export function SubmitterReviewPanel({ onChange, history = false }: { onChange?:
               {' · '}{t('Email:')} <a href={`mailto:${a.email}`} className="text-emerald-700 underline dark:text-emerald-400">{a.email || '—'}</a>
             </div>
             <div className="mt-1 text-xs"><span className="font-medium">{t('Social media:')}</span>{' '}
-              {a.socialLinks.length ? a.socialLinks.map((l, i) => <a key={i} href={l} target="_blank" rel="noreferrer" className="mr-2 break-all text-emerald-700 underline dark:text-emerald-400">{l}</a>) : <span className="text-neutral-400">{t('not provided')}</span>}
+              {a.socialLinks.length ? a.socialLinks.map((l, i) => <a key={i} href={safeHref(l)} target="_blank" rel="noreferrer" className="mr-2 break-all text-emerald-700 underline dark:text-emerald-400">{l}</a>) : <span className="text-neutral-400">{t('not provided')}</span>}
             </div>
             {a.status === 'REJECTED' && a.rejectionReason ? <div className="mt-1 text-xs text-red-600">{t('Reason:')} {a.rejectionReason}</div> : null}
             {a.history.length > 0 ? (

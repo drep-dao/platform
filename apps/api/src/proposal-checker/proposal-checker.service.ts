@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CardanoQueryService, type GovAction, type GovActionMeta } from '../cardano/cardano-query.service';
 import { AiService, AiError } from './ai.service';
 import { renderFramework, pctFromFindings, type ReviewFramework } from './framework';
-import { extractText, parseDataUrl, MAX_EXTRACTED_CHARS } from './text-extract';
+import { extractText, parseDataUrl, fetchAndExtract, MAX_EXTRACTED_CHARS } from './text-extract';
 import { verifyCip30Signature } from '../auth/cip30';
 
 /** Original file kept for download is capped so a row can't blow up (base64 ≈ 1.33×). */
@@ -63,37 +63,7 @@ function parseGithubRepo(raw: string): { owner: string; repo: string } | null {
 /** Rewrite a "human" document URL (Google Docs/Sheets/Slides, Drive file) to a direct
  *  export/download URL, so fetch gets the document text instead of a JavaScript app shell.
  *  Returns the original URL unchanged for everything else. */
-function toFetchableUrl(raw: string): { url: string; googleExport: boolean } {
-  try {
-    const u = new URL(raw);
-    const host = u.hostname.toLowerCase();
-    // IPFS → a reliable gateway. ipfs:// isn't fetchable; ipfs.io/dweb.link frequently 429.
-    if (u.protocol === 'ipfs:') {
-      const cid = raw.replace(/^ipfs:\/\//i, '').replace(/^ipfs\//, '');
-      return { url: `https://gateway.pinata.cloud/ipfs/${cid}`, googleExport: false };
-    }
-    const ipfsPath = /\/ipfs\/([^?#]+)/.exec(u.pathname);
-    if (ipfsPath && /(^|\.)(ipfs\.io|dweb\.link|cloudflare-ipfs\.com)$/i.test(host)) {
-      return { url: `https://gateway.pinata.cloud/ipfs/${ipfsPath[1]}`, googleExport: false };
-    }
-    if (host === 'docs.google.com') {
-      const m = /^\/(document|spreadsheets|presentation)\/d\/([a-zA-Z0-9_-]+)/.exec(u.pathname);
-      if (m) {
-        const [, kind, id] = m;
-        // Docs export as markdown (keeps headings/tables/bold); sheets as CSV; slides as plain text.
-        const format = kind === 'spreadsheets' ? 'csv' : kind === 'document' ? 'markdown' : 'txt';
-        return { url: `https://docs.google.com/${kind}/d/${id}/export?format=${format}`, googleExport: true };
-      }
-    }
-    if (host === 'drive.google.com') {
-      const m = /\/file\/d\/([a-zA-Z0-9_-]+)/.exec(u.pathname) ?? /[?&]id=([a-zA-Z0-9_-]+)/.exec(u.search);
-      if (m) return { url: `https://drive.google.com/uc?export=download&id=${m[1]}`, googleExport: true };
-    }
-  } catch {
-    /* fall through to raw */
-  }
-  return { url: raw, googleExport: false };
-}
+// (link rewriting + SSRF-guarded fetching now live in text-extract.ts fetchAndExtract)
 
 @Injectable()
 export class ProposalCheckerService {
@@ -166,28 +136,13 @@ export class ProposalCheckerService {
    *  Throws Error with a user-facing message on any failure. Shared by template links + judge links. */
   private async fetchDocText(rawUrl: string): Promise<{ text: string; note?: string; mime: string }> {
     const url = (rawUrl || '').trim();
-    // toFetchableUrl first so ipfs:// is rewritten to an https gateway before the scheme check.
-    const { url: fetchUrl, googleExport } = toFetchableUrl(url);
-    if (!/^https?:\/\//i.test(fetchUrl)) throw new Error('enter a valid http(s) link');
-    const cached = this.linkCache.get(fetchUrl);
+    const cached = this.linkCache.get(url);
     if (cached && Date.now() - cached.at < 60 * 60_000) return cached.val; // 1h — avoids re-downloading big reference PDFs on re-score
-    const res = await fetch(fetchUrl, { signal: AbortSignal.timeout(20_000), redirect: 'follow' }).catch((e) => {
-      throw new Error(e instanceof Error ? e.message : String(e));
-    });
-    if (!res.ok) throw new Error(`the link returned ${res.status}`);
-    const mime = res.headers.get('content-type')?.split(';')[0]?.trim() || 'text/html';
-    // A Google export that comes back as an HTML page is a sign-in / permission wall, not the doc.
-    if (googleExport && mime.includes('html')) {
-      throw new Error(
-        'this Google document is not publicly readable — in the document, Share → General access → "Anyone with the link" (Viewer), then paste the link again',
-      );
-    }
-    const ab = await res.arrayBuffer();
-    if (ab.byteLength > MAX_FETCH_BYTES) throw new Error('the linked document is too large');
-    const { text, note } = await extractText(Buffer.from(ab), mime, url);
-    const val = { text, note, mime };
+    // Shared SSRF-guarded fetch+extract: blocks internal/loopback/link-local targets and re-validates
+    // every redirect hop (text-extract.fetchAndExtract), and rewrites Google/Drive/IPFS links.
+    const val = await fetchAndExtract(url, MAX_FETCH_BYTES);
     if (this.linkCache.size > 100) this.linkCache.clear();
-    this.linkCache.set(fetchUrl, { at: Date.now(), val });
+    this.linkCache.set(url, { at: Date.now(), val });
     return val;
   }
 

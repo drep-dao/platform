@@ -15,6 +15,12 @@ const MAX_PRODUCT_DESC = 500;
 const MAX_PRODUCT_ICON = 700_000; // base64 data URL, client-resized
 
 /** Trim + cap the products list, dropping any entry without a link. */
+/** SEC (stored XSS) — only keep http(s)/mailto links; drop javascript:/data: etc. so a stored value
+ *  can never become an active `href` in a viewer's or board member's browser. Mirrors markdown.ts. */
+function isSafeLinkUrl(u: string): boolean {
+  return /^(https?:\/\/|mailto:)/i.test(u.trim());
+}
+
 function sanitizeProducts(input: unknown): StoredProduct[] {
   if (!Array.isArray(input)) return [];
   const out: StoredProduct[] = [];
@@ -22,7 +28,7 @@ function sanitizeProducts(input: unknown): StoredProduct[] {
     if (!raw || typeof raw !== 'object') continue;
     const r = raw as Record<string, unknown>;
     const url = (typeof r.url === 'string' ? r.url : '').trim();
-    if (!url) continue; // a product must have a link
+    if (!url || !isSafeLinkUrl(url)) continue; // a product must have a SAFE http(s)/mailto link
     const description = (typeof r.description === 'string' ? r.description : '').trim().slice(0, MAX_PRODUCT_DESC);
     const rawIcon = typeof r.iconDataUrl === 'string' ? r.iconDataUrl.trim() : '';
     const iconDataUrl = rawIcon && rawIcon.length <= MAX_PRODUCT_ICON ? rawIcon : undefined;
@@ -94,7 +100,7 @@ export class SubmitterService {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new BadRequestException('a valid email is required');
     const previousFunding = (dto.previousFunding ?? '').trim();
     const products = sanitizeProducts(dto.products);
-    const socialLinks = (dto.socialLinks ?? []).map((s) => s.trim()).filter(Boolean);
+    const socialLinks = (dto.socialLinks ?? []).map((s) => s.trim()).filter((s) => s && isSafeLinkUrl(s));
     const githubUrls = (dto.githubUrls ?? []).map((s) => s.trim()).filter(Boolean);
     const logoDataUrl = dto.logoDataUrl?.trim() || null;
     const existing = await this.prisma.submitterApplication.findUnique({ where: { userId } });

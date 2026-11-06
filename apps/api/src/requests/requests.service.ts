@@ -230,14 +230,30 @@ export class RequestsService {
   async tryVerifyFee(id: string): Promise<boolean> {
     const req = await this.prisma.request.findUnique({ where: { id }, include: { type: true } });
     if (!req || req.status !== 'PENDING_FEE' || !req.feeTxHash || !req.type) return false;
+    // SEC — a fee tx funds at most ONE request (mirrors PublicScanPayment.txHash @unique). Without this
+    // an approved submitter could pay once and reuse the same tx hash to activate unlimited paid
+    // requests. The partial-unique index on request(fee_tx_hash) WHERE fee_seen_onchain_at IS NOT NULL
+    // is the race-safe backstop; this check gives a clean early-out.
+    const alreadyCredited = await this.prisma.request.findFirst({
+      where: { feeTxHash: req.feeTxHash, feeSeenOnchainAt: { not: null }, id: { not: req.id } },
+      select: { id: true },
+    });
+    if (alreadyCredited) return false; // this payment already funded another request
     const addr = await this.feeAddress();
     if (!addr) return false;
     const v = await this.cardano.verifyPayment(req.feeTxHash, addr, req.type.priceAda);
     if (v.found && v.paid) {
-      await this.prisma.request.update({
-        where: { id },
-        data: { status: 'ACTIVE', feeSeenOnchainAt: new Date() },
-      });
+      try {
+        // Race-safe: credit only if still pending + uncredited; the partial-unique index rejects a
+        // concurrent credit of the same tx hash.
+        const res = await this.prisma.request.updateMany({
+          where: { id, status: 'PENDING_FEE', feeSeenOnchainAt: null },
+          data: { status: 'ACTIVE', feeSeenOnchainAt: new Date() },
+        });
+        if (res.count === 0) return false;
+      } catch {
+        return false; // unique-index violation: the same tx was credited concurrently
+      }
       await this.notifyBoardOfNewRequest(id, req.title); // paid request enters the queue once the fee verifies
       return true;
     }
@@ -323,12 +339,13 @@ export class RequestsService {
       decidedAt: r.decidedAt,
       submitter: r.submitter.displayName ?? 'Submitter',
       submitterUserId: r.submitterUserId,
-      // §R — submitter identity + contact, so a reader can reach them from the request. The submitter
-      // directory already shows these publicly, so exposing them here is no new disclosure.
+      // §R — submitter identity + contact. Contact details (email/Telegram/socials) are shown only to
+      // AUTHENTICATED viewers, matching the login-gated submitter directory (GET /dao/submitters is
+      // behind JwtAuthGuard); anonymous callers get name + avatar only, never contact PII.
       submitterAvatar: app?.logoDataUrl ?? null,
-      submitterEmail: app?.email || null,
-      submitterTelegram: app?.telegram || null,
-      submitterSocialLinks: app?.socialLinks ?? [],
+      submitterEmail: viewerId ? app?.email || null : null,
+      submitterTelegram: viewerId ? app?.telegram || null : null,
+      submitterSocialLinks: viewerId ? app?.socialLinks ?? [] : [],
       type: r.type ? { id: r.type.id, name: r.type.name, priceAda: Number(r.type.priceAda) / Number(LOVELACE) } : null,
       free: !r.type,
       feeTxHash: full ? r.feeTxHash : r.feeTxHash ? `${r.feeTxHash.slice(0, 12)}…` : null,

@@ -9,6 +9,7 @@ import { FallbackAvatar } from './fallback-avatar';
 import { CopyButton } from './copy-button';
 import { useExplorer } from '@/lib/explorer';
 import { useUrlNav } from '@/lib/use-url-nav';
+import { safeHref } from '@/lib/safe-url';
 import { StatusBadge, PROPOSAL_STATUS_CLS } from './round-ui';
 import { ClampedMarkdown } from './clamped-markdown';
 import { brand } from '@/lib/brand';
@@ -121,7 +122,7 @@ export function SubmittersDirectory() {
                           {s.products.map((p, i) => (
                             <li key={i} className="flex items-center gap-2">
                               {p.iconDataUrl ? <img src={p.iconDataUrl} alt="" className="h-6 w-6 rounded object-cover" /> : null}
-                              <a href={p.url} target="_blank" rel="noreferrer" className="break-all text-emerald-700 underline dark:text-emerald-400">{p.url}</a>
+                              <a href={safeHref(p.url)} target="_blank" rel="noreferrer" className="break-all text-emerald-700 underline dark:text-emerald-400">{p.url}</a>
                               {p.description ? <span className="text-neutral-500">— {p.description}</span> : null}
                             </li>
                           ))}
@@ -164,7 +165,7 @@ export function SubmittersDirectory() {
                           <div>
                             <span className="font-medium">{t('GitHub:')}</span>{' '}
                             {s.githubUrls.map((l, i) => (
-                              <a key={i} href={l} target="_blank" rel="noreferrer" className="mr-2 break-all text-emerald-700 underline dark:text-emerald-400">{l}</a>
+                              <a key={i} href={safeHref(l)} target="_blank" rel="noreferrer" className="mr-2 break-all text-emerald-700 underline dark:text-emerald-400">{l}</a>
                             ))}
                           </div>
                         ) : null}
@@ -172,7 +173,7 @@ export function SubmittersDirectory() {
                           <span className="font-medium">{t('Social media:')}</span>{' '}
                           {s.socialLinks?.length
                             ? s.socialLinks.map((l, i) => (
-                                <a key={i} href={l} target="_blank" rel="noreferrer" className="mr-2 break-all text-emerald-700 underline dark:text-emerald-400">{l}</a>
+                                <a key={i} href={safeHref(l)} target="_blank" rel="noreferrer" className="mr-2 break-all text-emerald-700 underline dark:text-emerald-400">{l}</a>
                               ))
                             : <span className="text-neutral-400">{t('not provided')}</span>}
                         </div>

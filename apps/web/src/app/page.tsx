@@ -28,18 +28,21 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
     : one('ip') ? { path: `/internal-proposals/${one('ip')}`, kind: 'Internal proposal' }
     : one('proposal') ? { path: `/proposals/${one('proposal')}`, kind: 'Funding proposal' }
     : one('gp') ? { path: `/groups/proposal/${one('gp')}`, kind: 'Proposal' }
+    : one('event') ? { path: `/events/${one('event')}`, kind: 'Upcoming event' }
     : null;
   if (!target) return {}; // homepage / non-resource link → keep the default site card
 
   try {
     const res = await fetch(`${API}${target.path}`, { signal: AbortSignal.timeout(2500), headers: { accept: 'application/json' } });
     if (!res.ok) return {};
-    const data = (await res.json()) as { title?: unknown; groupName?: unknown };
+    const data = (await res.json()) as { title?: unknown; groupName?: unknown; description?: unknown };
     const title = typeof data.title === 'string' && data.title.trim() ? data.title.trim() : null;
     if (!title) return {};
     // OG proposals name their group (e.g. "OG proposal") rather than the generic label.
     const kind = typeof data.groupName === 'string' && data.groupName ? `${data.groupName} proposal` : target.kind;
-    const desc = `${kind} · ${brand.name}`;
+    // §events — use the event's supporting text as the card description when present.
+    const rawDesc = typeof data.description === 'string' && data.description.trim() ? data.description.trim() : null;
+    const desc = rawDesc ? rawDesc.slice(0, 200) : `${kind} · ${brand.name}`;
     const image = `/og?title=${encodeURIComponent(title)}&kind=${encodeURIComponent(kind)}`; // resolved against metadataBase
     return {
       title: `${title} · ${brand.name}`,

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEventDto } from './dto';
 
@@ -20,6 +20,13 @@ export class EventsService {
     return rows.map((e) => this.view(e));
   }
 
+  /** Public: one event by id (used by the share-link unfurl / card). */
+  async getOne(id: string) {
+    const e = await this.prisma.scheduledEvent.findUnique({ where: { id } });
+    if (!e) throw new NotFoundException('event not found');
+    return this.view(e);
+  }
+
   /** Board: every scheduled event (incl. past) for the admin list. */
   async listAll() {
     const rows = await this.prisma.scheduledEvent.findMany({ orderBy: { startAt: 'desc' } });
@@ -31,7 +38,9 @@ export class EventsService {
     const end = new Date(dto.endAt);
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) throw new BadRequestException('invalid start/end time');
     if (end.getTime() <= start.getTime()) throw new BadRequestException('the end time must be after the start time');
-    const url = dto.url.trim();
+    // Accept a bare link ("meet.google.com/xxx") by prepending https:// when no scheme is given.
+    const raw = dto.url.trim();
+    const url = !raw || /^https?:\/\//i.test(raw) ? raw : `https://${raw.replace(/^\/+/, '')}`;
     if (!/^https?:\/\//i.test(url)) throw new BadRequestException('enter a valid http(s) link');
     const ev = await this.prisma.scheduledEvent.create({
       data: { title: dto.title.trim(), description: (dto.description ?? '').trim(), url, startAt: start, endAt: end },

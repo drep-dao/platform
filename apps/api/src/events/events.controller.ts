@@ -14,6 +14,12 @@ export class EventsController {
     return this.svc.upcoming();
   }
 
+  // Public: one event by id — used by the share-link card unfurl.
+  @Get(':id')
+  get(@Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.getOne(id);
+  }
+
   @Get()
   @UseGuards(JwtAuthGuard, BoardGuard)
   list() {

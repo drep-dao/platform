@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type KeyboardEvent } from 'react';
+import { useEffect, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { publicApi, eventsApi, type PublicOverview, type ActiveVote, type ScheduledEvent } from '@/lib/api';
 import { usePrefs } from '@/lib/prefs-context';
 import { brand } from '@/lib/brand';
@@ -165,9 +165,9 @@ export function PublicLanding({ onConnect, onExplore, onOpenVote, onOpenGroupVot
           {events.map((ev) => {
             const isMeet = /meet\.google\.com/i.test(ev.url);
             return (
-              <a key={ev.id} href={ev.url} target="_blank" rel="noreferrer"
-                className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-indigo-200 bg-indigo-50 px-5 py-4 transition hover:bg-indigo-100 dark:border-indigo-900/60 dark:bg-indigo-950/30 dark:hover:bg-indigo-950/50">
-                <span className="flex items-center gap-3">
+              <div key={ev.id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-indigo-200 bg-indigo-50 px-5 py-4 dark:border-indigo-900/60 dark:bg-indigo-950/30">
+                <span className="flex min-w-0 items-center gap-3">
                   <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-indigo-600 text-white">
                     {isMeet ? <VideoIcon /> : <CalendarIcon />}
                   </span>
@@ -177,8 +177,12 @@ export function PublicLanding({ onConnect, onExplore, onOpenVote, onOpenGroupVot
                     {ev.description ? <span className="block text-[13px] text-indigo-800/70 dark:text-indigo-200/60">{ev.description}</span> : null}
                   </span>
                 </span>
-                <span className="shrink-0 rounded-full bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:brightness-105">{isMeet ? t('Join Google Meet') : t('Join event')}</span>
-              </a>
+                <span className="flex shrink-0 items-center gap-2">
+                  <ShareEventButton ev={ev} t={t} />
+                  <a href={ev.url} target="_blank" rel="noreferrer"
+                    className="rounded-full bg-indigo-600 px-5 py-2 text-sm font-semibold text-white transition hover:brightness-105">{isMeet ? t('Join Google Meet') : t('Join event')}</a>
+                </span>
+              </div>
             );
           })}
           <hr className="border-neutral-200 dark:border-neutral-800" />
@@ -434,6 +438,44 @@ function EventCountdown({ startAt, endAt, t }: { startAt: string; endAt: string;
     <span className="block text-[13px] font-semibold" style={{ color: countdownColor(ms) }}>
       {t('Starts in')} {fmtLeft(ms)}
     </span>
+  );
+}
+
+/** §events — Share: copies a link to the event that unfurls a rich card (title + text + image) on X.
+ *  Uses the native share sheet when available (mobile), otherwise copies the link to the clipboard. */
+function ShareEventButton({ ev, t }: { ev: ScheduledEvent; t: (s: string) => string }) {
+  const [copied, setCopied] = useState(false);
+  const share = async (e: MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const url = `${window.location.origin}/?event=${ev.id}`;
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try { await navigator.share({ title: ev.title, text: ev.description || ev.title, url }); return; } catch { /* cancelled / unsupported → copy */ }
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch { /* clipboard blocked → ignore */ }
+  };
+  return (
+    <button type="button" onClick={share} title={t('Share — copies a link that shows a card (title, text, image) on X')}
+      className="inline-flex items-center gap-1.5 rounded-full border border-indigo-300 bg-white/70 px-3 py-2 text-sm font-medium text-indigo-700 transition hover:bg-white dark:border-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-200 dark:hover:bg-indigo-950">
+      <ShareIcon />
+      {copied ? t('Copied') : t('Share')}
+    </button>
+  );
+}
+
+function ShareIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden className="h-4 w-4">
+      <circle cx="18" cy="5" r="3" />
+      <circle cx="6" cy="12" r="3" />
+      <circle cx="18" cy="19" r="3" />
+      <path d="m8.59 13.51 6.83 3.98" />
+      <path d="m15.41 6.51-6.82 3.98" />
+    </svg>
   );
 }
 

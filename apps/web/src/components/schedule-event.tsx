@@ -26,17 +26,24 @@ export function ScheduleEvent() {
 
   const reset = () => { setTitle(''); setDescription(''); setUrl(''); setStartAt(''); setEndAt(''); };
 
+  // Accept a bare link like "meet.google.com/xxx" — prepend https:// when no scheme is given.
+  const normalizeUrl = (raw: string) => {
+    const u = raw.trim();
+    return !u || /^https?:\/\//i.test(u) ? u : `https://${u.replace(/^\/+/, '')}`;
+  };
+
   const create = async () => {
     setError(null);
     if (title.trim().length < 1) { setError(t('Enter a title.')); return; }
-    if (!/^https?:\/\//i.test(url.trim())) { setError(t('Enter a valid http(s) link.')); return; }
+    const normUrl = normalizeUrl(url);
+    if (!/^https?:\/\//i.test(normUrl)) { setError(t('Enter a valid http(s) link.')); return; }
     if (!startAt || !endAt) { setError(t('Set a start and end time.')); return; }
     const s = new Date(startAt), e = new Date(endAt);
     if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) { setError(t('Invalid start/end time.')); return; }
     if (e.getTime() <= s.getTime()) { setError(t('The end time must be after the start time.')); return; }
     setBusy(true);
     try {
-      await eventsApi.create({ title: title.trim(), description: description.trim(), url: url.trim(), startAt: s.toISOString(), endAt: e.toISOString() });
+      await eventsApi.create({ title: title.trim(), description: description.trim(), url: normUrl, startAt: s.toISOString(), endAt: e.toISOString() });
       reset();
       load();
     } catch (err) {

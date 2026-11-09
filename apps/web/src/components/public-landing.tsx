@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, type KeyboardEvent } from 'react';
-import { publicApi, type PublicOverview, type ActiveVote } from '@/lib/api';
+import { publicApi, eventsApi, type PublicOverview, type ActiveVote, type ScheduledEvent } from '@/lib/api';
 import { usePrefs } from '@/lib/prefs-context';
 import { brand } from '@/lib/brand';
 
@@ -24,6 +24,7 @@ const GOV_FLOW = ['Join', 'Propose', 'Vote', 'Act'];
 export function PublicLanding({ onConnect, onExplore, onOpenVote, onOpenGroupVote, onOpenScore }: { onConnect: () => void; onExplore: () => void; onOpenVote?: (id: string) => void; onOpenGroupVote?: (groupKey: string, id: string) => void; onOpenScore?: () => void }) {
   const { t } = usePrefs();
   const [data, setData] = useState<PublicOverview | null>(null);
+  const [events, setEvents] = useState<ScheduledEvent[]>([]);
   const [failed, setFailed] = useState(false);
   const governance = brand.kind === 'governance';
 
@@ -33,6 +34,11 @@ export function PublicLanding({ onConnect, onExplore, onOpenVote, onOpenGroupVot
       .overview()
       .then((d) => alive && setData(d))
       .catch(() => alive && setFailed(true));
+    // §events — fetched separately (not via the cached overview) so a just-scheduled event shows now.
+    eventsApi
+      .upcoming()
+      .then((e) => alive && setEvents(e))
+      .catch(() => undefined);
     return () => {
       alive = false;
     };
@@ -149,6 +155,34 @@ export function PublicLanding({ onConnect, onExplore, onOpenVote, onOpenGroupVot
             {t('Round')} {round.number} · {round.name} · {data?.admissionOpen ? t('open admission') : t('board-gated admission')}
           </span>
         </div>
+      ) : null}
+
+      {/* ---- Upcoming events — scheduled calls set by the board. Shown only while there is at least
+             one event that has not yet ended; a separator sets them apart from the standing links. ---- */}
+      {governance && events.length ? (
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">{t('Upcoming events')}</h2>
+          {events.map((ev) => {
+            const isMeet = /meet\.google\.com/i.test(ev.url);
+            return (
+              <a key={ev.id} href={ev.url} target="_blank" rel="noreferrer"
+                className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-indigo-200 bg-indigo-50 px-5 py-4 transition hover:bg-indigo-100 dark:border-indigo-900/60 dark:bg-indigo-950/30 dark:hover:bg-indigo-950/50">
+                <span className="flex items-center gap-3">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-indigo-600 text-white">
+                    {isMeet ? <VideoIcon /> : <CalendarIcon />}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block font-semibold text-indigo-900 dark:text-indigo-100">{ev.title}</span>
+                    <EventCountdown startAt={ev.startAt} endAt={ev.endAt} t={t} />
+                    {ev.description ? <span className="block text-[13px] text-indigo-800/70 dark:text-indigo-200/60">{ev.description}</span> : null}
+                  </span>
+                </span>
+                <span className="shrink-0 rounded-full bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:brightness-105">{isMeet ? t('Join Google Meet') : t('Join event')}</span>
+              </a>
+            );
+          })}
+          <hr className="border-neutral-200 dark:border-neutral-800" />
+        </section>
       ) : null}
 
       {/* ---- Telegram coordination group — governance only, and only when an invite is configured ---- */}
@@ -372,6 +406,33 @@ function MeetingCountdown({ m, t }: { m: MeetingTimeT; t: (s: string) => string 
   return (
     <span className="block text-[13px] font-semibold" style={{ color: countdownColor(ms) }}>
       {t('Next meeting in')} {fmtLeft(ms)}
+    </span>
+  );
+}
+
+/** §events — live countdown to a one-off event; "Live now" while it runs (until endAt). */
+function EventCountdown({ startAt, endAt, t }: { startAt: string; endAt: string; t: (s: string) => string }) {
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  if (now === null) return null; // avoid SSR/hydration mismatch
+  const start = new Date(startAt).getTime();
+  const end = new Date(endAt).getTime();
+  if (now >= start && now < end) {
+    return (
+      <span className="flex items-center gap-1.5 text-[13px] font-semibold text-indigo-700 dark:text-indigo-300">
+        <span className="h-2 w-2 rounded-full bg-indigo-500 motion-safe:animate-pulse" aria-hidden="true" />
+        {t('Live now — join in progress')}
+      </span>
+    );
+  }
+  const ms = start - now;
+  return (
+    <span className="block text-[13px] font-semibold" style={{ color: countdownColor(ms) }}>
+      {t('Starts in')} {fmtLeft(ms)}
     </span>
   );
 }

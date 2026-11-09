@@ -2045,3 +2045,18 @@ model GroupComment {
   @@index([proposalId])
   @@map("group_comment")
 }
+
+// §events — one-off (or a few) upcoming events shown on the landing page (a call: title + text + a
+// join link). Scheduled by a board member in "Schedule Event"; hidden from the landing after endAt.
+model ScheduledEvent {
+  id          String   @id @default(uuid()) @db.Uuid
+  title       String
+  description String   @default("")
+  url         String // the join link (Google Meet preferred)
+  startAt     DateTime @map("start_at") @db.Timestamptz(6)
+  endAt       DateTime @map("end_at") @db.Timestamptz(6)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([endAt])
+  @@map("scheduled_event")
+}

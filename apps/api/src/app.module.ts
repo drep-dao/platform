@@ -20,6 +20,7 @@ import { SubmitterModule } from './submitter/submitter.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { JobsModule } from './jobs/jobs.module';
 import { RequestsModule } from './requests/requests.module';
+import { EventsModule } from './events/events.module';
 import { GroupsModule } from './groups/groups.module';
 import { DeployModule } from './deploy/deploy.module';
 import { RuleDocumentsModule } from './rule-documents/rule-documents.module';
@@ -55,6 +56,7 @@ import { CommentsModule } from './comments/comments.module';
     InternalProposalsModule,
     GroupsModule,
     RequestsModule,
+    EventsModule,
     PreferencesModule,
     DeployModule,
     RuleDocumentsModule,

@@ -15,6 +15,7 @@ import { MemberArea } from './member-area';
 import { DaoOverview } from './dao-overview';
 import { DaoMembersDirectory } from './dao-members-directory';
 import { GovernanceSetup } from './governance-setup';
+import { ScheduleEvent } from './schedule-event';
 import { OnchainSourcePanel } from './onchain-source-panel';
 import { OnChainProofs } from './on-chain-proofs';
 import { TreasuryOverview } from './treasury-overview';
@@ -36,7 +37,7 @@ import { WalletStatusBanner } from './wallet-status-banner';
 import { useTodoCounts, todoTotal } from '@/lib/use-todo-counts';
 import { HealthBadge } from '@/app/health-badge';
 
-type View = 'overview' | 'members' | 'votingpower' | 'submitters' | 'experts' | 'me' | 'requests' | 'internal' | 'rules' | 'decisions' | 'proposalchecker' | 'scantool' | 'scoresetup' | 'proofs' | 'treasury' | 'setup' | 'landing';
+type View = 'overview' | 'members' | 'votingpower' | 'submitters' | 'experts' | 'me' | 'requests' | 'internal' | 'rules' | 'decisions' | 'proposalchecker' | 'scantool' | 'scoresetup' | 'proofs' | 'treasury' | 'setup' | 'events' | 'landing';
 const NAV: { key: View; label: string; icon: string; boardOnly?: boolean; publicOnly?: boolean; governanceOnly?: boolean; experimental?: boolean; afterGroups?: boolean }[] = [
   // §2 — "My area" first: it is the member's home (to-dos, profile, proposals).
   { key: 'me', label: 'My area', icon: 'user' },
@@ -57,6 +58,7 @@ const NAV: { key: View; label: string; icon: string; boardOnly?: boolean; public
   { key: 'proofs', label: 'On-chain proofs', icon: 'shield' },
   { key: 'treasury', label: 'Treasury', icon: 'landmark' },
   { key: 'setup', label: 'Platform setup', icon: 'settings', boardOnly: true },
+  { key: 'events', label: 'Schedule Event', icon: 'calendar', boardOnly: true },
   { key: 'scoresetup', label: 'Proposal Score Setup', icon: 'clipboard', boardOnly: true, governanceOnly: true, experimental: true },
   // Public pay-to-scan tool — full-screen in the main window. Rendered separately below the groups
   // block (afterGroups), gated on the board having the tool switched on (scanToolOn).
@@ -406,6 +408,8 @@ export function HomeShell() {
           </div>
         ) : view === 'scoresetup' && isBoard && SCORE_ENABLED ? (
           <ProposalScoreSetup />
+        ) : view === 'events' && isBoard ? (
+          <ScheduleEvent />
         ) : null}
       </main>
 

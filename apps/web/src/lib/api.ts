@@ -1554,6 +1554,24 @@ export interface PublicOverview {
 }
 export const publicApi = { overview: () => request<PublicOverview>('/public/overview') };
 
+// §events — landing-page scheduled events (a call: title + text + join link). `upcoming` is public;
+// scheduling/cancelling is board-only.
+export interface ScheduledEvent {
+  id: string;
+  title: string;
+  description: string;
+  url: string;
+  startAt: string; // ISO
+  endAt: string; // ISO
+}
+export const eventsApi = {
+  upcoming: () => request<ScheduledEvent[]>('/events/upcoming'),
+  listAll: () => request<ScheduledEvent[]>('/events'),
+  create: (input: { title: string; description?: string; url: string; startAt: string; endAt: string }) =>
+    request<ScheduledEvent>('/events', { method: 'POST', body: JSON.stringify(input) }),
+  remove: (id: string) => request<{ ok: boolean }>(`/events/${id}`, { method: 'DELETE' }),
+};
+
 // -------- Per-user preferences (§20): personal block explorer --------
 export interface UserPreferences {
   explorer: string | null; // cardanoscan | cexplorer | adastat | custom | null (=platform default)

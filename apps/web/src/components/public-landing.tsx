@@ -441,28 +441,30 @@ function EventCountdown({ startAt, endAt, t }: { startAt: string; endAt: string;
   );
 }
 
-/** §events — Share: copies a link to the event that unfurls a rich card (title + text + image) on X.
- *  Uses the native share sheet when available (mobile), otherwise copies the link to the clipboard. */
+/** §events — Share: copies a plain link to the event that unfurls a rich card (title + text + image)
+ *  on X. Copy-only on purpose — no native share sheet (it would surface the OS's own contacts, which
+ *  the site never sees; copying keeps the action to just the link). */
 function ShareEventButton({ ev, t }: { ev: ScheduledEvent; t: (s: string) => string }) {
   const [copied, setCopied] = useState(false);
-  const share = async (e: MouseEvent) => {
+  const copy = async (e: MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    const url = `${window.location.origin}/?event=${ev.id}`;
-    if (typeof navigator !== 'undefined' && navigator.share) {
-      try { await navigator.share({ title: ev.title, text: ev.description || ev.title, url }); return; } catch { /* cancelled / unsupported → copy */ }
-    }
+    const url = `${window.location.origin}/event/${ev.id}`;
     try {
       await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    } catch { /* clipboard blocked → ignore */ }
+    } catch {
+      // Clipboard blocked (e.g. insecure context) → fall back to a prompt so the link is still copyable.
+      window.prompt(t('Copy this link:'), url);
+      return;
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
   };
   return (
-    <button type="button" onClick={share} title={t('Share — copies a link that shows a card (title, text, image) on X')}
+    <button type="button" onClick={copy} title={t('Copy a link that shows a card (title, text, image) when posted on X')}
       className="inline-flex items-center gap-1.5 rounded-full border border-indigo-300 bg-white/70 px-3 py-2 text-sm font-medium text-indigo-700 transition hover:bg-white dark:border-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-200 dark:hover:bg-indigo-950">
       <ShareIcon />
-      {copied ? t('Copied') : t('Share')}
+      {copied ? t('Link copied') : t('Share')}
     </button>
   );
 }

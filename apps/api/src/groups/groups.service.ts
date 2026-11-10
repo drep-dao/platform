@@ -437,7 +437,12 @@ export class GroupsService {
       if (p.type === 'BULK') {
         const bt = await this.resolveBulkTally(p);
         const passed = p.status !== 'ACTIVE' ? bt.items.filter((it) => it.approved).length : null;
-        return { voted: bt.votedMembers, eligible: bt.eligible, result: null as null, bulk: { items: bt.items.length, passed } };
+        // §29 BULK — the overview "N of M members voted" counts members who cast ANY item vote
+        // (participation). bt.votedMembers only counts members who voted on EVERY item, so a member
+        // who missed one item of a bulk was dropped from the overview entirely (undercount). That
+        // stricter all-items count stays in the proposal detail ("voted on all items").
+        const participated = Math.min(byProposal.get(p.id)?.size ?? 0, bt.eligible);
+        return { voted: participated, eligible: bt.eligible, result: null as null, bulk: { items: bt.items.length, passed } };
       }
       const tv = await this.resolveTally(p);
       return {

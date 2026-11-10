@@ -100,8 +100,8 @@ export function PublicLanding({ onConnect, onExplore, onOpenVote, onOpenGroupVot
               sub={data?.admissionOpen ? t('Open admission — join freely') : t('Board-gated admission')} />
             <Tile loading={!data} bg="#0e6f73" label={t('Governance proposals')} big={`${data?.internalProposals.total ?? 0}`}
               sub={`${data?.internalProposals.passed ?? 0} ${t('passed')} · ${data?.internalProposals.active ?? 0} ${t('in voting')}`} />
-            <Tile loading={!data} bg="#4f8f2f" label={t('Requests')} big={`${data?.requests?.active ?? 0}`}
-              sub={`${data?.requests?.total ?? 0} ${t('total')} · ${t('submitters → DReps')}`} />
+            <Tile loading={!data} bg="#4f8f2f" label={t('Requests')} big={`${data?.requests?.total ?? 0}`}
+              sub={`${data?.requests?.new ?? 0} ${t('new')} · ${data?.requests?.accepted ?? 0} ${t('accepted')} · ${data?.requests?.complete ?? 0} ${t('complete')}`} />
             <Tile loading={!data} bg="#173a2a" label={t('Governance')} big={data?.admissionOpen ? t('Open') : t('Gated')}
               sub={data?.admissionOpen ? t('Any registered DRep can join & vote') : t('Any registered DRep can apply to become a member')} />
           </>

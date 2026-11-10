@@ -1538,7 +1538,7 @@ export interface PublicOverview {
   board: { seats: number; elected: boolean };
   proposals: { approved: number; inReview: number; rejected: number; total: number };
   internalProposals: { active: number; passed: number; total: number };
-  requests?: { active: number; total: number };
+  requests?: { total: number; new: number; accepted: number; complete: number };
   activeVotes: ActiveVote[];
   // §29 OG — active group (e.g. OG) proposals, shown in the same "Votes in progress" section.
   activeGroupVotes: ActiveGroupVote[];

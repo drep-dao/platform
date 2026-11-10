@@ -108,9 +108,13 @@ export class PublicOverviewController {
       this.logger.warn(`public overview treasury balance: ${e instanceof Error ? e.message : e}`);
     }
 
+    // §R — published requests only (DRAFT/PENDING_FEE/DELETED stay private). Lifecycle:
+    // New (ACTIVE) → Accepted (ACCEPTED) → Complete (DONE); Rejected at any point.
     const rqCount = (st: string) => requestGroups.find((g) => g.status === st)?._count._all ?? 0;
-    const requestsActive = rqCount('ACTIVE');
-    const requestsTotal = requestsActive + rqCount('DONE') + rqCount('REJECTED');
+    const requestsNew = rqCount('ACTIVE');
+    const requestsAccepted = rqCount('ACCEPTED');
+    const requestsComplete = rqCount('DONE');
+    const requestsTotal = requestsNew + requestsAccepted + requestsComplete + rqCount('REJECTED');
 
     // DREP_OPEN_ADMISSION defaults ON when unset (matches the admission logic).
     const admissionOpen = admissionRow ? admissionRow.value === true : true;
@@ -131,7 +135,7 @@ export class PublicOverviewController {
       board: { seats: boardSeats, elected: boardSeats > 0 },
       proposals: { approved, inReview, rejected, total: approved + inReview + rejected },
       internalProposals: { active: internalActive, passed: internalPassed, total: internalTotal },
-      requests: { active: requestsActive, total: requestsTotal },
+      requests: { total: requestsTotal, new: requestsNew, accepted: requestsAccepted, complete: requestsComplete },
       activeVotes,
       activeGroupVotes,
       activeRound: r

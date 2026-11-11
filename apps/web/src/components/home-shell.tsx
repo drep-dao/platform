@@ -200,7 +200,7 @@ export function HomeShell() {
             {NAV.filter((n) => PUBLIC_VIEWS.includes(n.key) && !n.afterGroups && (!n.governanceOnly || SCORE_ENABLED)).map((n) => (
               <button key={n.key} onClick={() => setView(n.key)}
                 className={`flex w-auto shrink-0 items-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-left text-sm lg:w-full ${
-                  pubView === n.key
+                  !groupMatch && pubView === n.key
                     ? 'bg-emerald-600 font-medium text-white'
                     : 'text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800'
                 }`}>
@@ -237,7 +237,7 @@ export function HomeShell() {
                 })}
               </div>
             ))}
-            {scanNav(pubView === 'scantool')}
+            {scanNav(!groupMatch && pubView === 'scantool')}
           </nav>
           <div className="mt-6 border-t border-neutral-200 pt-3 text-xs text-neutral-400 dark:border-neutral-800">
             <HealthBadge />

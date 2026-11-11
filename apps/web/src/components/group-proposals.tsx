@@ -90,7 +90,7 @@ export function GroupProposals({ groupKey }: { groupKey: string }) {
             <span className="flex flex-wrap items-center gap-x-1 text-xs text-neutral-500">
               <span>{p.votedCount} {t('of')} {p.eligible} {t('members voted')}</span>
               {p.bulk ? (
-                <span>· {p.bulk.items} {t('items')}{p.bulk.passed != null ? <> · <span className="text-emerald-600 dark:text-emerald-400">{p.bulk.passed}/{p.bulk.items} {t('passed')}</span></> : null}</span>
+                <span>· {p.bulk.items} {t('items')}{p.bulk.passed != null ? <> · <span className="text-emerald-600 dark:text-emerald-400">{p.bulk.passed}/{p.bulk.items} {t('passed')}</span></> : null}{p.bulk.votes && (p.bulk.votes.yes + p.bulk.votes.no + p.bulk.votes.abstain) > 0 ? <> · <span className="text-emerald-600 dark:text-emerald-400">{p.bulk.votes.yes} {t('Yes')}</span> · <span className="text-rose-600 dark:text-rose-400">{p.bulk.votes.no} {t('No')}</span> · <span className="text-amber-600 dark:text-amber-400">{p.bulk.votes.abstain} {t('Abstain')}</span></> : null}</span>
               ) : null}
               {p.result ? (
                 <>

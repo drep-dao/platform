@@ -442,14 +442,18 @@ export class GroupsService {
         // who missed one item of a bulk was dropped from the overview entirely (undercount). That
         // stricter all-items count stays in the proposal detail ("voted on all items").
         const participated = Math.min(byProposal.get(p.id)?.size ?? 0, bt.eligible);
-        return { voted: participated, eligible: bt.eligible, result: null as null, bulk: { items: bt.items.length, passed } };
+        // §29 BULK — aggregate member votes across every item (YES/NO/abstain), so the overview shows
+        // how members actually voted — not just the item outcomes. A single NO vote is visible here
+        // even when every item still passed its threshold.
+        const votes = bt.items.reduce((a, it) => ({ yes: a.yes + it.yes, no: a.no + it.no, abstain: a.abstain + it.abstain }), { yes: 0, no: 0, abstain: 0 });
+        return { voted: participated, eligible: bt.eligible, result: null as null, bulk: { items: bt.items.length, passed, votes } };
       }
       const tv = await this.resolveTally(p);
       return {
         voted: tv.voted,
         eligible: tv.eligible,
         result: tv.kind === 'THRESHOLD' ? { ratioPct: tv.ratioPct, thresholdPct: tv.thresholdPct, approved: tv.approved } : null,
-        bulk: null as { items: number; passed: number | null } | null,
+        bulk: null as { items: number; passed: number | null; votes: { yes: number; no: number; abstain: number } } | null,
       };
     }));
     return {

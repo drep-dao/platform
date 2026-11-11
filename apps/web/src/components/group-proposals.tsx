@@ -90,7 +90,7 @@ export function GroupProposals({ groupKey }: { groupKey: string }) {
             <span className="flex flex-wrap items-center gap-x-1 text-xs text-neutral-500">
               <span>{p.votedCount} {t('of')} {p.eligible} {t('members voted')}</span>
               {p.bulk ? (
-                <span>· {p.bulk.items} {t('items')}{p.bulk.passed != null ? <> · <span className="text-emerald-600 dark:text-emerald-400">YES: {p.bulk.passed}</span> · <span className="text-rose-600 dark:text-rose-400">NO: {p.bulk.items - p.bulk.passed}</span></> : null}</span>
+                <span>· {p.bulk.items} {t('items')}{p.bulk.passed != null ? <> · <span className="text-emerald-600 dark:text-emerald-400">{p.bulk.passed}/{p.bulk.items} {t('passed')}</span></> : null}</span>
               ) : null}
               {p.result ? (
                 <>
@@ -541,7 +541,6 @@ function BulkSection({ p, id, onChange }: { p: GroupProposalDetail; id: string; 
   const [confirmingCloseNow, setConfirmingCloseNow] = useState(false);
   // The bulk proposal has no single approved/rejected outcome — its result is the summary of item outcomes.
   const passed = bulk.items.filter((it) => it.tally?.approved).length;
-  const failed = bulk.items.length - passed;
   // Reset the local ballot to the saved votes whenever the proposal reloads (after a save / close).
   useEffect(() => { setBallot(initial()); }, [initial]);
 
@@ -572,7 +571,7 @@ function BulkSection({ p, id, onChange }: { p: GroupProposalDetail; id: string; 
           {/* Result = the summary of item outcomes (never a single approved/rejected). */}
           {p.status !== 'ACTIVE' ? (
             <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
-              {t('Result')}: <span className="text-emerald-600 dark:text-emerald-400">YES: {passed}</span> · <span className="text-rose-600 dark:text-rose-400">NO: {failed}</span>
+              {t('Result')}: <span className="text-emerald-600 dark:text-emerald-400">{passed}/{bulk.items.length} {t('items passed')}</span>
             </span>
           ) : null}
         </span>

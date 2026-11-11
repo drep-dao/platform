@@ -19,6 +19,18 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
+const LINK_ATTRS = 'target="_blank" rel="noopener noreferrer" class="text-emerald-600 underline"';
+
+/** Autolink bare http(s) URLs in a fragment that holds no anchor tags yet. A URL runs until
+ *  whitespace, '<', or a closing ')'; trailing sentence punctuation is kept outside the link. */
+function autolinkBare(s: string): string {
+  return s.replace(/https?:\/\/[^\s<)]+/g, (m) => {
+    const trail = m.match(/[.,;:!?]+$/)?.[0] ?? '';
+    const url = trail ? m.slice(0, -trail.length) : m;
+    return `<a href="${url}" ${LINK_ATTRS}>${url}</a>${trail}`;
+  });
+}
+
 /** Inline spans, applied to already-escaped text. Order matters (bold before italic). */
 function inline(s: string): string {
   let t = s;
@@ -29,8 +41,11 @@ function inline(s: string): string {
     // text is the real URL — a common paste error — by using the text as the destination.
     const txt = text.trim();
     if (/^https?:\/\/$/i.test(safe) && /^https?:\/\/\S+$/i.test(txt)) safe = txt;
-    return `<a href="${safe}" target="_blank" rel="noopener noreferrer" class="text-emerald-600 underline">${text}</a>`;
+    return `<a href="${safe}" ${LINK_ATTRS}>${text}</a>`;
   });
+  // A bare URL (not written as a [text](url) link) is still clickable. Split on the anchors just
+  // produced so their hrefs aren't re-linked, and autolink only the gaps between them.
+  t = t.split(/(<a\b[^>]*>.*?<\/a>)/g).map((seg, i) => (i % 2 === 0 ? autolinkBare(seg) : seg)).join('');
   t = t.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   t = t.replace(/(^|[^*])\*(?!\s)([^*]+?)\*/g, '$1<em>$2</em>');
   t = t.replace(/\b_([^_]+)_\b/g, '<em>$1</em>');

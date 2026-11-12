@@ -32,6 +32,23 @@ export function ScheduleEvent() {
     return !u || /^https?:\/\//i.test(u) ? u : `https://${u.replace(/^\/+/, '')}`;
   };
 
+  // Format a Date back into a <input type="datetime-local"> value (local wall time).
+  const toLocalInput = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+
+  // Setting the start auto-fills the end to one hour later, unless a valid later end is already set.
+  const onStartChange = (v: string) => {
+    setStartAt(v);
+    const s = new Date(v);
+    if (!v || Number.isNaN(s.getTime())) return;
+    if (!endAt || new Date(endAt).getTime() <= s.getTime()) setEndAt(toLocalInput(new Date(s.getTime() + 3_600_000)));
+  };
+
+  // Live meeting length for a sanity check.
+  const durationMs = startAt && endAt ? new Date(endAt).getTime() - new Date(startAt).getTime() : null;
+  const durationLabel = durationMs != null && durationMs > 0
+    ? [Math.floor(durationMs / 3_600_000) ? `${Math.floor(durationMs / 3_600_000)} h` : '', Math.round((durationMs % 3_600_000) / 60_000) ? `${Math.round((durationMs % 3_600_000) / 60_000)} min` : ''].filter(Boolean).join(' ') || '0 min'
+    : null;
+
   const create = async () => {
     setError(null);
     if (title.trim().length < 1) { setError(t('Enter a title.')); return; }
@@ -82,13 +99,17 @@ export function ScheduleEvent() {
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label className="mb-1 block text-sm font-medium">{t('Starts')}</label>
-              <input type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} className={field} />
+              <input type="datetime-local" value={startAt} onChange={(e) => onStartChange(e.target.value)} className={field} />
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium">{t('Ends')}</label>
               <input type="datetime-local" value={endAt} onChange={(e) => setEndAt(e.target.value)} className={field} />
             </div>
           </div>
+          {startAt && endAt ? (
+            durationLabel ? <p className="text-xs text-neutral-500">{t('Duration:')} <span className="font-medium">{durationLabel}</span></p>
+            : <p className="text-xs text-rose-500">{t('The end time must be after the start time.')}</p>
+          ) : null}
           <p className="text-xs text-neutral-400">{t('The event stays on the landing page until its end time (so people can still join while it is live).')}</p>
           {error ? <p className="text-xs text-red-500">{error}</p> : null}
           <button disabled={busy} onClick={create} className="rounded bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-40">

@@ -1961,6 +1961,9 @@ export type InternalTally =
       kind: 'THRESHOLD';
       eligible: number;
       cast: number;
+      yesVoters: number;
+      noVoters: number;
+      abstainVoters: number;
       yesPower: number;
       abstainPower: number;
       totalPower: number;
@@ -2506,10 +2509,42 @@ export interface RequestComment {
   createdAt: string;
   replies?: RequestComment[]; // present on top-level comments (one level of threading)
 }
+// §R2 — a request form element the board configures per kind in the Request formatter.
+export type RequestFormElementType = 'text' | 'markdown' | 'select' | 'links' | 'date';
+export interface RequestFormElement {
+  id: string;
+  label: string;
+  type: RequestFormElementType;
+  size?: 'small' | 'large'; // text/markdown height; ignored for select/links
+  options?: string[]; // select only
+  required?: boolean;
+}
+// kind → its element list. Kinds: NOTIFICATION | CALL | PROPOSAL_REVIEW | ANSWER.
+export type RequestFormConfig = Record<string, RequestFormElement[]>;
+// §R2 — a filled-in value stored on a request (snapshot of what the submitter entered).
+export interface RequestFieldValue {
+  key: string;
+  label: string;
+  type: RequestFormElementType;
+  value: string | { url: string; title?: string }[];
+}
+// §R2 — request kinds + their display labels.
+export const REQUEST_KINDS = ['NOTIFICATION', 'CALL', 'PROPOSAL_REVIEW', 'ANSWER'] as const;
+export const REQUEST_KIND_LABEL: Record<string, string> = {
+  NOTIFICATION: 'Notification',
+  CALL: 'Request a call',
+  PROPOSAL_REVIEW: 'Request a proposal review',
+  ANSWER: 'Request an answer',
+};
+
 export interface RequestView {
   id: string;
   title: string;
   description: string;
+  kind: string; // §R2 — NOTIFICATION | CALL | PROPOSAL_REVIEW | ANSWER
+  fields: RequestFieldValue[] | null; // §R2 — configured-element snapshot (null on legacy requests)
+  result: string | null; // §R2 — the board's attached result/response (markdown)
+  resultAt: string | null;
   expectedResponseAt: string | null; // §R — submitter's requested response-by time
   // §R — DB values; ACTIVE shows as "New", DONE as "Complete". ACCEPTED = board took it on (still open).
   status: 'DRAFT' | 'PENDING_FEE' | 'ACTIVE' | 'ACCEPTED' | 'DONE' | 'REJECTED' | 'DELETED';
@@ -2540,11 +2575,16 @@ export const requestsApi = {
   /** Active paid types (empty ⇒ every request is free). all=1 includes inactive (board setup). */
   types: (all = false) => request<RequestTypeView[]>(`/requests/types${all ? '?all=1' : ''}`),
   feeAddress: () => request<{ address: string | null }>('/requests/fee-address'),
+  // §R2 — the configured form (elements per kind). Any authenticated user reads it to render the form.
+  formConfig: () => request<RequestFormConfig>('/requests/form-config'),
+  // §R2 — board replaces the element list for one kind.
+  saveFormConfig: (kind: string, elements: RequestFormElement[]) =>
+    request<RequestFormConfig>('/requests/form-config', { method: 'POST', body: JSON.stringify({ kind, elements }) }),
   list: (status?: string) => request<RequestView[]>(`/requests${status ? `?status=${status}` : ''}`),
   get: (id: string) => request<RequestView>(`/requests/${id}`),
-  submit: (body: { title: string; description: string; typeId?: string; feeTxHash?: string; expectedResponseAt?: string }) =>
+  submit: (body: { title: string; description?: string; kind?: string; fields?: RequestFieldValue[]; typeId?: string; feeTxHash?: string; expectedResponseAt?: string }) =>
     request<RequestView>('/requests', { method: 'POST', body: JSON.stringify(body) }),
-  update: (id: string, body: { title?: string; description?: string; typeId?: string; expectedResponseAt?: string | null }) =>
+  update: (id: string, body: { title?: string; description?: string; kind?: string; fields?: RequestFieldValue[]; typeId?: string; expectedResponseAt?: string | null }) =>
     request<RequestView>(`/requests/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   publish: (id: string, feeTxHash?: string) =>
     request<RequestView>(`/requests/${id}/publish`, { method: 'POST', body: JSON.stringify(feeTxHash ? { feeTxHash } : {}) }),
@@ -2559,6 +2599,9 @@ export const requestsApi = {
   // board-only
   setStatus: (id: string, status: 'ACTIVE' | 'ACCEPTED' | 'DONE' | 'REJECTED') =>
     request<RequestView>(`/requests/${id}/status`, { method: 'POST', body: JSON.stringify({ status }) }),
+  // board-only — attach/edit the request's result (markdown); empty string clears it.
+  setResult: (id: string, result: string) =>
+    request<RequestView>(`/requests/${id}/result`, { method: 'POST', body: JSON.stringify({ result }) }),
   // board-only — link an internal proposal (escalate to a vote); proposalId=null unlinks.
   setLinkedProposal: (id: string, proposalId: string | null) =>
     request<RequestView>(`/requests/${id}/linked-proposal`, { method: 'POST', body: JSON.stringify({ proposalId }) }),

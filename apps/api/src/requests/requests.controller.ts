@@ -3,7 +3,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { CurrentUser, AuthContext } from '../auth/current-user.decorator';
 import { RequestsService } from './requests.service';
-import { CreateRequestDto, CreateRequestTypeDto, PublishRequestDto, RequestCommentBodyDto, SetLinkedProposalDto, SetRequestStatusDto, SubmitRequestFeeDto, UpdateRequestDto, UpdateRequestTypeDto } from './dto';
+import { CreateRequestDto, CreateRequestTypeDto, PublishRequestDto, RequestCommentBodyDto, SaveFormConfigDto, SetLinkedProposalDto, SetRequestResultDto, SetRequestStatusDto, SubmitRequestFeeDto, UpdateRequestDto, UpdateRequestTypeDto } from './dto';
 
 /** §R — submitter Requests: queue + history, fee flow, and the board price list. */
 @Controller('requests')
@@ -20,6 +20,20 @@ export class RequestsController {
   @Get('fee-address')
   async feeAddress() {
     return { address: await this.svc.feeAddress() };
+  }
+
+  // §R2 — the configured form (elements per kind) submitters render. Any authenticated user reads it.
+  @UseGuards(JwtAuthGuard)
+  @Get('form-config')
+  formConfig() {
+    return this.svc.getFormConfig();
+  }
+
+  // §R2 — board saves the element list for one kind. board-only inside the service.
+  @UseGuards(JwtAuthGuard)
+  @Post('form-config')
+  saveFormConfig(@CurrentUser() ctx: AuthContext, @Body() dto: SaveFormConfigDto) {
+    return this.svc.saveFormConfig(ctx.userId, dto.kind, dto.elements);
   }
 
   @Get()
@@ -87,6 +101,13 @@ export class RequestsController {
   @Post(':id/status')
   setStatus(@CurrentUser() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SetRequestStatusDto) {
     return this.svc.setStatus(ctx.userId, id, dto.status);
+  }
+
+  // board-only inside the service — attach/edit the request's result (markdown); empty clears it
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/result')
+  setResult(@CurrentUser() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SetRequestResultDto) {
+    return this.svc.setResult(ctx.userId, id, dto.result ?? '');
   }
 
   // board-only inside the service — link/unlink an internal proposal (escalate to a vote)

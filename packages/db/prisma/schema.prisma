@@ -1866,7 +1866,15 @@ model Request {
   submitterUserId    String    @map("submitter_user_id") @db.Uuid
   typeId             String?   @map("type_id") @db.Uuid // null = free request
   title              String
-  description        String
+  description        String // §R — primary markdown body; mirrors the first markdown form element for notifications/history
+  // §R2 — request kind (NOTIFICATION | CALL | PROPOSAL_REVIEW | ANSWER). NOTIFICATION = the original flow
+  // ("no extra action required"); the others request a specific action. The board shapes each kind's form
+  // in the Request formatter.
+  kind               String    @default("NOTIFICATION")
+  // §R2 — snapshot of the configured form-element values the submitter filled in, so a request renders the
+  // same even if the board later changes that kind's form. Array of { key, label, type, value } (value is a
+  // string, or for a links element an array of { url, title }).
+  fields             Json?
   expectedResponseAt DateTime? @map("expected_response_at") @db.Timestamptz(6) // §R — submitter's requested response-by time
   status             String    @default("DRAFT") // DRAFT | PENDING_FEE | ACTIVE(New) | ACCEPTED | DONE(Complete) | REJECTED | DELETED
   feeTxHash          String?   @map("fee_tx_hash")
@@ -1878,6 +1886,11 @@ model Request {
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   decidedAt          DateTime? @map("decided_at") @db.Timestamptz(6)
   decidedByUserId    String?   @map("decided_by_user_id") @db.Uuid
+  // §R2 — the board's response/result attached to the request (markdown). Editable by the board at any
+  // time; independent of the status.
+  result             String?   // markdown
+  resultAt           DateTime? @map("result_at") @db.Timestamptz(6)
+  resultByUserId     String?   @map("result_by_user_id") @db.Uuid
 
   submitter      AppUser          @relation("RequestSubmitter", fields: [submitterUserId], references: [id])
   type           RequestType?     @relation(fields: [typeId], references: [id])

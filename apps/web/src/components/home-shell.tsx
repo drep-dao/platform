@@ -24,6 +24,8 @@ import { RuleDocuments } from './rule-documents';
 import { Decisions } from './decisions';
 import { ProposalChecker, ProposalScoreSetup } from './proposal-checker';
 import { RequestsSection } from './requests-section';
+import { RequestFormatter } from './request-formatter';
+import { CalendarView } from './calendar';
 import { GroupMembers } from './group-members';
 import { GroupProposals } from './group-proposals';
 import { groupsApi, proposalCheckerApi, type GroupConfig } from '@/lib/api';
@@ -37,10 +39,11 @@ import { WalletStatusBanner } from './wallet-status-banner';
 import { useTodoCounts, todoTotal } from '@/lib/use-todo-counts';
 import { HealthBadge } from '@/app/health-badge';
 
-type View = 'overview' | 'members' | 'votingpower' | 'submitters' | 'experts' | 'me' | 'requests' | 'internal' | 'rules' | 'decisions' | 'proposalchecker' | 'scantool' | 'scoresetup' | 'proofs' | 'treasury' | 'setup' | 'events' | 'landing';
+type View = 'overview' | 'members' | 'votingpower' | 'submitters' | 'experts' | 'me' | 'calendar' | 'requests' | 'requestformatter' | 'internal' | 'rules' | 'decisions' | 'proposalchecker' | 'scantool' | 'scoresetup' | 'proofs' | 'treasury' | 'setup' | 'events' | 'landing';
 const NAV: { key: View; label: string; icon: string; boardOnly?: boolean; publicOnly?: boolean; governanceOnly?: boolean; experimental?: boolean; afterGroups?: boolean }[] = [
   // §2 — "My area" first: it is the member's home (to-dos, profile, proposals).
   { key: 'me', label: 'My area', icon: 'user' },
+  { key: 'calendar', label: 'Calendar', icon: 'calendar' },
   { key: 'overview', label: 'Council Member overview', icon: 'dashboard' },
   { key: 'members', label: 'Council members', icon: 'users' },
   // Public-only: the voting-power table (DaoOverview) lives under "Council Member
@@ -59,6 +62,7 @@ const NAV: { key: View; label: string; icon: string; boardOnly?: boolean; public
   { key: 'treasury', label: 'Treasury', icon: 'landmark' },
   { key: 'setup', label: 'Platform setup', icon: 'settings', boardOnly: true },
   { key: 'events', label: 'Schedule Event', icon: 'calendar', boardOnly: true },
+  { key: 'requestformatter', label: 'Request formatter', icon: 'clipboard', boardOnly: true },
   { key: 'scoresetup', label: 'Proposal Score Setup', icon: 'clipboard', boardOnly: true, governanceOnly: true, experimental: true },
   // Public pay-to-scan tool — full-screen in the main window. Rendered separately below the groups
   // block (afterGroups), gated on the board having the tool switched on (scanToolOn).
@@ -129,6 +133,18 @@ export function HomeShell() {
   const [todoRefresh, setTodoRefresh] = useState(0);
   const todoCounts = useTodoCounts(isBoard, canVote, !!profile, todoRefresh);
   const myAreaTodo = todoTotal(todoCounts);
+
+  // A board-only (or governance-gated) view in the URL passes the NAV-key check above, but its render
+  // branch is guarded by `&& isBoard` — so a non-board user landing on e.g. ?view=requestformatter sees
+  // a blank page. Once signed in, downgrade any view this user can't access to the default (overview,
+  // the app's landing page), so login always lands somewhere consistent.
+  useEffect(() => {
+    if (!profile) return;
+    const n = NAV.find((x) => x.key === view);
+    const blocked = !!n && ((n.boardOnly && !isBoard) || (n.governanceOnly && !SCORE_ENABLED));
+    if (blocked) setView('overview');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile, view, isBoard]);
 
   // Both shells render their OWN language/theme controls (so they scroll with the page instead of
   // hovering): the public shell in its top-right cluster (all sizes), the member shell in its right
@@ -385,8 +401,12 @@ export function HomeShell() {
           <DaoMembersDirectory />
         ) : view === 'me' ? (
           <MemberArea />
+        ) : view === 'calendar' ? (
+          <CalendarView />
         ) : view === 'requests' ? (
           <RequestsSection />
+        ) : view === 'requestformatter' && isBoard ? (
+          <RequestFormatter />
         ) : view === 'internal' ? (
           <InternalProposals />
         ) : view === 'rules' ? (

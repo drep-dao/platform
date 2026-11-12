@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { internalProposalsApi, requestsApi, submitterApi, type InternalProposalSummary, type RequestTypeView, type RequestView } from '@/lib/api';
+import { internalProposalsApi, requestsApi, submitterApi, REQUEST_KIND_LABEL, REQUEST_KINDS, type InternalProposalSummary, type RequestFieldValue, type RequestFormConfig, type RequestFormElement, type RequestTypeView, type RequestView } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { useT } from '@/lib/prefs-context';
 import { useUrlNav } from '@/lib/use-url-nav';
@@ -140,6 +140,7 @@ function RequestCard({ r, isBoard, mine, onEdit, onChanged }: { r: RequestView; 
       <button onClick={() => setOpen((v) => !v)} className="flex w-full flex-wrap items-center justify-between gap-2 text-left">
         <span className="flex min-w-0 items-center gap-2">
           <span className={`truncate font-medium ${r.status === 'DELETED' ? 'line-through text-neutral-400' : ''}`}>{r.title}</span>
+          <span className="shrink-0 rounded bg-sky-100 px-1.5 py-0.5 text-xs text-sky-700 dark:bg-sky-950/60 dark:text-sky-300">{t(REQUEST_KIND_LABEL[r.kind] ?? r.kind)}</span>
           {r.type ? (
             <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">{r.type.name} · {r.type.priceAda.toLocaleString()} ₳</span>
           ) : (
@@ -162,7 +163,7 @@ function RequestCard({ r, isBoard, mine, onEdit, onChanged }: { r: RequestView; 
             <span className="text-sm font-medium text-emerald-700 hover:underline dark:text-emerald-400">{d.submitter}</span>
             <span className="text-xs text-neutral-400">{t('view profile →')}</span>
           </button>
-          <div className="prose prose-sm max-w-none text-sm dark:prose-invert"><Markdown>{r.description}</Markdown></div>
+          <RequestFieldsView r={d} />
           {r.expectedResponseAt ? <p className="text-xs text-neutral-500">{t('Response expected by:')} <span className={`font-medium ${new Date(r.expectedResponseAt).getTime() < Date.now() && r.status === 'ACTIVE' ? 'text-red-600 dark:text-red-400' : 'text-neutral-700 dark:text-neutral-300'}`}>{new Date(r.expectedResponseAt).toLocaleString()}</span></p> : null}
 
           {/* §R — submitter contact, so a reader can reach them directly. Same data as the public directory. */}
@@ -195,6 +196,9 @@ function RequestCard({ r, isBoard, mine, onEdit, onChanged }: { r: RequestView; 
             </p>
           ) : null}
           {r.decidedAt && r.status !== 'DRAFT' ? <p className="text-xs text-neutral-500">{r.status === 'DELETED' ? t('Deleted on') : t('Decided on')} {new Date(r.decidedAt).toLocaleDateString()}</p> : null}
+
+          {/* §R2 — the board's result/response (shown to everyone once set; board adds/edits it). */}
+          {['ACTIVE', 'ACCEPTED', 'DONE', 'REJECTED'].includes(d.status) ? <ResultPanel r={d} isBoard={isBoard} onChanged={() => { loadDetail(); onChanged(); }} /> : null}
 
           {/* §R — the internal proposal this request was escalated to (shown to everyone; set by the board). */}
           {['ACTIVE', 'ACCEPTED', 'DONE', 'REJECTED'].includes(d.status) ? <LinkedProposal r={d} isBoard={isBoard} onChanged={() => { loadDetail(); onChanged(); }} /> : null}
@@ -299,6 +303,56 @@ function LinkedProposal({ r, isBoard, onChanged }: { r: RequestView; isBoard: bo
   );
 }
 
+/**
+ * §R2 — the board's result/response attached to a request. Everyone sees it once set; only the board
+ * can add or edit it (at any time, independent of the status).
+ */
+function ResultPanel({ r, isBoard, onChanged }: { r: RequestView; isBoard: boolean; onChanged: () => void }) {
+  const t = useT();
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(r.result ?? '');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { setText(r.result ?? ''); }, [r.result]);
+
+  const run = async (value: string, close = true) => {
+    setBusy(true); setErr(null);
+    try { await requestsApi.setResult(r.id, value); if (close) setEditing(false); onChanged(); }
+    catch (e) { setErr((e as Error).message); }
+    setBusy(false);
+  };
+
+  if (!r.result && !isBoard) return null;
+  return (
+    <div className="rounded-md border border-emerald-300 bg-emerald-50/60 p-3 text-sm dark:border-emerald-900 dark:bg-emerald-950/30">
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">{t('Result')}</span>
+        {isBoard && !editing ? (
+          <button onClick={() => { setText(r.result ?? ''); setEditing(true); }} className="text-xs font-medium text-emerald-700 hover:underline dark:text-emerald-400">{r.result ? t('Edit result') : t('Add Result')}</button>
+        ) : null}
+      </div>
+      {editing ? (
+        <div className="space-y-2">
+          <MarkdownEditor value={text} onChange={setText} title="Result" minRows={5} placeholder={t('Write the result… (supports **bold**, *italics*, ## headings, lists, [links](https://…))')} />
+          <div className="flex flex-wrap items-center gap-2">
+            <button disabled={busy} onClick={() => run(text.trim())} className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50">{busy ? t('Saving…') : t('Save result')}</button>
+            <button disabled={busy} onClick={() => setEditing(false)} className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs font-medium hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800">{t('Cancel')}</button>
+            {r.result ? <button disabled={busy} onClick={() => run('')} className="text-xs text-rose-600 hover:underline">{t('Remove result')}</button> : null}
+            {err ? <span className="text-xs text-rose-600">{err}</span> : null}
+          </div>
+        </div>
+      ) : r.result ? (
+        <>
+          <div className="prose prose-sm max-w-none text-sm dark:prose-invert"><Markdown>{r.result}</Markdown></div>
+          {r.resultAt ? <p className="mt-1 text-xs text-neutral-500">{t('Updated')} {new Date(r.resultAt).toLocaleString()}</p> : null}
+        </>
+      ) : (
+        <p className="text-xs text-emerald-800/70 dark:text-emerald-300/70">{t('No result yet — add the response to this request.')}</p>
+      )}
+    </div>
+  );
+}
+
 function FeePanel({ r, onChanged }: { r: RequestView; onChanged: () => void }) {
   const t = useT();
   const [addr, setAddr] = useState<string | null>(null);
@@ -341,36 +395,168 @@ function FeePanel({ r, onChanged }: { r: RequestView; onChanged: () => void }) {
   );
 }
 
+// §R2 — a filled-in form value: a plain string, or a list of links.
+export type LinkValue = { url: string; title?: string };
+type FieldVals = Record<string, string | LinkValue[]>;
+export const emptyValue = (el: RequestFormElement): string | LinkValue[] => (el.type === 'links' ? [] : '');
+const isFilled = (v: string | LinkValue[] | undefined): boolean => (Array.isArray(v) ? v.length > 0 : !!(v && String(v).trim()));
+
+/** §R2 — render a published request's configured fields (falls back to the legacy description). */
+function RequestFieldsView({ r }: { r: RequestView }) {
+  const fields = r.fields && r.fields.length ? r.fields : null;
+  if (!fields) return <div className="prose prose-sm max-w-none text-sm dark:prose-invert"><Markdown>{r.description}</Markdown></div>;
+  return (
+    <div className="space-y-3">
+      {fields.map((f) => {
+        if (!isFilled(f.value)) return null;
+        return (
+          <div key={f.key}>
+            <p className="mb-0.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">{f.label}</p>
+            {f.type === 'markdown' ? (
+              <div className="prose prose-sm max-w-none text-sm dark:prose-invert"><Markdown>{f.value as string}</Markdown></div>
+            ) : f.type === 'links' ? (
+              <ul className="space-y-1 text-sm">
+                {(f.value as LinkValue[]).map((l, i) => (
+                  <li key={i} className="flex items-baseline gap-1.5">
+                    <span className="text-neutral-400">🔗</span>
+                    <a href={l.url} target="_blank" rel="noopener noreferrer" className="break-all text-emerald-700 underline dark:text-emerald-400">{l.title || l.url}</a>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="whitespace-pre-wrap text-sm text-neutral-700 dark:text-neutral-300">{f.value as string}</p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** §R2 — editor for a links element: add/remove external document links, each with an optional label. */
+function LinksField({ value, onChange }: { value: LinkValue[]; onChange: (v: LinkValue[]) => void }) {
+  const t = useT();
+  const [url, setUrl] = useState('');
+  const [label, setLabel] = useState('');
+  const valid = /^https?:\/\//i.test(url.trim());
+  const add = () => {
+    if (!valid) return;
+    onChange([...value, { url: url.trim(), ...(label.trim() ? { title: label.trim() } : {}) }]);
+    setUrl(''); setLabel('');
+  };
+  return (
+    <div className="space-y-2">
+      {value.length ? (
+        <ul className="space-y-1">
+          {value.map((l, i) => (
+            <li key={i} className="flex items-center gap-2 text-sm">
+              <a href={l.url} target="_blank" rel="noopener noreferrer" className="min-w-0 flex-1 truncate text-emerald-700 underline dark:text-emerald-400">{l.title ? `${l.title} — ${l.url}` : l.url}</a>
+              <button type="button" onClick={() => onChange(value.filter((_, idx) => idx !== i))} className="shrink-0 text-xs text-rose-600 hover:underline">{t('Remove')}</button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder={t('Label (optional)')} className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900 sm:w-44" />
+        <input value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }} placeholder={t('https://… (document link)')} className="min-w-0 flex-1 rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+        <button type="button" disabled={!valid} onClick={add} className="shrink-0 rounded-md border border-neutral-300 px-2.5 py-1 text-sm font-medium hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800">{t('Add link')}</button>
+      </div>
+    </div>
+  );
+}
+
+/** §R2 — one input in the submit form, rendered from its configured element definition. */
+export function DynamicField({ el, value, onChange }: { el: RequestFormElement; value: string | LinkValue[]; onChange: (v: string | LinkValue[]) => void }) {
+  const t = useT();
+  return (
+    <div>
+      <span className="mb-1 block text-xs font-medium text-neutral-600 dark:text-neutral-400">{el.label}{el.required ? ' *' : ''}</span>
+      {el.type === 'markdown' ? (
+        <MarkdownEditor value={(value as string) ?? ''} onChange={(v) => onChange(v)} title={el.label} minRows={el.size === 'large' ? 8 : 4} placeholder={t('Describe your request… (supports **bold**, *italics*, ## headings, lists, [links](https://…))')} />
+      ) : el.type === 'select' ? (
+        <select value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value)} className="w-full max-w-md rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+          <option value="">{t('Choose…')}</option>
+          {(el.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
+        </select>
+      ) : el.type === 'links' ? (
+        <LinksField value={Array.isArray(value) ? value : []} onChange={onChange} />
+      ) : el.type === 'date' ? (
+        <input type="datetime-local" min={new Date().toISOString().slice(0, 16)} value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value)} className="w-full max-w-xs rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+      ) : (
+        <input value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value)} className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+      )}
+    </div>
+  );
+}
+
 /** Create a new draft, or edit an existing one (editId set). Saving keeps it a DRAFT; the author
- *  publishes it from the list. Description is rich markdown (bold/italic/headings/lists/links). */
+ *  publishes it from the list. The form is shaped per request type by the board (Request formatter). */
 function SubmitRequestForm({ editId, onDone }: { editId: string | null; onDone: () => void }) {
   const t = useT();
   const [types, setTypes] = useState<RequestTypeView[] | null>(null);
+  const [config, setConfig] = useState<RequestFormConfig | null>(null);
   const [typeId, setTypeId] = useState<string>('');
+  const [kind, setKind] = useState<string>('NOTIFICATION');
   const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [expectedResponseAt, setExpectedResponseAt] = useState(''); // datetime-local
-  const [wantExpected, setWantExpected] = useState(false); // only ask for a date when the user opts in
+  const [values, setValues] = useState<FieldVals>({});
+  const [loadedReq, setLoadedReq] = useState<RequestView | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
   useEffect(() => { requestsApi.types().then(setTypes).catch(() => setTypes([])); }, []);
+  useEffect(() => { requestsApi.formConfig().then(setConfig).catch(() => setConfig({})); }, []);
   useEffect(() => {
     if (!editId) return;
     requestsApi.get(editId).then((r) => {
-      setTitle(r.title); setDescription(r.description); setTypeId(r.type?.id ?? '');
-      setWantExpected(!!r.expectedResponseAt);
-      setExpectedResponseAt(r.expectedResponseAt ? new Date(r.expectedResponseAt).toISOString().slice(0, 16) : '');
+      setTitle(r.title); setTypeId(r.type?.id ?? ''); setKind(r.kind || 'NOTIFICATION');
+      setLoadedReq(r);
     }).catch(() => undefined);
   }, [editId]);
 
+  const elements = (config?.[kind] ?? []) as RequestFormElement[];
+
+  // Seed/keep the field values whenever the kind's element list changes: keep anything the user has
+  // already typed (by element id), otherwise hydrate from a loaded draft's snapshot, falling back to a
+  // legacy request's plain description for the first markdown element.
+  useEffect(() => {
+    if (!config) return;
+    setValues((prev) => {
+      const next: FieldVals = {};
+      for (const el of elements) {
+        if (prev[el.id] !== undefined) { next[el.id] = prev[el.id]; continue; }
+        const snap = loadedReq?.fields?.find((f) => f.key === el.id);
+        next[el.id] = snap ? snap.value : emptyValue(el);
+      }
+      if (loadedReq && (!loadedReq.fields || loadedReq.fields.length === 0) && loadedReq.description) {
+        const firstMd = elements.find((e) => e.type === 'markdown');
+        if (firstMd && !isFilled(next[firstMd.id])) next[firstMd.id] = loadedReq.description;
+      }
+      // §R2 — a date element is driven by the request's expectedResponseAt column, not the snapshot.
+      const dateEl = elements.find((e) => e.type === 'date');
+      if (dateEl && loadedReq?.expectedResponseAt && !isFilled(next[dateEl.id])) {
+        next[dateEl.id] = new Date(loadedReq.expectedResponseAt).toISOString().slice(0, 16);
+      }
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config, kind, loadedReq]);
+
   const paid = types?.find((x) => x.id === typeId) ?? null;
+  const setVal = (id: string, v: string | LinkValue[]) => setValues((s) => ({ ...s, [id]: v }));
+
+  const missingRequired = elements.some((el) => el.required && !isFilled(values[el.id]));
+  const canSubmit = title.trim().length >= 4 && !missingRequired;
 
   const save = async () => {
     setBusy(true); setErr(null);
-    const iso = wantExpected && expectedResponseAt ? new Date(expectedResponseAt).toISOString() : undefined;
+    const dateEl = elements.find((e) => e.type === 'date');
+    const rawDate = dateEl ? String(values[dateEl.id] ?? '') : '';
+    const iso = rawDate ? new Date(rawDate).toISOString() : undefined;
+    // §R2 — date values go to expectedResponseAt; the rest are the field snapshot.
+    const fields: RequestFieldValue[] = elements.filter((el) => el.type !== 'date').map((el) => ({ key: el.id, label: el.label, type: el.type, value: values[el.id] ?? emptyValue(el) }));
     try {
-      if (editId) await requestsApi.update(editId, { title: title.trim(), description: description.trim(), typeId: typeId || undefined, expectedResponseAt: iso ?? null });
-      else await requestsApi.submit({ title: title.trim(), description: description.trim(), typeId: typeId || undefined, expectedResponseAt: iso });
+      if (editId) await requestsApi.update(editId, { title: title.trim(), kind, fields, typeId: typeId || undefined, expectedResponseAt: iso ?? null });
+      else await requestsApi.submit({ title: title.trim(), kind, fields, typeId: typeId || undefined, expectedResponseAt: iso });
       onDone();
     } catch (e) { setErr((e as Error).message); }
     setBusy(false);
@@ -381,9 +567,16 @@ function SubmitRequestForm({ editId, onDone }: { editId: string | null; onDone: 
       <h3 className="font-medium">{editId ? t('Edit draft') : t('New request')}</h3>
       <p className="mt-1 text-xs text-neutral-500">{t('Describe what you are asking the DReps for. It is saved as a draft you can keep editing until you publish it.')}</p>
       <div className="mt-3 space-y-3">
+        <label className="block text-sm">
+          <span className="mb-1 block text-xs font-medium text-neutral-600 dark:text-neutral-400">{t('Request type')}</span>
+          <select value={kind} onChange={(e) => setKind(e.target.value)} className="w-full max-w-md rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+            {REQUEST_KINDS.map((k) => <option key={k} value={k}>{t(REQUEST_KIND_LABEL[k])}</option>)}
+          </select>
+        </label>
+        {kind === 'NOTIFICATION' ? <p className="text-xs text-neutral-500">{t('A notification — no extra action required. It is a public announcement for the DReps.')}</p> : null}
         {types && types.length > 0 ? (
           <label className="block text-sm">
-            <span className="mb-1 block text-xs font-medium text-neutral-600 dark:text-neutral-400">{t('Request type')}</span>
+            <span className="mb-1 block text-xs font-medium text-neutral-600 dark:text-neutral-400">{t('Paid type')}</span>
             <select value={typeId} onChange={(e) => setTypeId(e.target.value)} className="w-full max-w-md rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
               <option value="">{t('Free request')}</option>
               {types.map((x) => <option key={x.id} value={x.id}>{x.name} — {x.priceAda.toLocaleString()} ₳</option>)}
@@ -395,24 +588,10 @@ function SubmitRequestForm({ editId, onDone }: { editId: string | null; onDone: 
           <span className="mb-1 block text-xs font-medium text-neutral-600 dark:text-neutral-400">{t('Title')}</span>
           <input value={title} onChange={(e) => setTitle(e.target.value)} className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
         </label>
-        <div>
-          <span className="mb-1 block text-xs font-medium text-neutral-600 dark:text-neutral-400">{t('Description')}</span>
-          <MarkdownEditor value={description} onChange={setDescription} title="Description" minRows={6} placeholder={t('Describe your request… (supports **bold**, *italics*, ## headings, lists, [links](https://…))')} />
-        </div>
-        <div className="text-sm">
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={wantExpected} onChange={(e) => setWantExpected(e.target.checked)} />
-            <span className="text-xs font-medium text-neutral-600 dark:text-neutral-400">{t('Set expected response date')}</span>
-          </label>
-          {wantExpected ? (
-            <div className="mt-2">
-              <input type="datetime-local" value={expectedResponseAt} min={new Date().toISOString().slice(0, 16)} onChange={(e) => setExpectedResponseAt(e.target.value)} required className="w-full max-w-xs rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
-              {!expectedResponseAt ? <p className="mt-1 text-xs text-neutral-400">{t('Pick a date and time, or uncheck the box above.')}</p> : null}
-            </div>
-          ) : null}
-        </div>
+        {config === null ? <p className="text-sm text-neutral-500">{t('Loading…')}</p> : null}
+        {elements.map((el) => <DynamicField key={el.id} el={el} value={values[el.id] ?? emptyValue(el)} onChange={(v) => setVal(el.id, v)} />)}
         <div className="flex items-center gap-2">
-          <button disabled={busy || title.trim().length < 4 || !description.trim() || (wantExpected && !expectedResponseAt)} onClick={save} className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
+          <button disabled={busy || !canSubmit} onClick={save} className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
             {busy ? t('Saving…') : editId ? t('Save draft') : t('Create draft')}
           </button>
           {err ? <p className="text-xs text-rose-600">{err}</p> : null}

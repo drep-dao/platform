@@ -1110,19 +1110,26 @@ export class InternalProposalsService {
     let abstainPower = 0;
     let totalPower = 0;
     let cast = 0;
+    // §30 — per-choice voter headcounts (how many DReps voted each way), so the list shows the
+    // vote breakdown like the group proposals. The decision itself stays power-weighted (ratioPct).
+    let yesVoters = 0, noVoters = 0, abstainVoters = 0;
     for (const e of snapshot?.entries ?? []) {
       const fp = Number(e.finalPower ?? 0);
       totalPower += fp;
       const c = choiceByDrep.get(e.drepId);
       if (c) cast++;
-      if (c === VoteChoice.YES) yesPower += fp;
-      else if (c === VoteChoice.ABSTAIN) abstainPower += fp;
+      if (c === VoteChoice.YES) { yesPower += fp; yesVoters++; }
+      else if (c === VoteChoice.ABSTAIN) { abstainPower += fp; abstainVoters++; }
+      else if (c === VoteChoice.NO) noVoters++;
     }
     const t = { yesPower, totalPower, abstainPower, thresholdPct };
     return {
       kind: 'THRESHOLD' as const,
       eligible,
       cast,
+      yesVoters,
+      noVoters,
+      abstainVoters,
       yesPower: round2(yesPower),
       abstainPower: round2(abstainPower),
       totalPower: round2(totalPower),

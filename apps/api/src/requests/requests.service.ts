@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@drep-dao/db';
 import { PrismaService } from '../prisma/prisma.service';
 import { CardanoQueryService } from '../cardano/cardano-query.service';
 import { TreasuryBucketsService } from '../treasury/treasury-buckets.service';
@@ -8,6 +9,20 @@ const LOVELACE = 1_000_000n;
 
 // §R — unified queue labels. DB values stay ACTIVE/DONE for history; these are what people see.
 const REQUEST_STATUS_LABEL: Record<string, string> = { ACTIVE: 'New', ACCEPTED: 'Accepted', DONE: 'Complete', REJECTED: 'Rejected' };
+
+// §R2 — request form configuration. The board shapes each kind's form in the Request formatter; the
+// shape is stored as one PlatformConfig row keyed per kind. A kind never configured falls back to a
+// single markdown "Description" element (the original Title + Description form).
+const REQUEST_KINDS = ['NOTIFICATION', 'CALL', 'PROPOSAL_REVIEW', 'ANSWER'] as const;
+type RequestKind = (typeof REQUEST_KINDS)[number];
+const FORM_CONFIG_KEY = 'REQUEST_FORM_CONFIG';
+type FormElementType = 'text' | 'markdown' | 'select' | 'links' | 'date';
+type FormElement = { id: string; label: string; type: FormElementType; size?: 'small' | 'large'; options?: string[]; required?: boolean };
+const DEFAULT_ELEMENTS: FormElement[] = [{ id: 'description', label: 'Description', type: 'markdown', size: 'large' }];
+// A submitted links element value.
+type LinkValue = { url: string; title?: string };
+// The per-request snapshot entry stored in Request.fields.
+type FieldSnapshot = { key: string; label: string; type: FormElementType; value: string | LinkValue[] };
 
 /**
  * §R — Submitter Requests (DRep DAO edition).
@@ -49,6 +64,90 @@ export class RequestsService {
     if (app?.status !== 'APPROVED') {
       throw new ForbiddenException('only approved submitters can submit requests — apply for the submitter role first');
     }
+  }
+
+  // ── form configuration (board shapes each kind's form) ──────────────────────
+
+  /** §R2 — the element list for every kind. A kind never configured falls back to the default form.
+   *  An explicitly-saved empty list (only Title) is respected. */
+  async getFormConfig(): Promise<Record<string, FormElement[]>> {
+    const row = await this.prisma.platformConfig.findUnique({ where: { key: FORM_CONFIG_KEY } });
+    const stored = (row?.value as Record<string, FormElement[]> | null) ?? {};
+    const out: Record<string, FormElement[]> = {};
+    // Never-configured kinds start with only the Title; NOTIFICATION keeps a Description element so the
+    // original flow is unchanged. An explicitly-saved list (even empty) is always respected.
+    for (const k of REQUEST_KINDS) out[k] = Array.isArray(stored[k]) ? stored[k] : (k === 'NOTIFICATION' ? DEFAULT_ELEMENTS : []);
+    return out;
+  }
+
+  /** §R2 — board replaces the element list for one kind. */
+  async saveFormConfig(userId: string, kind: string, elements: unknown[]) {
+    if (!(await this.isBoard(userId))) throw new ForbiddenException('board members only');
+    if (!REQUEST_KINDS.includes(kind as RequestKind)) throw new BadRequestException('unknown request kind');
+    const clean = this.sanitizeElements(elements);
+    const row = await this.prisma.platformConfig.findUnique({ where: { key: FORM_CONFIG_KEY } });
+    const current = (row?.value as Record<string, FormElement[]> | null) ?? {};
+    current[kind] = clean;
+    await this.prisma.platformConfig.upsert({
+      where: { key: FORM_CONFIG_KEY },
+      update: { value: current as unknown as Prisma.InputJsonValue, updatedBy: userId },
+      create: { key: FORM_CONFIG_KEY, value: current as unknown as Prisma.InputJsonValue, updatedBy: userId },
+    });
+    return this.getFormConfig();
+  }
+
+  /** §R2 — normalise a board-submitted element list: unique ids, valid types, trimmed labels. */
+  private sanitizeElements(elements: unknown[]): FormElement[] {
+    const seen = new Set<string>();
+    const out: FormElement[] = [];
+    for (const raw of (Array.isArray(elements) ? elements : []).slice(0, 30)) {
+      const e = (raw ?? {}) as Partial<FormElement>;
+      const type: FormElementType = (['text', 'markdown', 'select', 'links', 'date'] as const).includes(e.type as FormElementType) ? (e.type as FormElementType) : 'text';
+      let id = String(e.id ?? '').trim().slice(0, 64);
+      if (!id || seen.has(id)) id = `el_${Math.random().toString(36).slice(2, 9)}`;
+      const label = String(e.label ?? '').trim().slice(0, 120) || 'Field';
+      const el: FormElement = { id, label, type };
+      if ((type === 'text' || type === 'markdown') && (e.size === 'small' || e.size === 'large')) el.size = e.size;
+      if (type === 'select') el.options = (Array.isArray(e.options) ? e.options : []).map((o) => String(o).trim().slice(0, 120)).filter(Boolean).slice(0, 50);
+      if (e.required) el.required = true;
+      seen.add(id);
+      out.push(el);
+    }
+    return out;
+  }
+
+  /** §R2 — validate the submitted values against the kind's current form and build the stored snapshot.
+   *  Derives the markdown `description` (first markdown element) for notifications/history. */
+  private async buildFields(kind: string, submitted: unknown): Promise<{ fields: FieldSnapshot[]; description: string }> {
+    const cfg = await this.getFormConfig();
+    const elements = cfg[kind] ?? DEFAULT_ELEMENTS;
+    const byId = new Map<string, unknown>();
+    for (const f of Array.isArray(submitted) ? submitted : []) {
+      if (f && typeof f === 'object' && 'key' in (f as object)) byId.set(String((f as { key: unknown }).key), (f as { value: unknown }).value);
+    }
+    const fields: FieldSnapshot[] = [];
+    let description = '';
+    for (const el of elements) {
+      // §R2 — a date element maps to the request's expectedResponseAt column (handled by the caller),
+      // not to the fields snapshot.
+      if (el.type === 'date') continue;
+      if (el.type === 'links') {
+        const links: LinkValue[] = (Array.isArray(byId.get(el.id)) ? (byId.get(el.id) as unknown[]) : [])
+          .map((l) => ({ url: String((l as LinkValue)?.url ?? '').trim(), title: String((l as LinkValue)?.title ?? '').trim() }))
+          .filter((l) => /^https?:\/\//i.test(l.url))
+          .slice(0, 30)
+          .map((l) => ({ url: l.url.slice(0, 2000), ...(l.title ? { title: l.title.slice(0, 300) } : {}) }));
+        if (el.required && links.length === 0) throw new BadRequestException(`${el.label} is required`);
+        fields.push({ key: el.id, label: el.label, type: el.type, value: links });
+      } else {
+        let val = String(byId.get(el.id) ?? '').trim().slice(0, 20000);
+        if (el.type === 'select' && val && el.options && !el.options.includes(val)) val = ''; // ignore an option not on the list
+        if (el.required && !val) throw new BadRequestException(`${el.label} is required`);
+        fields.push({ key: el.id, label: el.label, type: el.type, value: val });
+        if (el.type === 'markdown' && !description) description = val;
+      }
+    }
+    return { fields, description };
   }
 
   /** The address paid request fees go to: the Request-fees bucket, else the treasury itself. */
@@ -111,12 +210,16 @@ export class RequestsService {
 
   // ── submitting ──────────────────────────────────────────────────────────────
 
-  async submit(userId: string, dto: { title: string; description: string; typeId?: string | null; feeTxHash?: string | null; expectedResponseAt?: string | null }) {
+  async submit(userId: string, dto: { title: string; description?: string; kind?: string; fields?: unknown[]; typeId?: string | null; feeTxHash?: string | null; expectedResponseAt?: string | null }) {
     await this.assertApprovedSubmitter(userId);
     const title = dto.title?.trim() ?? '';
-    const description = dto.description?.trim() ?? '';
     if (title.length < 4) throw new BadRequestException('the title must be at least 4 characters');
-    if (!description) throw new BadRequestException('a description is required');
+    const kind = REQUEST_KINDS.includes(dto.kind as RequestKind) ? (dto.kind as RequestKind) : 'NOTIFICATION';
+    // buildFields enforces each element's `required` flag; a Title-only form (no elements) is valid.
+    const { fields, description: derived } = await this.buildFields(kind, dto.fields ?? []);
+    // §R2 — description mirrors the first markdown element; fall back to a plain `description` for the
+    // legacy form / API callers that don't send structured fields.
+    const description = derived || (dto.description?.trim() ?? '');
     let expectedResponseAt: Date | null = null;
     if (dto.expectedResponseAt) {
       const d = new Date(dto.expectedResponseAt);
@@ -137,6 +240,8 @@ export class RequestsService {
         typeId: type?.id ?? null,
         title,
         description,
+        kind,
+        fields: fields.length ? (fields as unknown as Prisma.InputJsonValue) : undefined,
         expectedResponseAt,
         status: 'DRAFT', // §R — starts as an editable draft; the author publishes it when ready
         feeTxHash: dto.feeTxHash?.trim() || null,
@@ -146,7 +251,7 @@ export class RequestsService {
   }
 
   /** §R — edit a draft (owner only; locked once published). */
-  async update(userId: string, id: string, dto: { title?: string; description?: string; typeId?: string | null; expectedResponseAt?: string | null }) {
+  async update(userId: string, id: string, dto: { title?: string; description?: string; kind?: string; fields?: unknown[]; typeId?: string | null; expectedResponseAt?: string | null }) {
     const r = await this.prisma.request.findUnique({ where: { id } });
     if (!r) throw new NotFoundException('request not found');
     if (r.submitterUserId !== userId) throw new ForbiddenException('not your request');
@@ -157,7 +262,15 @@ export class RequestsService {
       if (title.length < 4) throw new BadRequestException('the title must be at least 4 characters');
       data.title = title;
     }
-    if (dto.description !== undefined) {
+    // §R2 — structured form path: rebuild the snapshot + derived description from the submitted values.
+    if (dto.fields !== undefined || dto.kind !== undefined) {
+      const kind = REQUEST_KINDS.includes(dto.kind as RequestKind) ? (dto.kind as RequestKind) : (REQUEST_KINDS.includes(r.kind as RequestKind) ? (r.kind as RequestKind) : 'NOTIFICATION');
+      const { fields, description } = await this.buildFields(kind, dto.fields ?? []);
+      const descFinal = description || (dto.description?.trim() ?? '');
+      data.kind = kind;
+      data.fields = fields.length ? (fields as unknown as Prisma.InputJsonValue) : Prisma.JsonNull;
+      data.description = descFinal;
+    } else if (dto.description !== undefined) {
       const description = dto.description.trim();
       if (!description) throw new BadRequestException('a description is required');
       data.description = description;
@@ -316,7 +429,8 @@ export class RequestsService {
 
   private view(
     r: {
-      id: string; title: string; description: string; expectedResponseAt: Date | null; status: string; createdAt: Date; decidedAt: Date | null;
+      id: string; title: string; description: string; kind: string; fields: Prisma.JsonValue; expectedResponseAt: Date | null; status: string; createdAt: Date; decidedAt: Date | null;
+      result: string | null; resultAt: Date | null;
       publishedAt: Date | null; feeTxHash: string | null; feeSeenOnchainAt: Date | null; submitterUserId: string;
       type: { id: string; name: string; priceAda: bigint } | null;
       submitter: { id: string; displayName: string | null; submitterApplication?: { logoDataUrl: string | null; email: string; telegram: string; socialLinks: string[] } | null };
@@ -330,6 +444,12 @@ export class RequestsService {
       id: r.id,
       title: r.title,
       description: r.description,
+      kind: REQUEST_KINDS.includes(r.kind as RequestKind) ? r.kind : 'NOTIFICATION',
+      // §R2 — the configured-element snapshot (null on legacy requests, which render from `description`).
+      fields: Array.isArray(r.fields) ? (r.fields as unknown as FieldSnapshot[]) : null,
+      // §R2 — the board's attached result (markdown), visible to everyone once set.
+      result: r.result ?? null,
+      resultAt: r.resultAt ? r.resultAt.toISOString() : null,
       expectedResponseAt: r.expectedResponseAt ? r.expectedResponseAt.toISOString() : null,
       status: r.status,
       publishedAt: r.publishedAt ? r.publishedAt.toISOString() : null,
@@ -403,6 +523,30 @@ export class RequestsService {
       if (p.type !== 'INTERNAL') throw new BadRequestException('only an internal proposal can be linked to a request');
     }
     await this.prisma.request.update({ where: { id }, data: { linkedProposalId: proposalId } });
+    return this.get(id, userId);
+  }
+
+  /**
+   * §R2 — the board attaches or edits the request's result (markdown). Editable at any time and
+   * independent of the status. An empty string clears it. The submitter is notified when a result is
+   * first added (not on every edit).
+   */
+  async setResult(userId: string, id: string, md: string) {
+    if (!(await this.isBoard(userId))) throw new ForbiddenException('board members only');
+    const r = await this.prisma.request.findUnique({ where: { id }, select: { status: true, submitterUserId: true, title: true, result: true } });
+    if (!r) throw new NotFoundException('request not found');
+    if (['DRAFT', 'PENDING_FEE'].includes(r.status)) throw new BadRequestException('publish the request before adding a result');
+    const text = (md ?? '').trim();
+    const hadResult = !!r.result;
+    await this.prisma.request.update({
+      where: { id },
+      data: { result: text || null, resultAt: text ? new Date() : null, resultByUserId: text ? userId : null },
+    });
+    if (text && !hadResult) {
+      await this.notifications
+        .notifyUsers([r.submitterUserId], 'request_result', id, { title: 'Request answered', body: r.title, requestId: id })
+        .catch(() => undefined);
+    }
     return this.get(id, userId);
   }
 

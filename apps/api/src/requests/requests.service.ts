@@ -16,7 +16,9 @@ const REQUEST_STATUS_LABEL: Record<string, string> = { ACTIVE: 'New', ACCEPTED: 
 const REQUEST_KINDS = ['NOTIFICATION', 'CALL', 'PROPOSAL_REVIEW', 'ANSWER'] as const;
 type RequestKind = (typeof REQUEST_KINDS)[number];
 const FORM_CONFIG_KEY = 'REQUEST_FORM_CONFIG';
-type FormElementType = 'text' | 'markdown' | 'select' | 'links' | 'date';
+type FormElementType = 'text' | 'markdown' | 'select' | 'links' | 'date' | 'score';
+// A pasted scoring link (or bare id) → the PublicScan UUID it points at.
+const SCAN_ID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 type FormElement = { id: string; label: string; type: FormElementType; size?: 'small' | 'large'; options?: string[]; required?: boolean };
 const DEFAULT_ELEMENTS: FormElement[] = [{ id: 'description', label: 'Description', type: 'markdown', size: 'large' }];
 // A submitted links element value.
@@ -102,7 +104,7 @@ export class RequestsService {
     const out: FormElement[] = [];
     for (const raw of (Array.isArray(elements) ? elements : []).slice(0, 30)) {
       const e = (raw ?? {}) as Partial<FormElement>;
-      const type: FormElementType = (['text', 'markdown', 'select', 'links', 'date'] as const).includes(e.type as FormElementType) ? (e.type as FormElementType) : 'text';
+      const type: FormElementType = (['text', 'markdown', 'select', 'links', 'date', 'score'] as const).includes(e.type as FormElementType) ? (e.type as FormElementType) : 'text';
       let id = String(e.id ?? '').trim().slice(0, 64);
       if (!id || seen.has(id)) id = `el_${Math.random().toString(36).slice(2, 9)}`;
       const label = String(e.label ?? '').trim().slice(0, 120) || 'Field';
@@ -118,7 +120,8 @@ export class RequestsService {
 
   /** §R2 — validate the submitted values against the kind's current form and build the stored snapshot.
    *  Derives the markdown `description` (first markdown element) for notifications/history. */
-  private async buildFields(kind: string, submitted: unknown): Promise<{ fields: FieldSnapshot[]; description: string }> {
+  private async buildFields(kind: string, submitted: unknown, opts?: { enforceRequired?: boolean }): Promise<{ fields: FieldSnapshot[]; description: string }> {
+    const enforceRequired = opts?.enforceRequired ?? true; // board type-switch maps only what exists; the submitter completes the rest
     const cfg = await this.getFormConfig();
     const elements = cfg[kind] ?? DEFAULT_ELEMENTS;
     const byId = new Map<string, unknown>();
@@ -137,12 +140,36 @@ export class RequestsService {
           .filter((l) => /^https?:\/\//i.test(l.url))
           .slice(0, 30)
           .map((l) => ({ url: l.url.slice(0, 2000), ...(l.title ? { title: l.title.slice(0, 300) } : {}) }));
-        if (el.required && links.length === 0) throw new BadRequestException(`${el.label} is required`);
+        if (enforceRequired && el.required && links.length === 0) throw new BadRequestException(`${el.label} is required`);
         fields.push({ key: el.id, label: el.label, type: el.type, value: links });
+      } else if (el.type === 'score') {
+        // §R2 — a proposal score, supplied one of two ways and stored as a bare id:
+        //  (a) a link to the submitter's own public scan (…&scan=<uuid>) → pin to that PublicScan (must be
+        //      DONE), store its uuid; or (b) a governance-action id the board has already scored on-chain
+        //      (picked from the On-chain Proposal Score list) → verify a score exists, store the govActionId.
+        // Once stored the score is effectively public and cannot be withdrawn.
+        const raw = String(byId.get(el.id) ?? '').trim();
+        if (!raw) {
+          if (enforceRequired && el.required) throw new BadRequestException(`${el.label} is required`);
+          fields.push({ key: el.id, label: el.label, type: el.type, value: '' });
+          continue;
+        }
+        const scanId = (raw.match(SCAN_ID_RE)?.[0] ?? '').toLowerCase();
+        if (scanId) {
+          const scan = await this.prisma.publicScan.findUnique({ where: { id: scanId }, select: { id: true, status: true } });
+          if (!scan) throw new BadRequestException(`${el.label}: that scoring link was not found`);
+          if (scan.status !== 'DONE') throw new BadRequestException(`${el.label}: that proposal has not been scored yet — finish scoring it in the tool first`);
+          fields.push({ key: el.id, label: el.label, type: el.type, value: scan.id });
+        } else {
+          // An on-chain governance action: a ProposalCheckResult only exists once the board has scored it.
+          const scored = await this.prisma.proposalCheckResult.findFirst({ where: { govActionId: raw.slice(0, 200) }, select: { govActionId: true } });
+          if (!scored) throw new BadRequestException(`${el.label}: pick an already-scored proposal, or paste a valid scoring link from the scoring tool`);
+          fields.push({ key: el.id, label: el.label, type: el.type, value: scored.govActionId });
+        }
       } else {
         let val = String(byId.get(el.id) ?? '').trim().slice(0, 20000);
         if (el.type === 'select' && val && el.options && !el.options.includes(val)) val = ''; // ignore an option not on the list
-        if (el.required && !val) throw new BadRequestException(`${el.label} is required`);
+        if (enforceRequired && el.required && !val) throw new BadRequestException(`${el.label} is required`);
         fields.push({ key: el.id, label: el.label, type: el.type, value: val });
         if (el.type === 'markdown' && !description) description = val;
       }
@@ -255,7 +282,10 @@ export class RequestsService {
     const r = await this.prisma.request.findUnique({ where: { id } });
     if (!r) throw new NotFoundException('request not found');
     if (r.submitterUserId !== userId) throw new ForbiddenException('not your request');
-    if (r.status !== 'DRAFT') throw new BadRequestException('a published request can no longer be edited');
+    // Editable while it is a draft (pre-publish) OR while it is still New (ACTIVE) in the queue — so the
+    // submitter can add information a DRep asked for. Once the board moves it on (ACCEPTED/DONE/REJECTED)
+    // it locks; the board can return it to New to reopen editing.
+    if (r.status !== 'DRAFT' && r.status !== 'ACTIVE') throw new BadRequestException('this request can only be edited while it is New; ask the board to return it to New');
     const data: Record<string, unknown> = {};
     if (dto.title !== undefined) {
       const title = dto.title.trim();
@@ -454,7 +484,7 @@ export class RequestsService {
       status: r.status,
       publishedAt: r.publishedAt ? r.publishedAt.toISOString() : null,
       isOwner: !!viewerId && r.submitterUserId === viewerId,
-      editable: !!viewerId && r.submitterUserId === viewerId && r.status === 'DRAFT',
+      editable: !!viewerId && r.submitterUserId === viewerId && (r.status === 'DRAFT' || r.status === 'ACTIVE'),
       createdAt: r.createdAt,
       decidedAt: r.decidedAt,
       submitter: r.submitter.displayName ?? 'Submitter',
@@ -502,6 +532,45 @@ export class RequestsService {
       const label = REQUEST_STATUS_LABEL[status] ?? status;
       await this.notifications
         .notifyUsers([r.submitterUserId], `request_status_${status}`, id, { title: `Request ${label.toLowerCase()}`, body: r.title, requestId: id })
+        .catch(() => undefined);
+    }
+    return this.get(id, userId);
+  }
+
+  /**
+   * §R2 — board changes a request's type while it is New. The new type has a different form, so the
+   * structured fields are reset; the submitter refills them while the request is still New. (A team
+   * changes its own request's type through the normal edit, which is likewise New-only once published.)
+   */
+  async changeKind(userId: string, id: string, kind: string, dto?: { fields?: unknown[]; expectedResponseAt?: string | null }) {
+    if (!REQUEST_KINDS.includes(kind as RequestKind)) throw new BadRequestException('unknown request kind');
+    const r = await this.prisma.request.findUnique({ where: { id }, select: { status: true, kind: true, title: true, submitterUserId: true } });
+    if (!r) throw new NotFoundException('request not found');
+    const owner = r.submitterUserId === userId;
+    if (!owner && !(await this.isBoard(userId))) throw new ForbiddenException('only the submitter or a board member can change a request type');
+    if (r.status !== 'ACTIVE') throw new BadRequestException('a request type can only be changed while it is New');
+    // Rebuild the field snapshot for the new type from the (mapped) values supplied, so content carries
+    // across instead of being wiped. The board moves only what the submitter already provided — required
+    // fields the new type adds are left for the submitter to complete while the request is still New.
+    const { fields, description } = await this.buildFields(kind, dto?.fields ?? [], { enforceRequired: false });
+    const data: Record<string, unknown> = {
+      kind,
+      fields: fields.length ? (fields as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
+      description,
+    };
+    if (dto?.expectedResponseAt !== undefined) {
+      if (dto.expectedResponseAt) {
+        const d = new Date(dto.expectedResponseAt);
+        if (Number.isNaN(d.getTime())) throw new BadRequestException('invalid expected-response time');
+        if (d.getTime() <= Date.now()) throw new BadRequestException('the expected-response time must be in the future');
+        data.expectedResponseAt = d;
+      } else data.expectedResponseAt = null;
+    }
+    await this.prisma.request.update({ where: { id }, data });
+    // Tell the submitter only when the board changed it (don't self-notify) and the type actually moved.
+    if (!owner && r.kind !== kind) {
+      await this.notifications
+        .notifyUsers([r.submitterUserId], 'request_kind_changed', id, { title: 'Request type changed', body: r.title, requestId: id })
         .catch(() => undefined);
     }
     return this.get(id, userId);

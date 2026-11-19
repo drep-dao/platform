@@ -548,6 +548,7 @@ function areaScores(findings: PcFinding[]): { area: string; score: number; n: nu
   const order: string[] = [];
   const agg = new Map<string, { w: number; n: number }>();
   for (const f of findings) {
+    if (f.role === 'verification') continue; // trust layer is not a scored axis
     const l = (f.outcome || '').toLowerCase();
     if (l.includes('not applicable') || l.includes('n/a')) continue;
     if (!agg.has(f.area)) { agg.set(f.area, { w: 0, n: 0 }); order.push(f.area); }
@@ -560,7 +561,8 @@ function areaScores(findings: PcFinding[]): { area: string; score: number; n: nu
 
 function radarHex(s: number) { return s >= 80 ? '#059669' : s >= 50 ? '#d97706' : '#e11d48'; }
 
-/** Overall framework score 0–100 = mean of the 5 Triangle Forces area scores (max 500 → %). Null if no findings. */
+/** Overall framework score 0–100 = mean of the three Triangle Forces (Desirability/Feasibility/Viability)
+ *  area scores. The verification layer (Verifiability/Reinforcement) is excluded by areaScores. Null if none. */
 export function frameworkScore(findings: PcFinding[]): number | null {
   const a = areaScores(findings);
   if (!a.length) return null;
@@ -579,6 +581,20 @@ function evidenceRate(findings: PcFinding[]): { pct: number; cited: number; aske
   return { pct: Math.round((cited / asked) * 100), cited, asked };
 }
 
+/** Split a long radar-axis label into short lines so side labels never clip the SVG viewBox. */
+function wrapLabel(s: string, max = 14): string[] {
+  const words = s.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let cur = '';
+  for (const w of words) {
+    if (!cur) cur = w;
+    else if ((cur + ' ' + w).length <= max) cur += ' ' + w;
+    else { lines.push(cur); cur = w; }
+  }
+  if (cur) lines.push(cur);
+  return lines.length ? lines : [s];
+}
+
 /** Inline SVG radar of the Triangle Forces areas — a visual profile of where a proposal is strong vs weak. */
 function FrameworkRadar({ data }: { data: { area: string; score: number }[] }) {
   const N = data.length;
@@ -590,7 +606,7 @@ function FrameworkRadar({ data }: { data: { area: string; score: number }[] }) {
   const ring = (f: number) => data.map((_, i) => pt(i, R * f)).join(' ');
   const poly = data.map((d, i) => pt(i, (R * clamp(d.score)) / 100)).join(' ');
   return (
-    <svg viewBox="0 0 300 232" className="mx-auto w-full max-w-[360px]" role="img" aria-label="Triangle Forces radar">
+    <svg viewBox="-40 -6 380 260" className="mx-auto w-full max-w-[360px]" role="img" aria-label="Triangle Forces radar">
       {[0.25, 0.5, 0.75, 1].map((f) => (
         <polygon key={f} points={ring(f)} fill="none" stroke="currentColor" strokeWidth="0.5" className="text-neutral-300 dark:text-neutral-700" />
       ))}
@@ -604,11 +620,150 @@ function FrameworkRadar({ data }: { data: { area: string; score: number }[] }) {
         const ly = cy + (R + 13) * Math.sin(a);
         const anchor = Math.abs(Math.cos(a)) < 0.3 ? 'middle' : Math.cos(a) > 0 ? 'start' : 'end';
         const dx = (R * clamp(d.score)) / 100;
+        const lines = wrapLabel(d.area); // split long area names so the label never runs past the viewBox edge
+        const lh = 10.5;
+        const up = Math.sin(a) < -0.3;   // top vertex → stack the label upward, away from the chart
+        const down = Math.sin(a) > 0.3;  // bottom vertex → stack downward
+        const rows = lines.length + 1;   // name lines + the % line
+        const y0 = up ? ly - 4 - (rows - 1) * lh : down ? ly + 10 : ly - ((rows - 1) * lh) / 2;
         return (
           <g key={i}>
             <circle cx={cx + dx * Math.cos(a)} cy={cy + dx * Math.sin(a)} r="3" fill={radarHex(d.score)} />
-            <text x={lx} y={ly - 4} textAnchor={anchor} dominantBaseline="middle" fontSize="9.5" className="fill-neutral-500 dark:fill-neutral-400">{d.area}</text>
-            <text x={lx} y={ly + 6} textAnchor={anchor} dominantBaseline="middle" fontSize="10" fontWeight="700" fill={radarHex(d.score)}>{d.score}%</text>
+            {lines.map((ln, j) => (
+              <text key={j} x={lx} y={y0 + j * lh} textAnchor={anchor} dominantBaseline="middle" fontSize="9.5" className="fill-neutral-500 dark:fill-neutral-400">{ln}</text>
+            ))}
+            <text x={lx} y={y0 + lines.length * lh} textAnchor={anchor} dominantBaseline="middle" fontSize="10" fontWeight="700" fill={radarHex(d.score)}>{d.score}%</text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+// Jürgen Proschinger's Triangle Forces palette — three forces, three colours, legible in light + dark.
+const FORCE_COLORS = ['#d1344b', '#4256c4', '#3c9a46']; // top, bottom-left, bottom-right
+
+/** Per-force verification (trust-layer) summary: how many of the force's trust checks fully passed. */
+function verSummary(verFindings: PcFinding[], forceTitle: string): { ok: number; total: number; status: 'verified' | 'gap' | 'none' } {
+  let ok = 0, total = 0;
+  for (const f of verFindings) {
+    if ((f.verifies || '') !== forceTitle) continue;
+    const l = (f.outcome || '').toLowerCase();
+    if (l.includes('not applicable') || l.includes('n/a')) continue;
+    total += 1;
+    if (l.includes('supported') && !l.includes('condition') && !l.includes('unsupported')) ok += 1;
+  }
+  return { ok, total, status: total === 0 ? 'none' : ok === total ? 'verified' : 'gap' };
+}
+
+/** A force's trust-layer result, as a small header chip. */
+function VerificationChip({ sum }: { sum: { ok: number; total: number; status: 'verified' | 'gap' | 'none' } }) {
+  const t = useT();
+  if (sum.status === 'none') return null;
+  return sum.status === 'verified'
+    ? <span className="rounded bg-emerald-500/10 px-1.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">✓ {t('trust checks')} {sum.ok}/{sum.total}</span>
+    : <span className="rounded bg-amber-500/10 px-1.5 text-[10px] font-medium text-amber-700 dark:text-amber-500">⚠ {t('trust checks')} {sum.ok}/{sum.total}</span>;
+}
+
+/** The trust-layer findings attached to one force (or, with `heading`, any unattached ones). The box is
+ *  tinted by the same pass/gap status as the force's trust chip, so the two read as one. */
+function VerificationList({ items, numbered, heading }: { items: PcFinding[]; numbered?: boolean; heading?: boolean }) {
+  const t = useT();
+  if (!items.length) return null;
+  let ok = 0, total = 0;
+  for (const f of items) {
+    const l = (f.outcome || '').toLowerCase();
+    if (l.includes('not applicable') || l.includes('n/a')) continue;
+    total += 1;
+    if (l.includes('supported') && !l.includes('condition') && !l.includes('unsupported')) ok += 1;
+  }
+  const tone = total === 0 ? 'none' : ok === total ? 'verified' : 'gap';
+  const box = tone === 'verified'
+    ? 'border-emerald-200 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/25'
+    : tone === 'gap'
+    ? 'border-amber-200 bg-amber-50/60 dark:border-amber-900 dark:bg-amber-950/25'
+    : 'border-neutral-200 bg-neutral-50/60 dark:border-neutral-800 dark:bg-neutral-900/40';
+  const labelCls = tone === 'verified' ? 'text-emerald-700 dark:text-emerald-400' : tone === 'gap' ? 'text-amber-700 dark:text-amber-500' : 'text-neutral-400';
+  return (
+    <div className={`border-t border-dashed px-2 py-1.5 ${box}`}>
+      <p className={`mb-1 text-[10px] font-semibold uppercase tracking-wide ${labelCls}`}>{heading ? t('Verification layer') : `${t('Trust check (not scored)')} · ${ok}/${total} ${t('passed')}`}</p>
+      {!heading ? <p className="mb-1.5 text-[10px] italic leading-snug text-neutral-500 dark:text-neutral-400">{t('Verifies whether this force can be independently checked — not counted in the score.')}</p> : null}
+      <ul className="space-y-1.5">
+        {items.map((f, i) => {
+          const o = (f.outcome || '').toLowerCase();
+          const na = o.includes('not applicable') || o.includes('n/a');
+          const pass = o.includes('supported') && !o.includes('condition') && !o.includes('unsupported');
+          const glyph = na ? '○' : pass ? '✓' : '⚠';
+          const glyphCls = na ? 'text-neutral-400' : pass ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-500';
+          return (
+            <li key={f.id} className="space-y-0.5 text-[11px]">
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-neutral-600 dark:text-neutral-300"><span className={`font-semibold ${glyphCls}`}>{glyph}</span> {numbered ? `${i + 1}. ` : ''}{f.question}</span>
+                <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${outcomeStyle(f.outcome)}`}>{f.outcome}</span>
+              </div>
+              {f.reason ? <p className="text-neutral-500"><span className="text-neutral-400">{t('Reason')}: </span>{f.reason}</p> : null}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+/** The Triangle Forces chart: the three scored forces as a tri-colour triangle (after Jürgen Proschinger's
+ *  framework), wrapped by a "trust layer" ring whose arc beside each force shows the verification result —
+ *  verifiable reflexivity as a protective layer AROUND the triangle, not a fourth axis. */
+function TriangleForcesChart({ forces, verFindings }: { forces: { area: string; score: number }[]; verFindings: PcFinding[] }) {
+  const t = useT();
+  if (forces.length !== 3) return <FrameworkRadar data={forces} />; // not the 3-force shape → generic radar
+  const cx = 150, cy = 140, R = 78, ringR = 94;
+  const ANG = [-90, 150, 30]; // top, bottom-left, bottom-right (deg)
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const clamp = (s: number) => Math.max(0, Math.min(100, s));
+  const pt = (i: number, r: number) => `${(cx + r * Math.cos(rad(ANG[i]))).toFixed(1)},${(cy + r * Math.sin(rad(ANG[i]))).toFixed(1)}`;
+  const ring = (f: number) => [0, 1, 2].map((i) => pt(i, R * f)).join(' ');
+  const scorePoly = forces.map((d, i) => pt(i, (R * clamp(d.score)) / 100)).join(' ');
+  const arc = (i: number, color: string, dashed: boolean) => {
+    const span = 86, a0 = rad(ANG[i] - span / 2), a1 = rad(ANG[i] + span / 2);
+    const x0 = cx + ringR * Math.cos(a0), y0 = cy + ringR * Math.sin(a0);
+    const x1 = cx + ringR * Math.cos(a1), y1 = cy + ringR * Math.sin(a1);
+    return <path d={`M ${x0.toFixed(1)} ${y0.toFixed(1)} A ${ringR} ${ringR} 0 0 1 ${x1.toFixed(1)} ${y1.toFixed(1)}`} fill="none" stroke={color} strokeWidth="5" strokeLinecap="round" strokeDasharray={dashed ? '2 7' : undefined} />;
+  };
+  return (
+    <svg viewBox="0 0 300 290" className="mx-auto w-full max-w-[380px]" role="img" aria-label="Triangle Forces chart with trust layer">
+      {[0.33, 0.66, 1].map((f) => (
+        <polygon key={f} points={ring(f)} fill="none" stroke="currentColor" strokeWidth="0.5" className="text-neutral-300 dark:text-neutral-700" />
+      ))}
+      {forces.map((d, i) => {
+        const s = verSummary(verFindings, d.area);
+        if (s.status === 'none') return null; // no trust layer for this force → draw nothing (no grey arc)
+        return <g key={`arc${i}`}>{arc(i, s.status === 'verified' ? '#059669' : '#d97706', s.status === 'gap')}</g>;
+      })}
+      {forces.map((_, i) => (
+        <line key={`sp${i}`} x1={cx} y1={cy} x2={cx + R * Math.cos(rad(ANG[i]))} y2={cy + R * Math.sin(rad(ANG[i]))} stroke={FORCE_COLORS[i]} strokeWidth="0.8" opacity="0.5" />
+      ))}
+      <polygon points={scorePoly} fill="rgb(16 185 129 / 0.14)" stroke="rgb(16 185 129)" strokeWidth="1.5" />
+      {forces.map((d, i) => {
+        const a = rad(ANG[i]);
+        const dx = (R * clamp(d.score)) / 100;
+        const lx = cx + (ringR + 16) * Math.cos(a), ly = cy + (ringR + 16) * Math.sin(a);
+        const anchor = Math.abs(Math.cos(a)) < 0.3 ? 'middle' : Math.cos(a) > 0 ? 'start' : 'end';
+        const s = verSummary(verFindings, d.area);
+        // Top vertex: stack the labels UPWARD (away from the ring) so the trust line never collides with the arc.
+        const up = Math.sin(a) < -0.3;
+        const nameY = up ? ly - 18 : ly - 4;
+        const pctY = up ? ly - 7 : ly + 7;
+        const verY = up ? ly + 4 : ly + 18;
+        return (
+          <g key={`v${i}`}>
+            <circle cx={cx + dx * Math.cos(a)} cy={cy + dx * Math.sin(a)} r="4" fill={FORCE_COLORS[i]} />
+            <text x={lx} y={nameY} textAnchor={anchor} dominantBaseline="middle" fontSize="10" fontWeight="700" fill={FORCE_COLORS[i]}>{d.area}</text>
+            <text x={lx} y={pctY} textAnchor={anchor} dominantBaseline="middle" fontSize="10.5" fontWeight="700" className="fill-neutral-600 dark:fill-neutral-300">{d.score}%</text>
+            {s.status !== 'none' ? (
+              <text x={lx} y={verY} textAnchor={anchor} dominantBaseline="middle" fontSize="8" fill={s.status === 'verified' ? '#059669' : '#d97706'}>
+                {`${s.status === 'verified' ? '✓' : '⚠'} ${s.ok}/${s.total} ${t('passed')}`}
+              </text>
+            ) : null}
           </g>
         );
       })}
@@ -652,8 +807,8 @@ function toQuotes(v?: string | string[]): string[] {
 function EvidenceLabel({ cited }: { cited?: string }) {
   const t = useT();
   const c = (cited || '').toLowerCase();
-  if (c === 'yes') return <span className="shrink-0 rounded px-1 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">{t('evidence provided')}</span>;
-  if (c === 'no') return <span className="shrink-0 rounded px-1 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-500">{t('evidence missing')}</span>;
+  if (c === 'yes') return <span className="shrink-0 rounded px-1 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">{t('cites a source')}</span>;
+  if (c === 'no') return <span className="shrink-0 rounded px-1 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-500">{t('no source cited')}</span>;
   return null;
 }
 
@@ -686,15 +841,19 @@ function EvidenceBlock({ quotes }: { quotes: string[] }) {
   );
 }
 
-function FindingsBody({ findings, radar, attribution, numbered = true }: { findings: PcFinding[]; radar?: boolean; attribution?: string; numbered?: boolean }) {
+function FindingsBody({ findings, radar, trustLayer, attribution, numbered = true }: { findings: PcFinding[]; radar?: boolean; trustLayer?: boolean; attribution?: string; numbered?: boolean }) {
   const t = useT();
-  const areas = groupByArea(findings);
-  const er = evidenceRate(findings);
+  const forceFindings = findings.filter((f) => f.role !== 'verification');
+  const verFindings = findings.filter((f) => f.role === 'verification');
+  const areas = groupByArea(forceFindings);
+  const forceTitles = new Set(areas.map((a) => a.area));
+  const orphanVer = verFindings.filter((f) => !forceTitles.has(f.verifies || ''));
+  const er = evidenceRate(forceFindings); // scored forces only — trust-layer citation status stays in the trust box
   if (!findings.length) return <p className="text-xs text-neutral-400">{t('No detail available — re-score this proposal to generate it.')}</p>;
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-1.5">
-        {tallyOutcomes(findings).map(([o, n]) => (
+        {tallyOutcomes(forceFindings).map(([o, n]) => (
           <span key={o} className={`rounded px-1.5 py-0.5 text-[10px] ${outcomeStyle(o)}`}>{n} {o}</span>
         ))}
       </div>
@@ -705,8 +864,23 @@ function FindingsBody({ findings, radar, attribution, numbered = true }: { findi
       ) : null}
       {radar && areas.length >= 3 ? (
         <div className="rounded-md border border-neutral-200 p-2 dark:border-neutral-800">
-          <FrameworkRadar data={areaScores(findings)} />
-          <p className="mt-1 text-center text-[10px] text-neutral-400">{t('Per-area profile: Supported = 1, Supported with condition = ½, other = 0 (excluding Not applicable). Shows where the proposal is strong or thin.')}</p>
+          {trustLayer && verFindings.length ? (
+            <>
+              <TriangleForcesChart forces={areaScores(forceFindings)} verFindings={verFindings} />
+              <div className="mt-1 space-y-1 text-[10px] text-neutral-500 dark:text-neutral-400">
+                <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5">
+                  <span className="inline-flex items-center gap-1"><svg width="18" height="6" aria-hidden="true"><line x1="1" y1="3" x2="17" y2="3" stroke="#059669" strokeWidth="3" strokeLinecap="round" /></svg>{t('all trust checks passed')}</span>
+                  <span className="inline-flex items-center gap-1"><svg width="18" height="6" aria-hidden="true"><line x1="1" y1="3" x2="17" y2="3" stroke="#d97706" strokeWidth="3" strokeLinecap="round" strokeDasharray="2 3" /></svg>{t('some checks unmet (verification gap)')}</span>
+                </div>
+                <p className="text-center">{t('Each force carries a short trust layer of 3 verification questions — e.g. Feasibility’s ask whether its claims can be independently proven and audited. “2/3” means 2 of those 3 were answered with full evidence; the rest have a gap. These checks gauge how verifiable the force is — they are assessed but never change the % score. The exact questions and verdicts are in the “Trust check (not scored)” box under each force below.')}</p>
+              </div>
+            </>
+          ) : (
+            <>
+              <FrameworkRadar data={areaScores(forceFindings)} />
+              <p className="mt-1 text-center text-[10px] text-neutral-400">{t('Per-area profile: Supported = 1, Supported with condition = ½, other = 0 (excluding Not applicable). Shows where the proposal is strong or thin.')}</p>
+            </>
+          )}
         </div>
       ) : null}
       {areas.map((g) => (
@@ -716,6 +890,7 @@ function FindingsBody({ findings, radar, attribution, numbered = true }: { findi
             {tallyOutcomes(g.items).map(([o, n]) => (
               <span key={o} className={`rounded px-1 text-[10px] ${outcomeStyle(o)}`}>{n} {o}</span>
             ))}
+            {trustLayer ? <VerificationChip sum={verSummary(verFindings, g.area)} /> : null}
           </div>
           <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
             {g.items.map((f) => (
@@ -736,8 +911,14 @@ function FindingsBody({ findings, radar, attribution, numbered = true }: { findi
               </li>
             ))}
           </ul>
+          {trustLayer ? <VerificationList items={verFindings.filter((f) => (f.verifies || '') === g.area)} numbered={numbered} /> : null}
         </div>
       ))}
+      {trustLayer && orphanVer.length ? (
+        <div className="rounded-md border border-dashed border-neutral-300 dark:border-neutral-700">
+          <VerificationList items={orphanVer} numbered={numbered} heading />
+        </div>
+      ) : null}
       {attribution ? <p className="text-[10px] text-neutral-400">{attribution}</p> : null}
     </div>
   );
@@ -789,7 +970,7 @@ export function ResultCard({ r, framework, prepend }: { r: PcScored; framework?:
         <FindingsBody findings={templateFindings} numbered={false} />
       </DimSection>
       <DimSection title={fwName} pct={fwPct} caption={t('A separate decision framework from the coverage.')}>
-        <FindingsBody findings={fwFindings} radar attribution={fwAttribution} />
+        <FindingsBody findings={fwFindings} radar trustLayer attribution={fwAttribution} />
       </DimSection>
       <DimSection title={t('Cardano Vision 2030')} pct={visPct} caption={t('How well the proposal aligns with the Cardano 2030 Strategy.')}>
         <FindingsBody findings={visionFindings} radar attribution={t('Questions derived from the Cardano 2030 Strategy (Intersect Product Committee).')} />

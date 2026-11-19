@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { eventsApi, publicApi, type PublicOverview, type ScheduledEvent } from '@/lib/api';
+import { eventsApi, publicApi, internalProposalsApi, type PublicOverview, type ScheduledEvent, type InternalProposalSummary } from '@/lib/api';
 import { useT } from '@/lib/prefs-context';
 import { card } from '@/lib/ui';
 
@@ -12,7 +12,7 @@ import { card } from '@/lib/ui';
  * both future-only. Click a day to see its events with the join link and an .ics download.
  */
 
-type Occ = { id: string; title: string; description: string; url: string; start: Date; end: Date; recurring: boolean };
+type Occ = { id: string; title: string; description: string; url: string; start: Date; end: Date; recurring: boolean; kind?: 'deadline' };
 
 const DAY_MS = 86_400_000;
 const startOfDay = (d: Date) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
@@ -25,12 +25,20 @@ const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'Ju
 const fmtTime = (d: Date) => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 const pad = (n: number) => String(n).padStart(2, '0');
 
-function buildOccurrences(events: ScheduledEvent[], ov: PublicOverview | null, rangeStart: Date, rangeEnd: Date, now: Date): Occ[] {
+function buildOccurrences(events: ScheduledEvent[], ov: PublicOverview | null, proposals: InternalProposalSummary[], rangeStart: Date, rangeEnd: Date, now: Date): Occ[] {
   const out: Occ[] = [];
   for (const e of events) {
     const start = new Date(e.startAt);
     const end = new Date(e.endAt);
     if (start >= rangeStart && start < rangeEnd) out.push({ id: e.id, title: e.title, description: e.description, url: e.url, start, end, recurring: false });
+  }
+  // Active internal proposals (not OG round proposals): a deadline marker on the voting-end day, linking
+  // in-app to the proposal via ?view=internal&ip=<id>.
+  for (const p of proposals) {
+    if (p.status !== 'ACTIVE' || !p.votingEndAt) continue;
+    const d = new Date(p.votingEndAt);
+    if (Number.isNaN(d.getTime()) || d < rangeStart || d >= rangeEnd) continue;
+    out.push({ id: `ip:${p.id}`, title: p.title, description: '', url: `?view=internal&ip=${p.id}`, start: d, end: d, recurring: false, kind: 'deadline' });
   }
   const mt = ov?.meetingTime;
   const mUrl = ov?.meetingUrl;
@@ -80,6 +88,7 @@ export function CalendarView() {
 
   const [events, setEvents] = useState<ScheduledEvent[]>([]);
   const [overview, setOverview] = useState<PublicOverview | null>(null);
+  const [proposals, setProposals] = useState<InternalProposalSummary[]>([]);
   const [mode, setMode] = useState<'fortnight' | 'month'>('fortnight');
   const [fnAnchor, setFnAnchor] = useState<Date>(thisWeek);
   const [monthAnchor, setMonthAnchor] = useState<Date>(thisMonth);
@@ -87,6 +96,7 @@ export function CalendarView() {
 
   useEffect(() => { eventsApi.upcoming().then(setEvents).catch(() => setEvents([])); }, []);
   useEffect(() => { publicApi.overview().then(setOverview).catch(() => setOverview(null)); }, []);
+  useEffect(() => { internalProposalsApi.list().then(setProposals).catch(() => setProposals([])); }, []);
 
   // The grid's day span. Fortnight = 14 days from the anchor week. Month = whole weeks covering the month.
   const gridStart = mode === 'fortnight' ? fnAnchor : startOfWeekMonday(monthAnchor);
@@ -100,7 +110,7 @@ export function CalendarView() {
   }, [mode, fnAnchor, monthAnchor]);
   const gridEnd = addDays(gridDays[gridDays.length - 1], 1);
 
-  const occurrences = useMemo(() => buildOccurrences(events, overview, gridStart, gridEnd, now), [events, overview, gridStart, gridEnd, now]);
+  const occurrences = useMemo(() => buildOccurrences(events, overview, proposals, gridStart, gridEnd, now), [events, overview, proposals, gridStart, gridEnd, now]);
   const occsByDay = useMemo(() => {
     const m = new Map<string, Occ[]>();
     for (const o of occurrences) {
@@ -180,8 +190,8 @@ export function CalendarView() {
               >
                 <span className={`text-xs font-medium ${isToday ? 'flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-white' : 'text-neutral-500'}`}>{d.getDate()}</span>
                 {occs.slice(0, 3).map((o) => (
-                  <span key={o.id} className={`truncate rounded px-1 text-[11px] leading-tight ${o.recurring ? 'bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'}`} title={o.title}>
-                    {fmtTime(o.start)} {o.title}
+                  <span key={o.id} className={`truncate rounded px-1 text-[11px] leading-tight ${o.kind === 'deadline' ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300' : o.recurring ? 'bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'}`} title={o.title}>
+                    {o.kind === 'deadline' ? `⏰ ${o.title}` : `${fmtTime(o.start)} ${o.title}`}
                   </span>
                 ))}
                 {occs.length > 3 ? <span className="px-1 text-[10px] text-neutral-400">+{occs.length - 3} {t('more')}</span> : null}
@@ -204,14 +214,20 @@ export function CalendarView() {
                 <li key={o.id} className="rounded-md border border-neutral-200 p-3 dark:border-neutral-800">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium">{o.title}</span>
-                    <span className={`rounded-full px-2 py-0.5 text-xs ${o.recurring ? 'bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'}`}>{o.recurring ? t('Recurring') : t('Event')}</span>
-                    <span className="text-xs text-neutral-500">{fmtTime(o.start)}–{fmtTime(o.end)}</span>
+                    <span className={`rounded-full px-2 py-0.5 text-xs ${o.kind === 'deadline' ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300' : o.recurring ? 'bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'}`}>{o.kind === 'deadline' ? t('Deadline') : o.recurring ? t('Recurring') : t('Event')}</span>
+                    <span className="text-xs text-neutral-500">{o.kind === 'deadline' ? fmtTime(o.start) : `${fmtTime(o.start)}–${fmtTime(o.end)}`}</span>
                   </div>
                   {o.description ? <p className="mt-1 whitespace-pre-wrap text-sm text-neutral-600 dark:text-neutral-400">{o.description}</p> : null}
                   <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
-                    {o.url ? <a href={o.url} target="_blank" rel="noopener noreferrer" className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700">{/meet\.google\.com/.test(o.url) ? t('Join Google Meet') : t('Join meeting')}</a> : null}
-                    <button onClick={() => downloadIcs(o)} className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs font-medium hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800">{t('Add to calendar (.ics)')}</button>
-                    {o.url ? <a href={o.url} target="_blank" rel="noopener noreferrer" className="min-w-0 break-all text-xs text-neutral-400 hover:underline">{o.url}</a> : null}
+                    {o.kind === 'deadline' ? (
+                      <a href={o.url} className="rounded-md bg-rose-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-rose-700">{t('View proposal')}</a>
+                    ) : (
+                      <>
+                        {o.url ? <a href={o.url} target="_blank" rel="noopener noreferrer" className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700">{/meet\.google\.com/.test(o.url) ? t('Join Google Meet') : t('Join meeting')}</a> : null}
+                        <button onClick={() => downloadIcs(o)} className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs font-medium hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800">{t('Add to calendar (.ics)')}</button>
+                        {o.url ? <a href={o.url} target="_blank" rel="noopener noreferrer" className="min-w-0 break-all text-xs text-neutral-400 hover:underline">{o.url}</a> : null}
+                      </>
+                    )}
                   </div>
                 </li>
               ))}

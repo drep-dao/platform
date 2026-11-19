@@ -5,7 +5,18 @@
 
 export interface ReviewOutcome { key: string; label: string; definition: string }
 export interface ReviewQuestion { id: number; text: string }
-export interface ReviewArea { key: string; title: string; description?: string; templateRefs?: string[]; questions: ReviewQuestion[] }
+export interface ReviewArea {
+  key: string; title: string; description?: string; templateRefs?: string[]; questions: ReviewQuestion[];
+  // 'force' = one of the three scored Triangle Forces (Desirability/Feasibility/Viability) — the default.
+  // 'verification' = Jürgen Proschinger's verifiable-reflexivity layer: these questions ARE assessed, but
+  // do NOT count toward the score. They wrap the three forces as a trust check (see `verifies`). Per his
+  // article: verifiable reflexivity "does not function as a fourth pillar … it belongs around the framework
+  // as a verification layer."
+  role?: 'force' | 'verification';
+  // Verification area only: the KEY of the force this check hardens
+  // (reflexivity→desirability, verifiability→feasibility, reinforcement→viability).
+  verifies?: string;
+}
 export interface ReviewFramework {
   title: string;
   attribution?: string;
@@ -30,6 +41,10 @@ export interface ReviewFinding {
   templateRefs?: string[];
   evidence?: string[]; // the exact passage(s) from the proposal used — one or more short quotes
   evidenceCited?: string; // 'yes' | 'no' | 'na' — did the proposal cite a source for this answer
+  // Snapshotted from the area at scoring time so a stored result renders correctly even if the framework
+  // later changes. 'verification' findings are excluded from the score and shown as a per-force trust check.
+  role?: 'force' | 'verification';
+  verifies?: string; // verification findings only: the TITLE of the force this check hardens
 }
 
 export const DEFAULT_REVIEW_FRAMEWORK: ReviewFramework = {
@@ -59,6 +74,7 @@ export const DEFAULT_REVIEW_FRAMEWORK: ReviewFramework = {
   areas: [
     {
       key: 'desirability',
+      role: 'force',
       title: 'Desirability',
       description: 'Is there a sufficiently important reason for this proposal to exist?',
       templateRefs: ['2A', '2B', '2C', '2D', '7B', '10A', '12F', '12J'],
@@ -70,6 +86,7 @@ export const DEFAULT_REVIEW_FRAMEWORK: ReviewFramework = {
     },
     {
       key: 'feasibility',
+      role: 'force',
       title: 'Feasibility',
       description: 'Can the team create and deliver the promised value?',
       templateRefs: ['3A', '3B', '3C', '3D', '4A', '4B', '4C', '4D', '5A', '5B', '5C', '5D', '6A', '6B', '6C', '9A', '9C', '12A', '12B', '12C', '12D', '12E', '12F', '12H', '12I', '12J'],
@@ -82,6 +99,7 @@ export const DEFAULT_REVIEW_FRAMEWORK: ReviewFramework = {
     },
     {
       key: 'viability',
+      role: 'force',
       title: 'Viability',
       description: 'Does expected value justify the funding and risk?',
       templateRefs: ['3C', '3D', '7A', '7B', '7C', '10A', '10B', '10C', '12B', '12F', '12G', '12H'],
@@ -93,8 +111,10 @@ export const DEFAULT_REVIEW_FRAMEWORK: ReviewFramework = {
     },
     {
       key: 'verifiability',
+      role: 'verification',
+      verifies: 'feasibility',
       title: 'Verifiability',
-      description: 'Can material claims and commitments be checked?',
+      description: 'Trust layer over Feasibility — can we build it, AND can we prove we built what we claimed?',
       templateRefs: ['7B', '11A', '11B', '11C'],
       questions: [
         { id: 11, text: 'Can an independent person inspect the evidence for each material claim, understand its limitations, and determine whether the claim is true?' },
@@ -104,8 +124,10 @@ export const DEFAULT_REVIEW_FRAMEWORK: ReviewFramework = {
     },
     {
       key: 'reinforcement',
+      role: 'verification',
+      verifies: 'viability',
       title: 'Reinforcement',
-      description: 'Do incentives and controls support honest delivery?',
+      description: 'Trust layer over Viability — do incentives and controls make honesty pay better than concealment?',
       templateRefs: ['4B', '4C', '6A', '6B', '6C', '8C', '9A', '9B', '9C', '12D', '12I', '12J'],
       questions: [
         { id: 14, text: 'Who benefits if a claim remains unclear, a result cannot be measured, or expenditure cannot be inspected?' },
@@ -113,8 +135,44 @@ export const DEFAULT_REVIEW_FRAMEWORK: ReviewFramework = {
         { id: 16, text: 'Who can withhold payment, pause spending, replace an operator, recover funds, or enforce commitments when the proposal fails to deliver?' },
       ],
     },
+    {
+      key: 'reflexivity',
+      role: 'verification',
+      verifies: 'desirability',
+      title: 'Reflexivity',
+      description: 'Trust layer over Desirability — visibility changes behaviour: is the demand real and observable, not just asserted?',
+      templateRefs: ['2A', '2B', '7B', '10A'],
+      questions: [
+        { id: 17, text: 'Can the claimed demand or impact be independently observed or measured (adoption, usage, on-chain activity), rather than asserted through surveys, stated intentions, or internal enthusiasm?' },
+        { id: 18, text: 'Does the proposal commit to transparent, checkable reporting of outcomes, so the community can verify the stated benefits after delivery instead of taking them on trust?' },
+        { id: 19, text: 'Are the key claims made public and auditable in a way that changes the team’s accountability — does the proposal embrace that visibility rather than rely on "trust me"?' },
+      ],
+    },
   ],
 };
+
+// Canonical Triangle Forces role map, keyed by area key. A force is scored; a verification area is the
+// trust layer over the force it names. Used to upgrade a stored (seeded) framework that predates the layer.
+const FORCE_KEYS = ['desirability', 'feasibility', 'viability'];
+const VERIFICATION_VERIFIES: Record<string, string> = { verifiability: 'feasibility', reinforcement: 'viability', reflexivity: 'desirability' };
+
+/** Overlay the canonical roles onto a framework whose areas predate the verification layer, and append the
+ *  Reflexivity trust area if missing — so a stored (seeded) framework upgrades on read without a data
+ *  migration. Idempotent: a framework that already has a verification area is returned unchanged, and
+ *  board-added areas keep whatever role they carry. */
+export function applyFrameworkDefaults(fw: ReviewFramework): ReviewFramework {
+  if (fw.areas.some((a) => a.role === 'verification')) return fw; // already upgraded (default or saved)
+  const areas: ReviewArea[] = fw.areas.map((a) => {
+    if (FORCE_KEYS.includes(a.key)) return { ...a, role: 'force' };
+    if (a.key in VERIFICATION_VERIFIES) return { ...a, role: 'verification', verifies: VERIFICATION_VERIFIES[a.key] };
+    return a;
+  });
+  if (!areas.some((a) => a.key === 'reflexivity')) {
+    const reflexivity = DEFAULT_REVIEW_FRAMEWORK.areas.find((a) => a.key === 'reflexivity');
+    if (reflexivity) areas.push(reflexivity);
+  }
+  return { ...fw, areas };
+}
 
 /** Validate + normalise a framework object coming from the board editor. Throws on an unusable shape. */
 export function normaliseFramework(input: unknown): ReviewFramework {
@@ -140,6 +198,8 @@ export function normaliseFramework(input: unknown): ReviewFramework {
           title: str(r.title),
           description: str(r.description) || undefined,
           templateRefs: Array.isArray(r.templateRefs) ? r.templateRefs.map((t) => str(t)).filter(Boolean) : [],
+          role: (r.role === 'verification' ? 'verification' : r.role === 'force' ? 'force' : undefined) as 'force' | 'verification' | undefined,
+          verifies: str(r.verifies) || undefined,
           questions,
         };
       }).filter((a) => a.title && a.questions.length)
@@ -206,6 +266,7 @@ export function buildFindings(fw: ReviewFramework, modelFindings: unknown): Revi
     }
     return list;
   };
+  const titleByKey = new Map(fw.areas.map((a) => [a.key, a.title]));
   const out: ReviewFinding[] = [];
   for (const area of fw.areas) {
     for (const q of area.questions) {
@@ -218,6 +279,8 @@ export function buildFindings(fw: ReviewFramework, modelFindings: unknown): Revi
         area: area.title,
         question: q.text,
         outcome,
+        role: area.role,
+        verifies: area.role === 'verification' ? (titleByKey.get(area.verifies ?? '') ?? area.verifies) : undefined,
         reason: str(m.reason),
         risk: str(m.risk),
         condition: str(m.condition),
@@ -236,6 +299,7 @@ export function buildFindings(fw: ReviewFramework, modelFindings: unknown): Revi
 export function pctFromFindings(findings: ReviewFinding[]): number {
   let weight = 0, n = 0;
   for (const f of findings ?? []) {
+    if (f.role === 'verification') continue; // the trust layer is assessed but never scored
     const o = (f.outcome || '').toLowerCase();
     if (o.includes('not applicable') || o === 'na' || o === 'n/a') continue;
     n += 1;

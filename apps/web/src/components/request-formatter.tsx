@@ -18,6 +18,7 @@ const TYPE_LABEL: Record<RequestFormElementType, string> = {
   select: 'Dropdown (defined options)',
   links: 'Links (URL + comment)',
   date: 'Date (expected response)',
+  score: 'Proposal score (paste scan link)',
 };
 const newId = () => `el_${Math.random().toString(36).slice(2, 9)}`;
 

@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { encryptSecret, decryptSecret } from '../common/secret-cipher';
-import { DEFAULT_REVIEW_FRAMEWORK, normaliseFramework, buildFindings, pctFromFindings, type ReviewFramework, type ReviewFinding } from './framework';
+import { DEFAULT_REVIEW_FRAMEWORK, normaliseFramework, applyFrameworkDefaults, buildFindings, pctFromFindings, type ReviewFramework, type ReviewFinding } from './framework';
 import { DEFAULT_VISION_FRAMEWORK, DEFAULT_VISION_REFERENCE, DEFAULT_VISION_SOURCE_URL } from './vision';
 
 const KEY_SECRET = 'OPENAI_API_KEY';
@@ -206,7 +206,7 @@ export class AiService {
   async reviewFramework(): Promise<ReviewFramework> {
     const row = await this.prisma.platformConfig.findUnique({ where: { key: FRAMEWORK_CONFIG } }).catch(() => null);
     if (row && typeof row.value === 'object' && row.value) {
-      try { return normaliseFramework(row.value); } catch { /* stored shape unusable — fall back */ }
+      try { return applyFrameworkDefaults(normaliseFramework(row.value)); } catch { /* stored shape unusable — fall back */ }
     }
     return DEFAULT_REVIEW_FRAMEWORK;
   }

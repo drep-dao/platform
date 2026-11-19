@@ -3,7 +3,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { CurrentUser, AuthContext } from '../auth/current-user.decorator';
 import { RequestsService } from './requests.service';
-import { CreateRequestDto, CreateRequestTypeDto, PublishRequestDto, RequestCommentBodyDto, SaveFormConfigDto, SetLinkedProposalDto, SetRequestResultDto, SetRequestStatusDto, SubmitRequestFeeDto, UpdateRequestDto, UpdateRequestTypeDto } from './dto';
+import { CreateRequestDto, CreateRequestTypeDto, PublishRequestDto, RequestCommentBodyDto, SaveFormConfigDto, SetLinkedProposalDto, SetRequestKindDto, SetRequestResultDto, SetRequestStatusDto, SubmitRequestFeeDto, UpdateRequestDto, UpdateRequestTypeDto } from './dto';
 
 /** §R — submitter Requests: queue + history, fee flow, and the board price list. */
 @Controller('requests')
@@ -101,6 +101,13 @@ export class RequestsController {
   @Post(':id/status')
   setStatus(@CurrentUser() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SetRequestStatusDto) {
     return this.svc.setStatus(ctx.userId, id, dto.status);
+  }
+
+  // submitter-or-board inside the service — change a request's type while it is New (carries content across)
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/kind')
+  changeKind(@CurrentUser() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SetRequestKindDto) {
+    return this.svc.changeKind(ctx.userId, id, dto.kind, { fields: dto.fields, expectedResponseAt: dto.expectedResponseAt });
   }
 
   // board-only inside the service — attach/edit the request's result (markdown); empty clears it

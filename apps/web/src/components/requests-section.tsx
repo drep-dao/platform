@@ -1,13 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { internalProposalsApi, requestsApi, submitterApi, REQUEST_KIND_LABEL, REQUEST_KINDS, type InternalProposalSummary, type RequestFieldValue, type RequestFormConfig, type RequestFormElement, type RequestTypeView, type RequestView } from '@/lib/api';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { internalProposalsApi, proposalCheckerApi, requestsApi, submitterApi, REQUEST_KIND_LABEL, REQUEST_KINDS, type InternalProposalSummary, type PcFinding, type PcResult, type PcScan, type RequestFieldValue, type RequestFormConfig, type RequestFormElement, type RequestTypeView, type RequestView } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { useT } from '@/lib/prefs-context';
 import { useUrlNav } from '@/lib/use-url-nav';
 import { card } from '@/lib/ui';
 import { CopyButton } from './copy-button';
 import { Markdown, MarkdownEditor } from './markdown';
+import { frameworkScore, scoreColor } from './proposal-checker';
 import { DiscussionThread } from './discussion-thread';
 import { FallbackAvatar } from './fallback-avatar';
 
@@ -117,12 +118,40 @@ export function RequestsSection({ scope = 'all' }: { scope?: 'all' | 'mine' }) {
   );
 }
 
+/** §R2 — board/owner view: the required fields of the request's current type that are still empty in its
+ *  snapshot (e.g. after a type switch that carried only what existed). Nothing to show when all are filled. */
+function MissingRequiredFields({ r, mine }: { r: RequestView; mine?: boolean }) {
+  const t = useT();
+  const [config, setConfig] = useState<RequestFormConfig | null>(null);
+  useEffect(() => { requestsApi.formConfig().then(setConfig).catch(() => setConfig({})); }, []);
+  if (!config) return null;
+  const elements = (config[r.kind] ?? []) as RequestFormElement[];
+  const byKey = new Map((r.fields ?? []).map((f) => [f.key, f] as const));
+  const missing = elements.filter((el) => {
+    if (!el.required) return false;
+    if (el.type === 'date') return !r.expectedResponseAt;
+    const f = byKey.get(el.id);
+    return !f || !isFilled(f.value);
+  });
+  if (!missing.length) return null;
+  return (
+    <div className="rounded-md border border-rose-300 bg-rose-50/70 p-3 dark:border-rose-900 dark:bg-rose-950/30">
+      <p className="text-sm font-medium text-rose-700 dark:text-rose-300">{t('Missing required fields')}</p>
+      <p className="mt-0.5 text-xs text-rose-600 dark:text-rose-400">{mine ? t('These required fields for this request type are still empty — complete them while your request is New by clicking Edit above.') : t('These required fields for this request type are still empty — the submitter needs to complete them while the request is New.')}</p>
+      <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-sm text-rose-700 dark:text-rose-300">
+        {missing.map((el) => <li key={el.id}>{el.label}</li>)}
+      </ul>
+    </div>
+  );
+}
+
 function RequestCard({ r, isBoard, mine, onEdit, onChanged }: { r: RequestView; isBoard: boolean; mine: boolean; onEdit: () => void; onChanged: () => void }) {
   const t = useT();
   const { setParams } = useUrlNav();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [typeOpen, setTypeOpen] = useState(false);
   // The list omits comments/canComment (they're on the detail) — fetch the full request on open.
   const [detail, setDetail] = useState<RequestView | null>(null);
   const loadDetail = useCallback(() => { requestsApi.get(r.id).then(setDetail).catch(() => undefined); }, [r.id]);
@@ -147,10 +176,11 @@ function RequestCard({ r, isBoard, mine, onEdit, onChanged }: { r: RequestView; 
             <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">{t('Free')}</span>
           )}
         </span>
-        <span className="flex items-center gap-2 text-xs text-neutral-500">
-          <span>{r.submitter}</span>
-          <span>{new Date(r.createdAt).toLocaleDateString()}</span>
+        <span className="flex min-w-0 items-center gap-2 text-xs text-neutral-500">
+          <span className="max-w-[12rem] truncate" title={r.submitter}>{r.submitter}</span>
+          <span className="shrink-0">{new Date(r.createdAt).toLocaleDateString()}</span>
           <StatusChip status={r.status} />
+          {r.status === 'ACTIVE' ? <span title={t('New requests can still be edited by the submitter — ask the board to return it to New to reopen editing.')} className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">✎ {t('Editable')}</span> : null}
         </span>
       </button>
       {open ? (
@@ -163,6 +193,7 @@ function RequestCard({ r, isBoard, mine, onEdit, onChanged }: { r: RequestView; 
             <span className="text-sm font-medium text-emerald-700 hover:underline dark:text-emerald-400">{d.submitter}</span>
             <span className="text-xs text-neutral-400">{t('view profile →')}</span>
           </button>
+          {(isBoard || mine) ? <MissingRequiredFields r={d} mine={mine} /> : null}
           <RequestFieldsView r={d} />
           {r.expectedResponseAt ? <p className="text-xs text-neutral-500">{t('Response expected by:')} <span className={`font-medium ${new Date(r.expectedResponseAt).getTime() < Date.now() && r.status === 'ACTIVE' ? 'text-red-600 dark:text-red-400' : 'text-neutral-700 dark:text-neutral-300'}`}>{new Date(r.expectedResponseAt).toLocaleString()}</span></p> : null}
 
@@ -184,8 +215,18 @@ function RequestCard({ r, isBoard, mine, onEdit, onChanged }: { r: RequestView; 
           {mine && r.status === 'DRAFT' ? (
             <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-amber-50/50 p-2 text-xs dark:border-amber-900 dark:bg-amber-950/20">
               <span className="text-amber-800 dark:text-amber-300">{t('This is a draft — only you can see it. Publish it for the DReps to review.')}</span>
-              <button disabled={busy} onClick={onEdit} className="rounded border border-neutral-300 px-2.5 py-1 font-medium hover:bg-neutral-100 dark:border-neutral-600 dark:hover:bg-neutral-800">{t('Edit')}</button>
-              <button disabled={busy} onClick={() => act(() => requestsApi.publish(r.id))} className="rounded bg-emerald-600 px-2.5 py-1 font-medium text-white hover:bg-emerald-700 disabled:opacity-50">{t('Publish')}</button>
+              <button disabled={busy} onClick={onEdit} className="shrink-0 whitespace-nowrap rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">{t('Edit')}</button>
+              <button disabled={busy} onClick={() => act(() => requestsApi.publish(r.id))} className="shrink-0 whitespace-nowrap rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">{t('Publish')}</button>
+            </div>
+          ) : null}
+
+          {/* §R — a published request stays editable by its author while it is New (ACTIVE), so DReps can ask
+              for additions. It locks once the board accepts it; the board can return it to New to reopen. */}
+          {mine && r.status === 'ACTIVE' ? (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50/50 p-2 text-xs dark:border-emerald-900 dark:bg-emerald-950/20">
+              <span className="text-emerald-800 dark:text-emerald-300">{t('This request is New — you can still edit it to add information a DRep asked for. Once the board accepts it, editing locks until they return it to New.')}</span>
+              <button disabled={busy} onClick={onEdit} className="shrink-0 whitespace-nowrap rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">{t('Edit')}</button>
+              <button disabled={busy} onClick={() => setTypeOpen(true)} className="shrink-0 whitespace-nowrap rounded-md border border-emerald-300 px-3 py-1.5 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/40">{t('Change type')}</button>
             </div>
           ) : null}
 
@@ -213,8 +254,13 @@ function RequestCard({ r, isBoard, mine, onEdit, onChanged }: { r: RequestView; 
               {r.status !== 'DONE' ? <button disabled={busy} onClick={() => act(() => requestsApi.setStatus(r.id, 'DONE'))} className="rounded-md bg-sky-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-sky-700 disabled:opacity-50">{t('Mark complete')}</button> : null}
               {r.status !== 'REJECTED' ? <button disabled={busy} onClick={() => act(() => requestsApi.setStatus(r.id, 'REJECTED'))} className="rounded-md bg-rose-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-rose-700 disabled:opacity-50">{t('Reject')}</button> : null}
               {r.status !== 'ACTIVE' ? <button disabled={busy} onClick={() => act(() => requestsApi.setStatus(r.id, 'ACTIVE'))} className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs font-medium hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800">{t('Set to New')}</button> : null}
+              {/* §R2 — board switches the request type while it is New; a mapping window carries the content across. */}
+              {d.status === 'ACTIVE' ? (
+                <button disabled={busy} onClick={() => setTypeOpen(true)} className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs font-medium hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800">{t('Change type')}</button>
+              ) : null}
             </div>
           ) : null}
+          {typeOpen ? <ChangeTypeModal r={d} isBoard={isBoard} mine={mine} onClose={() => setTypeOpen(false)} onChanged={() => { loadDetail(); onChanged(); }} /> : null}
 
           {/* §R — the author may delete their request any time; it stays in history as Deleted. */}
           {mine && r.status !== 'DELETED' ? (
@@ -399,7 +445,116 @@ function FeePanel({ r, onChanged }: { r: RequestView; onChanged: () => void }) {
 export type LinkValue = { url: string; title?: string };
 type FieldVals = Record<string, string | LinkValue[]>;
 export const emptyValue = (el: RequestFormElement): string | LinkValue[] => (el.type === 'links' ? [] : '');
+/** §R2 — coerce a stored value to the shape the element's CURRENT type expects (links → array, else
+ *  string). Guards an edit form against a field whose type changed after the value was saved. */
+const coerceToType = (el: RequestFormElement, v: unknown): string | LinkValue[] =>
+  el.type === 'links' ? (Array.isArray(v) ? (v as LinkValue[]) : []) : (typeof v === 'string' ? v : '');
 const isFilled = (v: string | LinkValue[] | undefined): boolean => (Array.isArray(v) ? v.length > 0 : !!(v && String(v).trim()));
+
+const SCAN_ID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+const shortId = (id: string) => (id.length > 24 ? `${id.slice(0, 14)}…${id.slice(-6)}` : id);
+
+/** §R2 — the compact Coverage / Framework / Vision card with the outcome tally, linking to the full
+ *  scoring. Shared by a pasted public scan (getScan) and a selected on-chain board score (results). */
+function ScoreCard({ coverage, framework, vision, findings, title, amountAda, href }: {
+  coverage: number | null; framework: number | null; vision: number | null;
+  findings: PcFinding[]; title: string; amountAda: number | null; href: string;
+}) {
+  const t = useT();
+  let sup = 0, cond = 0, na = 0;
+  for (const f of findings) {
+    const l = (f.outcome || '').toLowerCase();
+    if (l.includes('not applicable') || l.includes('n/a')) na += 1;
+    else if (l.includes('condition')) cond += 1;
+    else if (l.includes('supported') && !l.includes('unsupported')) sup += 1;
+  }
+  const cell = (pct: number | null, label: string) => (
+    <div className="text-center">
+      <div className={`text-sm font-bold tabular-nums ${pct == null ? 'text-neutral-400' : scoreColor(pct)}`}>{pct == null ? '—' : `${pct}%`}</div>
+      <div className="text-[9px] uppercase tracking-wide text-neutral-400">{label}</div>
+    </div>
+  );
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer" className="block rounded-md border border-neutral-200 p-3 transition hover:border-emerald-400 dark:border-neutral-800">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-center gap-4">{cell(coverage, t('Coverage'))}{cell(framework, t('Framework'))}{cell(vision, t('Vision 2030'))}</div>
+        <div className="flex flex-wrap gap-1">
+          <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">{sup} {t('Supported')}</span>
+          <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] text-sky-700 dark:bg-sky-950/60 dark:text-sky-300">{cond} {t('Supported with condition')}</span>
+          <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">{na} {t('Not applicable')}</span>
+        </div>
+      </div>
+      <div className="mt-2 text-sm font-medium text-neutral-800 dark:text-neutral-200">
+        {title}
+        {amountAda != null ? <span className="ml-2 text-xs font-normal text-neutral-500">{amountAda.toLocaleString()} ₳ {t('requested')}</span> : null}
+      </div>
+      <div className="mt-0.5 text-xs text-emerald-700 underline dark:text-emerald-400">{t('Open full scoring ↗')}</div>
+    </a>
+  );
+}
+
+/** §R2 — resolve a pasted public-scan link (…&scan=<uuid>) and render its score card. */
+function ScanScoreRowScan({ scanId }: { scanId: string }) {
+  const t = useT();
+  const [scan, setScan] = useState<PcScan | null | 'err'>(null);
+  useEffect(() => {
+    let live = true;
+    proposalCheckerApi.getScan(scanId).then((s) => { if (live) setScan(s); }).catch(() => { if (live) setScan('err'); });
+    return () => { live = false; };
+  }, [scanId]);
+  if (scan === null) return <p className="text-xs text-neutral-400">{t('Loading score…')}</p>;
+  if (scan === 'err') return <p className="text-xs text-rose-500">{t('This scoring link could not be loaded.')}</p>;
+  if (scan.status !== 'DONE') return <p className="text-xs text-amber-600 dark:text-amber-500">{t('This proposal has not been scored yet.')}</p>;
+  return (
+    <ScoreCard
+      coverage={scan.scorePct ?? null}
+      framework={frameworkScore(scan.questions ?? [])}
+      vision={scan.visionPct ?? frameworkScore(scan.visionFindings ?? [])}
+      findings={[...(scan.templateFindings ?? []), ...(scan.questions ?? []), ...(scan.visionFindings ?? [])]}
+      title={scan.title}
+      amountAda={scan.amountAda ?? null}
+      href={`?view=scantool&scan=${scan.id}`}
+    />
+  );
+}
+
+/** §R2 — resolve a selected on-chain governance action to its board score (the latest result for that
+ *  govActionId) and render its score card, linking to the public On-chain Proposal Score page. */
+function OnchainScoreRow({ govActionId }: { govActionId: string }) {
+  const t = useT();
+  const [res, setRes] = useState<PcResult | 'err' | 'none' | null>(null);
+  useEffect(() => {
+    let live = true;
+    // results are newest-first, so the first match for a govActionId is its latest score.
+    proposalCheckerApi.results().then((list) => { if (live) setRes(list.find((r) => r.govActionId === govActionId) ?? 'none'); }).catch(() => { if (live) setRes('err'); });
+    return () => { live = false; };
+  }, [govActionId]);
+  if (res === null) return <p className="text-xs text-neutral-400">{t('Loading score…')}</p>;
+  if (res === 'err') return <p className="text-xs text-rose-500">{t('This score could not be loaded.')}</p>;
+  if (res === 'none') return <p className="text-xs text-amber-600 dark:text-amber-500">{t('This proposal has not been scored yet.')}</p>;
+  return (
+    <ScoreCard
+      coverage={res.scorePct}
+      framework={frameworkScore(res.questions ?? [])}
+      vision={res.visionPct ?? frameworkScore(res.visionFindings ?? [])}
+      findings={[...(res.templateFindings ?? []), ...(res.questions ?? []), ...(res.visionFindings ?? [])]}
+      title={res.govActionTitle || shortId(res.govActionId)}
+      amountAda={res.amountAda != null ? Number(res.amountAda) : null}
+      href="?view=proposalchecker"
+    />
+  );
+}
+
+/** §R2 — a proposal-score value is either a public-scan link (contains a UUID) or an on-chain
+ *  governance-action id (selected from the board-scored list). Dispatch to the right resolver. */
+function ScanScoreRow({ value }: { value: string }) {
+  const t = useT();
+  const v = (typeof value === 'string' ? value : '').trim();
+  const scanId = (v.match(SCAN_ID_RE)?.[0] ?? '').toLowerCase();
+  if (scanId) return <ScanScoreRowScan scanId={scanId} />;
+  if (v) return <OnchainScoreRow govActionId={v} />;
+  return <p className="text-xs text-amber-600 dark:text-amber-500">{t('Pick an already-scored proposal, or paste a valid scoring link.')}</p>;
+}
 
 /** §R2 — render a published request's configured fields (falls back to the legacy description). */
 function RequestFieldsView({ r }: { r: RequestView }) {
@@ -423,6 +578,8 @@ function RequestFieldsView({ r }: { r: RequestView }) {
                   </li>
                 ))}
               </ul>
+            ) : f.type === 'score' ? (
+              <ScanScoreRow value={f.value as string} />
             ) : (
               <p className="whitespace-pre-wrap text-sm text-neutral-700 dark:text-neutral-300">{f.value as string}</p>
             )}
@@ -465,6 +622,46 @@ function LinksField({ value, onChange }: { value: LinkValue[]; onChange: (v: Lin
   );
 }
 
+/** §R2 — editor for a proposal-score element. The submitter either picks a governance action that the
+ *  board has already scored on-chain (the On-chain Proposal Score list), or pastes a link to their own
+ *  public scan. Both resolve to the same compact score card. The stored value is the govActionId (for a
+ *  picked on-chain score) or the pasted scan link. */
+function ScoreField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const t = useT();
+  const [results, setResults] = useState<PcResult[] | null>(null);
+  useEffect(() => { proposalCheckerApi.results().then(setResults).catch(() => setResults([])); }, []);
+  // Latest score per on-chain Treasury Withdrawal (results are newest-first) — mirrors the public list.
+  const scored: PcResult[] = [];
+  const seen = new Set<string>();
+  for (const r of results ?? []) {
+    if (r.govActionType && r.govActionType !== 'TreasuryWithdrawals') continue;
+    if (!seen.has(r.govActionId)) { seen.add(r.govActionId); scored.push(r); }
+  }
+  const v = (value ?? '').trim();
+  const pickedGov = scored.some((r) => r.govActionId === v) ? v : ''; // dropdown is "selected" only on an exact match
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-neutral-500 dark:text-neutral-400">{t('Pick a proposal the board has already scored on-chain, or paste a link to your own scan. Once attached, the score becomes public — everyone viewing this request will see it (you can remove it and attach a different one while your request is still New).')}</p>
+      <select value={pickedGov} onChange={(e) => onChange(e.target.value)} className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+        <option value="">{results === null ? t('Loading scored proposals…') : scored.length ? t('Select an already-scored on-chain proposal…') : t('No on-chain proposals scored yet')}</option>
+        {scored.map((r) => <option key={r.govActionId} value={r.govActionId}>{(r.govActionTitle || shortId(r.govActionId))} — {r.scorePct}% {t('coverage')}</option>)}
+      </select>
+      <p className="text-center text-[11px] uppercase tracking-wide text-neutral-400">{t('or')}</p>
+      <input value={pickedGov ? '' : (value ?? '')} onChange={(e) => onChange(e.target.value)} placeholder={t('Paste your scan link (…?view=scantool&scan=…)')} className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+      <p className="text-[11px] text-neutral-500 dark:text-neutral-400">{t('No on-chain score yet?')} <a href="?view=scantool" target="_blank" rel="noopener noreferrer" className="font-medium text-emerald-700 underline dark:text-emerald-400">{t('Score a draft in the scoring tool ↗')}</a></p>
+      {isFilled(value) ? (
+        <div className="space-y-1">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400">{t('Attached score')}</span>
+            <button type="button" onClick={() => onChange('')} className="text-xs font-medium text-rose-600 hover:underline dark:text-rose-400">{t('Remove')}</button>
+          </div>
+          <ScanScoreRow value={value} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /** §R2 — one input in the submit form, rendered from its configured element definition. */
 export function DynamicField({ el, value, onChange }: { el: RequestFormElement; value: string | LinkValue[]; onChange: (v: string | LinkValue[]) => void }) {
   const t = useT();
@@ -482,9 +679,162 @@ export function DynamicField({ el, value, onChange }: { el: RequestFormElement; 
         <LinksField value={Array.isArray(value) ? value : []} onChange={onChange} />
       ) : el.type === 'date' ? (
         <input type="datetime-local" min={new Date().toISOString().slice(0, 16)} value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value)} className="w-full max-w-xs rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+      ) : el.type === 'score' ? (
+        <ScoreField value={typeof value === 'string' ? value : ''} onChange={onChange} />
       ) : (
         <input value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value)} className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
       )}
+    </div>
+  );
+}
+
+/** §R2 — platform modal to change a request's type while it is New. The left side is the new type's
+ *  form (live preview, editable). The right side lists the previous content; each piece has a combobox
+ *  of the new form's fields, so the board/team just pick where it goes and it appears on the left — no
+ *  manual copying. Nothing is wiped. The submitter applies via the normal update; the board (any New
+ *  request) via changeKind. */
+const stringyType = (ty: string) => ty === 'text' || ty === 'markdown' || ty === 'select';
+const typesCompatible = (a: string, b: string) => a === b || (stringyType(a) && stringyType(b));
+function ChangeTypeModal({ r, isBoard, mine, onClose, onChanged }: { r: RequestView; isBoard: boolean; mine: boolean; onClose: () => void; onChanged: () => void }) {
+  const t = useT();
+  const [config, setConfig] = useState<RequestFormConfig | null>(null);
+  const [kind, setKind] = useState<string>(r.kind);
+  const [values, setValues] = useState<FieldVals>({});
+  const [assignedTo, setAssignedTo] = useState<Record<string, string>>({}); // old-content key → new element id ('' = nowhere)
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  void isBoard; void mine;
+
+  useEffect(() => { requestsApi.formConfig().then(setConfig).catch(() => setConfig({})); }, []);
+
+  const allElements = (config?.[kind] ?? []) as RequestFormElement[];
+  const elements = allElements.filter((e) => e.type !== 'date');
+  const dateEl = allElements.find((e) => e.type === 'date');
+  const elById = new Map(allElements.map((e) => [e.id, e] as const));
+  // The previous content as movable pieces (fall back to the plain description for a legacy request).
+  const oldItems: RequestFieldValue[] = (r.fields && r.fields.length)
+    ? r.fields.filter((f) => isFilled(f.value))
+    : (r.description ? [{ key: '__desc', label: t('Description'), type: 'markdown', value: r.description }] : []);
+  const oldByKey = new Map(oldItems.map((o) => [o.key, o] as const));
+
+  // Auto-map the old pieces into the new type (first free compatible field, preferring a key/label match)
+  // whenever the target type changes. The user can re-point any piece with its combobox afterwards.
+  useEffect(() => {
+    if (!config) return;
+    const norm = (s: string) => s.trim().toLowerCase();
+    const next: FieldVals = {};
+    for (const el of allElements) next[el.id] = el.type === 'date' ? (r.expectedResponseAt ? new Date(r.expectedResponseAt).toISOString().slice(0, 16) : '') : emptyValue(el);
+    const assign: Record<string, string> = {};
+    const used = new Set<string>();
+    for (const o of oldItems) {
+      const pick = (pred: (e: RequestFormElement) => boolean) => elements.find((e) => typesCompatible(e.type, o.type) && !used.has(e.id) && pred(e));
+      const target = pick((e) => e.id === o.key) ?? pick((e) => norm(e.label) === norm(o.label)) ?? pick(() => true);
+      if (target) { next[target.id] = o.value as string | LinkValue[]; assign[o.key] = target.id; used.add(target.id); }
+      else assign[o.key] = '';
+    }
+    setValues(next);
+    setAssignedTo(assign);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config, kind]);
+
+  const setVal = (id: string, v: string | LinkValue[]) => setValues((s) => ({ ...s, [id]: v }));
+  // Move one old piece into a chosen new field (clearing the field it previously filled).
+  const moveOld = (oldKey: string, newElId: string) => {
+    const o = oldByKey.get(oldKey);
+    if (!o) return;
+    const prev = assignedTo[oldKey] ?? '';
+    setValues((v) => {
+      const nv = { ...v };
+      if (prev && prev !== newElId) { const pe = elById.get(prev); if (pe) nv[prev] = emptyValue(pe); }
+      if (newElId) nv[newElId] = o.value as string | LinkValue[];
+      return nv;
+    });
+    setAssignedTo((a) => ({ ...a, [oldKey]: newElId }));
+  };
+
+  const missingRequired = elements.some((el) => el.required && !isFilled(values[el.id]));
+  // Previous content set to "nowhere" would be lost — never allow a silent drop.
+  const droppedPieces = oldItems.filter((o) => isFilled(o.value) && !assignedTo[o.key]);
+
+  const apply = async () => {
+    setBusy(true); setErr(null);
+    const rawDate = dateEl ? String(values[dateEl.id] ?? '') : '';
+    const iso = rawDate ? new Date(rawDate).toISOString() : null;
+    const fields: RequestFieldValue[] = elements.map((el) => ({ key: el.id, label: el.label, type: el.type, value: values[el.id] ?? emptyValue(el) }));
+    try {
+      // Type switch = move what exists; required fields the new type adds are completed later while New.
+      await requestsApi.changeKind(r.id, kind, fields, iso);
+      onChanged(); onClose();
+    } catch (e) { setErr((e as Error).message); setBusy(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4" onClick={onClose}>
+      <div className={`${card} my-8 w-full max-w-3xl`} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="font-medium">{t('Change request type')}</h3>
+          <button onClick={onClose} className="rounded p-1 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800" aria-label={t('Close')}>✕</button>
+        </div>
+        <p className="mt-1 text-xs text-neutral-500">{t('Pick the new type, then on the right choose where each piece of the previous content goes — it appears in the form on the left, which you can still fine-tune. Nothing is lost and the request is never left empty.')}</p>
+
+        <label className="mt-3 block text-sm">
+          <span className="mb-1 block text-xs font-medium text-neutral-600 dark:text-neutral-400">{t('New type')}</span>
+          <select value={kind} onChange={(e) => setKind(e.target.value)} className="w-full max-w-md rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+            {REQUEST_KINDS.map((k) => <option key={k} value={k}>{t(REQUEST_KIND_LABEL[k])}{k === r.kind ? ` (${t('current')})` : ''}</option>)}
+          </select>
+        </label>
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <section>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">{t('New form')} — {t(REQUEST_KIND_LABEL[kind] ?? kind)}</p>
+            <div className="space-y-3">
+              {elements.length ? elements.map((el) => <DynamicField key={el.id} el={el} value={values[el.id] ?? emptyValue(el)} onChange={(v) => setVal(el.id, v)} />) : <p className="text-xs text-neutral-400">{t('This type has only the Title — nothing else to fill in.')}</p>}
+              {dateEl ? <DynamicField el={dateEl} value={values[dateEl.id] ?? ''} onChange={(v) => setVal(dateEl.id, v)} /> : null}
+            </div>
+          </section>
+          <section className="rounded-md border border-neutral-200 bg-neutral-50/60 p-3 dark:border-neutral-800 dark:bg-neutral-900/40">
+            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{t('Previous content')} — {t(REQUEST_KIND_LABEL[r.kind] ?? r.kind)}</p>
+            <p className="mb-2 mt-0.5 text-[11px] text-neutral-500">{t('Choose where each piece goes.')}</p>
+            <div className="space-y-2.5">
+              {oldItems.length ? oldItems.map((o) => {
+                const targets = elements.filter((el) => typesCompatible(el.type, o.type));
+                return (
+                  <div key={o.key} className="rounded-md border border-neutral-200 bg-white p-2 dark:border-neutral-800 dark:bg-neutral-900">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">{o.label}</p>
+                    <p className="mt-0.5 line-clamp-3 whitespace-pre-wrap text-sm text-neutral-700 dark:text-neutral-300">{typeof o.value === 'string' ? o.value : `${(o.value as LinkValue[]).length} ${t('link(s)')}`}</p>
+                    <label className="mt-1.5 flex items-center gap-1 text-[11px] text-neutral-500">
+                      {t('Move to')}:
+                      <select
+                        value={assignedTo[o.key] ?? ''}
+                        onChange={(e) => moveOld(o.key, e.target.value)}
+                        disabled={targets.length === 0}
+                        className="min-w-0 flex-1 rounded-md border border-neutral-300 bg-white px-1.5 py-1 text-xs dark:border-neutral-700 dark:bg-neutral-900"
+                      >
+                        <option value="">{t('— nowhere —')}</option>
+                        {targets.map((el) => <option key={el.id} value={el.id}>{el.label}{el.required ? ' *' : ''}</option>)}
+                      </select>
+                    </label>
+                    {targets.length === 0 ? <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">{t('No field of a matching type in the new form.')}</p> : null}
+                  </div>
+                );
+              }) : <p className="text-xs text-neutral-400">{t('No previous content.')}</p>}
+            </div>
+          </section>
+        </div>
+
+        {err ? <p className="mt-3 text-xs text-rose-600">{err}</p> : null}
+        <div className="mt-4 flex flex-col gap-2">
+          {droppedPieces.length ? (
+            <p className="text-xs text-rose-600 dark:text-rose-400">{t('This content is set to “nowhere” and would be lost:')} {droppedPieces.map((o) => o.label).join(', ')}. {t('Point each piece to a field. If the new type has no field that fits, add one to it first in the Request formatter.')}</p>
+          ) : missingRequired ? (
+            <p className="text-xs text-amber-600 dark:text-amber-400">{t('Some required fields (*) are still empty — that is fine; they can be completed while the request is New.')}</p>
+          ) : null}
+          <div className="flex items-center justify-end gap-2">
+            <button disabled={busy} onClick={onClose} className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800">{t('Cancel')}</button>
+            <button disabled={busy || kind === r.kind || droppedPieces.length > 0} onClick={apply} className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">{busy ? t('Applying…') : t('Apply new type')}</button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -505,6 +855,9 @@ function SubmitRequestForm({ editId, onDone }: { editId: string | null; onDone: 
 
   useEffect(() => { requestsApi.types().then(setTypes).catch(() => setTypes([])); }, []);
   useEffect(() => { requestsApi.formConfig().then(setConfig).catch(() => setConfig({})); }, []);
+  // Hydrate-from-loaded-request happens once; reset the latch whenever the edit target changes.
+  const hydratedRef = useRef(false);
+  useEffect(() => { hydratedRef.current = false; }, [editId]);
   useEffect(() => {
     if (!editId) return;
     requestsApi.get(editId).then((r) => {
@@ -520,12 +873,19 @@ function SubmitRequestForm({ editId, onDone }: { editId: string | null; onDone: 
   // legacy request's plain description for the first markdown element.
   useEffect(() => {
     if (!config) return;
+    // The first run after a request has loaded fully hydrates from its snapshot (ignoring the empty values
+    // seeded before it arrived — the config/request load race that used to blank out already-saved fields).
+    // Later runs (e.g. switching the request type) keep what the user has typed and only seed new elements.
+    const firstHydrate = !!loadedReq && !hydratedRef.current;
     setValues((prev) => {
       const next: FieldVals = {};
       for (const el of elements) {
-        if (prev[el.id] !== undefined) { next[el.id] = prev[el.id]; continue; }
         const snap = loadedReq?.fields?.find((f) => f.key === el.id);
-        next[el.id] = snap ? snap.value : emptyValue(el);
+        if (!firstHydrate && prev[el.id] !== undefined) { next[el.id] = prev[el.id]; continue; }
+        // Seed by the element's CURRENT type, not the snapshot's: if the board changed a field's type
+        // (e.g. links → score), an old request's snapshot value is the wrong shape (an array where a
+        // string is now expected), which would otherwise crash the input. A mismatch seeds empty.
+        next[el.id] = snap ? coerceToType(el, snap.value) : emptyValue(el);
       }
       if (loadedReq && (!loadedReq.fields || loadedReq.fields.length === 0) && loadedReq.description) {
         const firstMd = elements.find((e) => e.type === 'markdown');
@@ -533,11 +893,12 @@ function SubmitRequestForm({ editId, onDone }: { editId: string | null; onDone: 
       }
       // §R2 — a date element is driven by the request's expectedResponseAt column, not the snapshot.
       const dateEl = elements.find((e) => e.type === 'date');
-      if (dateEl && loadedReq?.expectedResponseAt && !isFilled(next[dateEl.id])) {
+      if (dateEl && loadedReq?.expectedResponseAt && (firstHydrate || !isFilled(next[dateEl.id]))) {
         next[dateEl.id] = new Date(loadedReq.expectedResponseAt).toISOString().slice(0, 16);
       }
       return next;
     });
+    if (firstHydrate) hydratedRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config, kind, loadedReq]);
 

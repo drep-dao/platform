@@ -34,6 +34,20 @@ export function PublicScanTool({ onOpen }: { onOpen: () => void }) {
 
 /** Full-screen pay-to-scan tool shown in the main window: connect a wallet, pay a fee in ADA, and run
  *  the proposal-checker engine on a DRAFT proposal before submitting it on-chain. */
+/** Copy-the-share-link button that confirms with a check-mark + a brief nudge so the click is unmistakable. */
+function CopyShareButton({ url }: { url: string }) {
+  const t = useT();
+  const [copied, setCopied] = useState(false);
+  const onClick = async () => {
+    try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch { /* clipboard unavailable — ignore */ }
+  };
+  return (
+    <button onClick={onClick} className={`shrink-0 whitespace-nowrap rounded-md border px-2.5 py-1 text-xs font-medium transition-all duration-150 ${copied ? 'scale-105 border-emerald-500 bg-emerald-600 text-white shadow-sm' : 'border-neutral-300 bg-white hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:bg-neutral-800'}`}>
+      {copied ? `✓ ${t('Copied!')}` : t('Copy share link')}
+    </button>
+  );
+}
+
 export function PublicScanPage() {
   const t = useT();
   const [tool, setTool] = useState<PcScanTool | null>(null);
@@ -41,6 +55,8 @@ export function PublicScanPage() {
   const [stake, setStake] = useState<string | null>(null);
   const apiRef = useRef<Cip30Api | null>(null);
   const [view, setView] = useState<'form' | 'flow' | 'mine'>('form');
+  // A public, read-only view of one scan opened by a shared ?scan=<id> link (no wallet needed).
+  const [sharedView, setSharedView] = useState(false);
   const [scan, setScan] = useState<PcScan | null>(null);
   const [editing, setEditing] = useState(false);
   const [mine, setMine] = useState<PcScan[] | null>(null);
@@ -57,6 +73,14 @@ export function PublicScanPage() {
   const [auth, setAuth] = useState<{ signature: string; key: string } | null>(null);
 
   useEffect(() => { api.scanTool().then(setTool).catch(() => setTool(null)); }, []);
+
+  // A shared ?scan=<id> link opens that scan read-only for anyone (it is public by its unguessable id).
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('scan');
+    if (!id) return;
+    setSharedView(true);
+    api.getScan(id).then(setScan).catch(() => setScan(null));
+  }, []);
 
   // Wallets inject asynchronously — poll briefly on mount until one appears.
   useEffect(() => {
@@ -250,7 +274,19 @@ export function PublicScanPage() {
           {err ? <div className="text-sm text-red-600">{err}</div> : null}
           {note ? <div className="rounded-md bg-sky-50 px-3 py-2 text-sm text-sky-800 dark:bg-sky-950/40 dark:text-sky-300">{note}</div> : null}
 
-          {!stake ? (
+          {sharedView ? (
+            scan ? (
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="text-lg font-semibold">{scan.title}</h2>
+                  <CopyShareButton url={`${window.location.origin}${window.location.pathname}?view=scantool&scan=${scan.id}`} />
+                </div>
+                {scan.amountAda != null ? <p className="text-sm text-neutral-500">{scan.amountAda.toLocaleString()} ₳ {t('requested')}</p> : null}
+                <ResultCard r={scan} />
+                <button onClick={() => { setSharedView(false); setScan(null); setView('form'); }} className="text-sm text-emerald-700 underline dark:text-emerald-400">{t('Score your own proposal →')}</button>
+              </div>
+            ) : <p className="text-sm text-neutral-400">{t('Loading…')}</p>
+          ) : !stake ? (
             <div className="space-y-2">
               <p className="text-sm text-neutral-500">{t('Connect a Cardano wallet to begin.')}</p>
               {wallets.length === 0 ? <p className="text-xs text-neutral-400">{t('No wallet detected — install or enable a Cardano wallet extension.')}</p> : null}
@@ -345,7 +381,15 @@ export function PublicScanPage() {
               ) : null}
 
               {view === 'flow' && scan && !editing ? (
-                <ScanFlow scan={scan} tx={tx} setTx={setTx} busy={busy} onAttach={attach} onRecheck={recheck} onRun={run} onEdit={startEdit} onDownload={download} onCopy={copy} onFork={forkAndEdit} onOpenParent={openParent} onNew={() => { setScan(null); setEditing(false); setView('form'); setTx(''); setNote(null); setErr(null); setForm({ title: '', amount: '', abstract: '', motivation: '', rationale: '', links: [] }); setLinkDraft(''); }} />
+                <>
+                  {scan.status === 'DONE' ? (
+                    <div className="flex flex-wrap items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50/50 p-2 text-xs dark:border-emerald-900 dark:bg-emerald-950/20">
+                      <span className="text-emerald-800 dark:text-emerald-300">{t('Attach this scored proposal to a request: copy the link and paste it into the request’s “Proposal score” field. Sharing it makes the score public.')}</span>
+                      <CopyShareButton url={`${window.location.origin}${window.location.pathname}?view=scantool&scan=${scan.id}`} />
+                    </div>
+                  ) : null}
+                  <ScanFlow scan={scan} tx={tx} setTx={setTx} busy={busy} onAttach={attach} onRecheck={recheck} onRun={run} onEdit={startEdit} onDownload={download} onCopy={copy} onFork={forkAndEdit} onOpenParent={openParent} onNew={() => { setScan(null); setEditing(false); setView('form'); setTx(''); setNote(null); setErr(null); setForm({ title: '', amount: '', abstract: '', motivation: '', rationale: '', links: [] }); setLinkDraft(''); }} />
+                </>
               ) : null}
 
               {view === 'mine' ? (

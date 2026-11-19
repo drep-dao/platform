@@ -176,6 +176,7 @@ export class RuleDocumentsService {
       contentHash: sha256hex(doc.contentMd),
       commentAudience: doc.commentAudience,
       docEditableBy: doc.docEditableBy,
+      displayFilesInline: doc.displayFilesInline,
       attachments,
       isOwner,
       editable,
@@ -189,7 +190,7 @@ export class RuleDocumentsService {
     };
   }
 
-  async create(userId: string, dto: { title: string; contentMd: string; expiresAt?: string | null; commentAudience?: string; docEditableBy?: string; attachments?: RuleAttachmentInput[] }) {
+  async create(userId: string, dto: { title: string; contentMd: string; expiresAt?: string | null; commentAudience?: string; docEditableBy?: string; displayFilesInline?: boolean; attachments?: RuleAttachmentInput[] }) {
     const drep = await this.prisma.drep.findUnique({ where: { userId }, select: { id: true, status: true } });
     if (drep?.status !== 'ADMITTED') throw new ForbiddenException('you must be a Council member to author rule documents — join the Council first (it is free)');
     const expiresAt = this.nextExpiry(null, dto.expiresAt) ?? null;
@@ -202,6 +203,7 @@ export class RuleDocumentsService {
         expiresAt,
         commentAudience: dto.commentAudience ?? 'MEMBERS',
         docEditableBy: dto.docEditableBy ?? 'PROPOSER',
+        displayFilesInline: dto.displayFilesInline ?? false,
       },
     });
     const items = dto.attachments ?? [];
@@ -324,7 +326,7 @@ export class RuleDocumentsService {
     return doc;
   }
 
-  async update(userId: string, id: string, dto: { title?: string; contentMd?: string; expiresAt?: string | null; commentAudience?: string; docEditableBy?: string }) {
+  async update(userId: string, id: string, dto: { title?: string; contentMd?: string; expiresAt?: string | null; commentAudience?: string; docEditableBy?: string; displayFilesInline?: boolean }) {
     const doc = await this.editableDoc(userId, id);
     const nextExp = this.nextExpiry(doc.expiresAt, dto.expiresAt);
     await this.prisma.ruleDocument.update({
@@ -335,6 +337,7 @@ export class RuleDocumentsService {
         ...(nextExp !== undefined ? { expiresAt: nextExp } : {}),
         ...(dto.commentAudience !== undefined ? { commentAudience: dto.commentAudience } : {}),
         ...(dto.docEditableBy !== undefined ? { docEditableBy: dto.docEditableBy } : {}),
+        ...(dto.displayFilesInline !== undefined ? { displayFilesInline: dto.displayFilesInline } : {}),
       },
     });
     return this.getOne(id, userId);

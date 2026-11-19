@@ -641,6 +641,8 @@ model RuleDocument {
   commentAudience String @default("MEMBERS") @map("comment_audience")
   // §27 — who may edit the document while PRIVATE/DRAFT: PROPOSER | PROPOSER_BOARD.
   docEditableBy   String @default("PROPOSER") @map("doc_editable_by")
+  // §27 — author/board toggle: show attached PDFs embedded in the page by default (vs download-only).
+  displayFilesInline Boolean @default(false) @map("display_files_inline")
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 

@@ -189,17 +189,45 @@ function RuleAttachmentEditor({
   );
 }
 
-// §27 — one attachment in the detail view: open a link, download a file, read its text formatted.
-function RuleAttachmentView({ docId, a }: { docId: string; a: RuleAttachment }) {
+// §27 — is this attachment a PDF file we can embed? (by MIME type, or filename as a fallback.)
+function isPdfAttachment(a: Pick<RuleAttachment, 'mimeType' | 'fileName'>): boolean {
+  return (a.mimeType ?? '').toLowerCase().includes('pdf') || /\.pdf(\?|#|$)/i.test(a.fileName ?? '');
+}
+
+// §27 — one attachment in the detail view: open a link, download a file, read its text, and — for a
+// PDF file — view it embedded in the page. `autoShow` (the document's author/board "display PDFs
+// automatically" setting) opens the PDF on mount instead of waiting for a click.
+function RuleAttachmentView({ docId, a, autoShow }: { docId: string; a: RuleAttachment; autoShow?: boolean }) {
   const t = useT();
   const [showText, setShowText] = useState(false);
   const [raw, setRaw] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null); // a blob: URL while the PDF is embedded
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
   const readable = !!a.extractedText?.trim();
   const isMarkdown = extractedIsMarkdown(a);
+  const canEmbed = a.hasFile && isPdfAttachment(a);
   const download = async () => {
     const f = await ruleDocumentsApi.attachmentFile(docId, a.id);
     const el = document.createElement('a'); el.href = f.dataUrl; el.download = f.fileName || a.fileName || 'document'; el.click();
   };
+  // Fetch the file's data URL and turn it into a blob: URL — browsers embed a blob: PDF reliably in
+  // an <iframe>, where a data: URL is often blocked. The blob URL is revoked when the viewer closes.
+  const openPdf = useCallback(async () => {
+    setPdfBusy(true); setPdfError(null);
+    try {
+      const f = await ruleDocumentsApi.attachmentFile(docId, a.id);
+      const blob = await (await fetch(f.dataUrl)).blob();
+      setPdfUrl(URL.createObjectURL(blob));
+    } catch { setPdfError(t('could not open the PDF')); }
+    finally { setPdfBusy(false); }
+  }, [docId, a.id, t]);
+  const closePdf = () => setPdfUrl((u) => { if (u) URL.revokeObjectURL(u); return null; });
+  // Auto-open when the author/board turned on "display PDFs automatically"; revoke on unmount.
+  useEffect(() => {
+    if (autoShow && canEmbed) void openPdf();
+    return () => setPdfUrl((u) => { if (u) URL.revokeObjectURL(u); return null; });
+  }, [autoShow, canEmbed, openPdf]);
   return (
     <li className="rounded-md border border-neutral-200 p-2 text-sm dark:border-neutral-800">
       <div className="flex items-center justify-between gap-2">
@@ -211,10 +239,21 @@ function RuleAttachmentView({ docId, a }: { docId: string; a: RuleAttachment }) 
           <span className={`ml-2 text-[11px] ${readable ? 'text-neutral-400' : 'text-amber-600'}`}>{readable ? `✓ ${t('readable here')}` : `· ${t('link only (not readable on our side)')}`}</span>
         </span>
         <span className="flex shrink-0 items-center gap-2">
+          {canEmbed ? (
+            <button onClick={() => (pdfUrl ? closePdf() : void openPdf())} disabled={pdfBusy} className="text-xs text-emerald-700 hover:underline disabled:opacity-50 dark:text-emerald-400">
+              {pdfBusy ? t('Opening…') : pdfUrl ? t('Hide PDF') : t('View PDF')}
+            </button>
+          ) : null}
           {a.hasFile ? <button onClick={download} className="text-xs text-emerald-700 hover:underline dark:text-emerald-400">{t('Download')}</button> : null}
           {readable ? <button onClick={() => setShowText((v) => !v)} className="text-xs text-neutral-500 hover:underline">{showText ? t('Hide text') : t('View text')}</button> : null}
         </span>
       </div>
+      {pdfError ? <p className="mt-2 text-xs text-amber-600">{pdfError}</p> : null}
+      {pdfUrl ? (
+        <div className="mt-2">
+          <iframe src={pdfUrl} title={a.fileName || a.title || 'PDF'} className="h-[75vh] w-full rounded border border-neutral-200 dark:border-neutral-800" />
+        </div>
+      ) : null}
       {showText && a.extractedText ? (
         <div className="mt-2">
           {isMarkdown ? (
@@ -432,7 +471,7 @@ function RuleDocDetailView({ id, onBack, onStartVote }: { id: string; onBack: ()
           <div className="mt-4">
             <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Document files &amp; links</h3>
             <ul className="space-y-1">
-              {doc.attachments.map((a) => <RuleAttachmentView key={a.id} docId={doc.id} a={a} />)}
+              {doc.attachments.map((a) => <RuleAttachmentView key={a.id} docId={doc.id} a={a} autoShow={doc.displayFilesInline} />)}
             </ul>
           </div>
         ) : null}
@@ -540,6 +579,7 @@ function MyDocEditor({ id, onDone }: { id: string | null; onDone: () => void }) 
   const [expiresAt, setExpiresAt] = useState<string | null>(null); // null = never
   const [commentAudience, setCommentAudience] = useState('MEMBERS');
   const [docEditableBy, setDocEditableBy] = useState('PROPOSER');
+  const [displayFilesInline, setDisplayFilesInline] = useState(false);
   // New doc: attachments are held client-side and sent on create. Existing doc: they live on the
   // server and are managed with the add/remove/rename endpoints.
   const [pendingAtts, setPendingAtts] = useState<(AddAttachmentInput & { note?: string; ok?: boolean })[]>([]);
@@ -552,7 +592,7 @@ function MyDocEditor({ id, onDone }: { id: string | null; onDone: () => void }) 
   useEffect(() => {
     if (id) ruleDocumentsApi.get(id).then((d) => {
       setTitle(d.title); setContent(d.contentMd); setExpiresAt(d.expiresAt);
-      setCommentAudience(d.commentAudience); setDocEditableBy(d.docEditableBy); setSavedAtts(d.attachments);
+      setCommentAudience(d.commentAudience); setDocEditableBy(d.docEditableBy); setDisplayFilesInline(d.displayFilesInline); setSavedAtts(d.attachments);
     }).catch(() => undefined);
   }, [id]);
 
@@ -592,13 +632,13 @@ function MyDocEditor({ id, onDone }: { id: string | null; onDone: () => void }) 
     setError(null); setBusy(true);
     try {
       if (id) {
-        await ruleDocumentsApi.update(id, { title, contentMd: content, expiresAt, commentAudience, docEditableBy });
+        await ruleDocumentsApi.update(id, { title, contentMd: content, expiresAt, commentAudience, docEditableBy, displayFilesInline });
       } else {
         // Flush a link typed but not yet added, so a URL left in the box is never silently lost.
         const finalAtts = [...pendingAtts];
         if (linkDraft.trim()) finalAtts.push({ source: 'LINK', url: linkDraft.trim(), title: linkTitle.trim() || undefined });
         const payload: AddAttachmentInput[] = finalAtts.map((a) => ({ source: a.source, dataUrl: a.dataUrl, fileName: a.fileName, url: a.url, title: a.title }));
-        await ruleDocumentsApi.create({ title, contentMd: content, expiresAt, commentAudience, docEditableBy, attachments: payload });
+        await ruleDocumentsApi.create({ title, contentMd: content, expiresAt, commentAudience, docEditableBy, displayFilesInline, attachments: payload });
       }
       onDone();
     } catch (e) {
@@ -638,6 +678,11 @@ function MyDocEditor({ id, onDone }: { id: string | null; onDone: () => void }) 
           onRename={id ? renameSaved : undefined}
           onInsertBody={id ? insertBodySaved : insertBodyNew}
         />
+        <label className="mt-2 flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={displayFilesInline} onChange={(e) => setDisplayFilesInline(e.target.checked)} />
+          Display attached PDFs on the platform automatically
+        </label>
+        <p className="text-xs text-neutral-400">Off (default): readers get a “View PDF” button and can download. On: attached PDFs are shown embedded in the page.</p>
       </div>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">

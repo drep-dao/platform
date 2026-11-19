@@ -23,7 +23,7 @@ export class CreateRequestDto {
 export class FormElementDto {
   @IsString() @IsNotEmpty() @MaxLength(64) id!: string;
   @IsString() @IsNotEmpty() @MaxLength(120) label!: string;
-  @IsIn(['text', 'markdown', 'select', 'links', 'date']) type!: string;
+  @IsIn(['text', 'markdown', 'select', 'links', 'date', 'score']) type!: string;
   @IsOptional() @IsIn(['small', 'large']) size?: string;
   @IsOptional() @IsArray() @IsString({ each: true }) @MaxLength(120, { each: true }) options?: string[]; // select only
   @IsOptional() @IsBoolean() required?: boolean;
@@ -41,6 +41,12 @@ export class SubmitRequestFeeDto {
 
 export class SetRequestStatusDto {
   @IsIn(['ACTIVE', 'ACCEPTED', 'DONE', 'REJECTED']) status!: string;
+}
+
+export class SetRequestKindDto {
+  @IsIn(REQUEST_KINDS as unknown as string[]) kind!: string;
+  @IsOptional() @IsArray() fields?: unknown[];
+  @IsOptional() expectedResponseAt?: string | null;
 }
 
 // §R2 — board attaches/edits a request's result (markdown). Empty clears it.

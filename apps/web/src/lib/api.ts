@@ -2249,6 +2249,7 @@ export interface RuleDocDetail extends RuleDocSummary {
   contentHash: string; // sha256(content), computed live — verify against this
   commentAudience: string; // BOARD | MEMBERS | EVERYONE
   docEditableBy: string; // PROPOSER | PROPOSER_BOARD
+  displayFilesInline: boolean; // show attached PDFs embedded in the page by default
   attachments: RuleAttachment[];
   isOwner: boolean;
   editable: boolean;
@@ -2261,9 +2262,9 @@ export const ruleDocumentsApi = {
   list: (filter?: string) => request<RuleDocSummary[]>(`/rule-documents${filter ? `?filter=${filter}` : ''}`),
   mine: () => request<RuleDocSummary[]>('/rule-documents/mine'),
   get: (id: string) => request<RuleDocDetail>(`/rule-documents/${id}`),
-  create: (input: { title: string; contentMd: string; expiresAt?: string | null; commentAudience?: string; docEditableBy?: string; attachments?: AddAttachmentInput[] }) =>
+  create: (input: { title: string; contentMd: string; expiresAt?: string | null; commentAudience?: string; docEditableBy?: string; displayFilesInline?: boolean; attachments?: AddAttachmentInput[] }) =>
     request<RuleDocDetail>('/rule-documents', { method: 'POST', body: JSON.stringify(input) }),
-  update: (id: string, input: { title?: string; contentMd?: string; expiresAt?: string | null; commentAudience?: string; docEditableBy?: string }) =>
+  update: (id: string, input: { title?: string; contentMd?: string; expiresAt?: string | null; commentAudience?: string; docEditableBy?: string; displayFilesInline?: boolean }) =>
     request<RuleDocDetail>(`/rule-documents/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
   publish: (id: string) => request<RuleDocDetail>(`/rule-documents/${id}/publish`, { method: 'POST' }),
   remove: (id: string) => request<{ ok: boolean }>(`/rule-documents/${id}`, { method: 'DELETE' }),
@@ -2510,7 +2511,7 @@ export interface RequestComment {
   replies?: RequestComment[]; // present on top-level comments (one level of threading)
 }
 // §R2 — a request form element the board configures per kind in the Request formatter.
-export type RequestFormElementType = 'text' | 'markdown' | 'select' | 'links' | 'date';
+export type RequestFormElementType = 'text' | 'markdown' | 'select' | 'links' | 'date' | 'score';
 export interface RequestFormElement {
   id: string;
   label: string;
@@ -2599,6 +2600,9 @@ export const requestsApi = {
   // board-only
   setStatus: (id: string, status: 'ACTIVE' | 'ACCEPTED' | 'DONE' | 'REJECTED') =>
     request<RequestView>(`/requests/${id}/status`, { method: 'POST', body: JSON.stringify({ status }) }),
+  // board-only — change the request's type while it is New; mapped fields carry the content across.
+  changeKind: (id: string, kind: string, fields?: RequestFieldValue[], expectedResponseAt?: string | null) =>
+    request<RequestView>(`/requests/${id}/kind`, { method: 'POST', body: JSON.stringify({ kind, fields, expectedResponseAt }) }),
   // board-only — attach/edit the request's result (markdown); empty string clears it.
   setResult: (id: string, result: string) =>
     request<RequestView>(`/requests/${id}/result`, { method: 'POST', body: JSON.stringify({ result }) }),
@@ -2787,7 +2791,7 @@ export interface PcReviewQuestion { id: number; text: string }
 export interface PcReviewArea { key: string; title: string; description?: string; templateRefs?: string[]; questions: PcReviewQuestion[] }
 export interface PcReviewFramework { title: string; attribution?: string; guidance: string; outcomes: PcReviewOutcome[]; areas: PcReviewArea[] }
 // One assessed framework question; `outcome` is one of the framework's outcome labels.
-export interface PcFinding { id: number; tier?: 'base' | 'middle' | 'large'; area: string; question: string; outcome: string; reason?: string; risk?: string; condition?: string; templateRefs?: string[]; evidence?: string | string[]; evidenceCited?: string }
+export interface PcFinding { id: number; tier?: 'base' | 'middle' | 'large'; area: string; question: string; outcome: string; reason?: string; risk?: string; condition?: string; templateRefs?: string[]; evidence?: string | string[]; evidenceCited?: string; role?: 'force' | 'verification'; verifies?: string }
 export interface PcTierNames { small: string; middle: string; large: string }
 export interface PcTierConfig { enabled: boolean; smallMax: number; middleMax: number; names: PcTierNames; middleQuestions: string[]; largeQuestions: string[] }
 export interface PcResult {

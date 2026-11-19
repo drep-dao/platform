@@ -14,6 +14,7 @@ const CSP_REPORT_ONLY = [
   "font-src 'self' data:",
   "connect-src 'self' https:", // API is same-origin; https: covers any explicit API origin
   "frame-ancestors 'none'",
+  "frame-src 'self' blob:", // §27 — embedded PDF viewer (rule-document attachments) uses a blob: iframe
   "base-uri 'self'",
   "form-action 'self'",
   "object-src 'none'",

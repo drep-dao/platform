@@ -1,4 +1,4 @@
-import { IsArray, IsIn, IsOptional, IsString, MaxLength, MinLength, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsOptional, IsString, MaxLength, MinLength, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 // §27 — comment audience tiers + who may edit the document.
@@ -22,6 +22,7 @@ export class CreateRuleDocDto {
   @IsOptional() expiresAt?: string | null; // §27 — future ISO date, or null = never (default)
   @IsOptional() @IsIn(RULE_COMMENT_AUDIENCES) commentAudience?: string;
   @IsOptional() @IsIn(RULE_DOC_EDITABLE_BY) docEditableBy?: string;
+  @IsOptional() @IsBoolean() displayFilesInline?: boolean; // §27 — show attached PDFs embedded by default
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => RuleAttachmentDto) attachments?: RuleAttachmentDto[];
 }
 
@@ -31,6 +32,7 @@ export class UpdateRuleDocDto {
   @IsOptional() expiresAt?: string | null; // §27 — future ISO date or null; shorten-only
   @IsOptional() @IsIn(RULE_COMMENT_AUDIENCES) commentAudience?: string;
   @IsOptional() @IsIn(RULE_DOC_EDITABLE_BY) docEditableBy?: string;
+  @IsOptional() @IsBoolean() displayFilesInline?: boolean; // §27 — show attached PDFs embedded by default
 }
 
 /** §27 — set/change an attachment's display name (label only; not part of the content hash). */

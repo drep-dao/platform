@@ -34,6 +34,11 @@ function autolinkBare(s: string): string {
 /** Inline spans, applied to already-escaped text. Order matters (bold before italic). */
 function inline(s: string): string {
   let t = s;
+  // ![alt](url) — inline image. src is restricted to http(s) in the pattern itself; a non-http
+  // src simply doesn't match and falls through to normal link handling, so nothing is injected
+  // and nothing is lost. `alt` is already HTML-escaped (the whole source was escaped first).
+  t = t.replace(/!\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g, (_m, alt: string, url: string) =>
+    `<img src="${url}" alt="${alt}" loading="lazy" class="my-2 block h-auto max-w-full rounded border border-neutral-200 dark:border-neutral-800" />`);
   // [text](url) — sanitize the href to http(s)/mailto only.
   t = t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_m, text: string, url: string) => {
     let safe = /^(https?:\/\/|mailto:)/i.test(url) ? url : '#';
@@ -43,9 +48,9 @@ function inline(s: string): string {
     if (/^https?:\/\/$/i.test(safe) && /^https?:\/\/\S+$/i.test(txt)) safe = txt;
     return `<a href="${safe}" ${LINK_ATTRS}>${text}</a>`;
   });
-  // A bare URL (not written as a [text](url) link) is still clickable. Split on the anchors just
-  // produced so their hrefs aren't re-linked, and autolink only the gaps between them.
-  t = t.split(/(<a\b[^>]*>.*?<\/a>)/g).map((seg, i) => (i % 2 === 0 ? autolinkBare(seg) : seg)).join('');
+  // A bare URL (not written as a [text](url) link) is still clickable. Split on the anchors AND
+  // the <img> tags just produced so their hrefs/srcs aren't re-linked, and autolink only the gaps.
+  t = t.split(/(<a\b[^>]*>.*?<\/a>|<img\b[^>]*>)/g).map((seg, i) => (i % 2 === 0 ? autolinkBare(seg) : seg)).join('');
   t = t.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   t = t.replace(/(^|[^*])\*(?!\s)([^*]+?)\*/g, '$1<em>$2</em>');
   t = t.replace(/\b_([^_]+)_\b/g, '<em>$1</em>');

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { notificationsApi, type AppNotification, type NotificationPrefs } from '@/lib/api';
+import { fmtDateTime } from './round-ui';
 import { useUrlNav } from '@/lib/use-url-nav';
 import { useT } from '@/lib/prefs-context';
 
@@ -86,7 +87,7 @@ export function NotificationBell() {
                 <button onClick={() => void openItem(n)} className={`block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-neutral-100 dark:hover:bg-neutral-800 ${n.readAt ? 'text-neutral-500' : 'font-medium'}`}>
                   <div>{String(n.payload.title ?? n.kind)}</div>
                   {n.payload.body ? <div className="mt-0.5 font-normal text-neutral-500">{String(n.payload.body)}</div> : null}
-                  <div className="mt-0.5 font-normal text-[10px] text-neutral-400">{new Date(n.createdAt).toLocaleString()}</div>
+                  <div className="mt-0.5 font-normal text-[10px] text-neutral-400">{fmtDateTime(n.createdAt)}</div>
                 </button>
               </li>
             ))}

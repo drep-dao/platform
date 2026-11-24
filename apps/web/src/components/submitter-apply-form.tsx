@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { submitterApi, daoApi, type MySubmitter, type DaoMember, type SubmitterProduct } from '@/lib/api';
+import { fmtDateTime } from './round-ui';
 import { useAuth } from '@/lib/auth-context';
 import { useT } from '@/lib/prefs-context';
 import { brand } from '@/lib/brand';
@@ -389,7 +390,7 @@ export function SubmitterApplyForm({ onChange }: { onChange?: () => void }) {
           <ul className="mt-2 space-y-2">
             {mine.history.map((h, i) => (
               <li key={i} className="rounded border border-neutral-200 p-2 text-xs dark:border-neutral-800">
-                <div className="text-neutral-400">{t('Replaced')} {new Date(h.snapshotAt).toLocaleString()}</div>
+                <div className="text-neutral-400">{t('Replaced')} {fmtDateTime(h.snapshotAt)}</div>
                 <div className="mt-1 flex items-center gap-2">
                   {h.logoDataUrl ? <img src={h.logoDataUrl} alt="" className="h-6 w-6 rounded object-cover" /> : null}
                   <span className="font-medium">{h.displayName}</span> · {h.country}

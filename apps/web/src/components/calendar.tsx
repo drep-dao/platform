@@ -22,7 +22,7 @@ const startOfWeekMonday = (d: Date) => { const x = startOfDay(d); return addDays
 const sameDay = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const fmtTime = (d: Date) => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const fmtTime = (d: Date) => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' });
 const pad = (n: number) => String(n).padStart(2, '0');
 
 function buildOccurrences(events: ScheduledEvent[], ov: PublicOverview | null, proposals: InternalProposalSummary[], rangeStart: Date, rangeEnd: Date, now: Date): Occ[] {

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useT } from '@/lib/prefs-context';
 import { treasuryApi, type TreasuryTx } from '@/lib/api';
+import { fmtDateTime } from './round-ui';
 import { useExplorer } from '@/lib/explorer';
 import { useAuth } from '@/lib/auth-context';
 import { useTreasuryAutoRefresh } from '@/lib/treasury-refresh';
@@ -207,7 +208,7 @@ export function TreasuryTransactions() {
                 ) : null}
 
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-neutral-500">
-                  <span>{new Date(t.time * 1000).toLocaleString()}</span>
+                  <span>{fmtDateTime(new Date(t.time * 1000))}</span>
                   <span>·</span>
                   <span className="break-all font-mono">
                     {tr('tx')}{' '}

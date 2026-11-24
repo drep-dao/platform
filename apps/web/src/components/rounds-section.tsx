@@ -846,7 +846,7 @@ function RewardBar({ pool, expertPct, dvShare, fixed }: { pool: number; expertPc
 const STATUS_STAGE_IDX: Record<string, number> = {
   PREPARATION: -1, SUBMISSION: 0, FILTERING: 1, DEBATE: 2, VOTE: 3, DV: 3, TALLY: 4, FUNDING: 5, CLOSED: STAGE_DEFS.length,
 };
-const fmtShort = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
+const fmtShort = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }) : '—');
 
 /** "1 day and 5 hours" / "5 hours and 12 minutes" / "8 minutes" from a ms delta. */
 function untilLabel(ms: number): string {

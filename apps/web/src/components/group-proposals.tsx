@@ -9,7 +9,7 @@ import { useUrlNav } from '@/lib/use-url-nav';
 import { ShareLinkButton } from './share-link-button';
 import { DiscussionThread } from './discussion-thread';
 import { GroupQuorumNotice } from './group-quorum-notice';
-import { DateField, toLocalInput, RationaleText } from './round-ui';
+import { DateField, toLocalInput, RationaleText, fmtDateTime } from './round-ui';
 import { useExplorer } from '@/lib/explorer';
 import { DocHashRow } from './doc-hash-row';
 import { ConfirmDialog } from './confirm-dialog';
@@ -310,8 +310,8 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
       ) : null}
       <p className="mt-2 text-xs text-neutral-500">
         {p.status === 'ACTIVE'
-          ? `${t('Voting ends')} ${new Date(p.votingEndAt).toLocaleString()}`
-          : `${t('Voting ended')} ${new Date(p.decidedAt ?? p.votingEndAt).toLocaleString()}`}
+          ? `${t('Voting ends')} ${fmtDateTime(p.votingEndAt)}`
+          : `${t('Voting ended')} ${fmtDateTime(p.decidedAt ?? p.votingEndAt)}`}
       </p>
 
       {/* §29 OG — self-governed timing: finalize once everyone has voted, or extend the deadline. */}
@@ -338,7 +338,7 @@ function GroupProposalView({ id, onBack }: { id: string; onBack: () => void }) {
           <summary className="cursor-pointer">{t('Deadline extended')} ({p.extensions.length})</summary>
           <ul className="mt-1 space-y-0.5">
             {p.extensions.map((x, i) => (
-              <li key={i}>{new Date(x.fromIso).toLocaleString()} → <strong>{new Date(x.toIso).toLocaleString()}</strong> · {x.byName} · {new Date(x.atIso).toLocaleDateString()}</li>
+              <li key={i}>{fmtDateTime(x.fromIso)} → <strong>{fmtDateTime(x.toIso)}</strong> · {x.byName} · {new Date(x.atIso).toLocaleDateString()}</li>
             ))}
           </ul>
         </details>

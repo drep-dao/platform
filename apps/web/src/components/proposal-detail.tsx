@@ -923,7 +923,7 @@ function ContentFingerprintView({ fp }: { fp: NonNullable<PDetail['contentFinger
         </p>
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="rounded bg-neutral-100 px-1.5 py-0.5 font-medium dark:bg-neutral-800">{t('Hash function:')} {fp.hashAlgo}</span>
-          <span className="text-neutral-500">{t('Frozen:')} {new Date(fp.frozenAt).toLocaleString()}</span>
+          <span className="text-neutral-500">{t('Frozen:')} {fmtDateTime(fp.frozenAt)}</span>
           <AnchorLink txHash={fp.txHash} />
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -1651,7 +1651,7 @@ function PendingBudgetChangeBanner({ proposal, isBoard, onChange }: { proposal: 
       <div className="mt-1 text-xs text-amber-800 dark:text-amber-200">
         {pending.requester ? <strong>{pending.requester}</strong> : t('The submitter')} {t('requested')}{' '}
         <strong>{pending.prevAmountAda.toLocaleString()} ₳ → {pending.proposedAmountAda.toLocaleString()} ₳</strong> {t('on')}{' '}
-        {new Date(pending.createdAt).toLocaleString()}.
+        {fmtDateTime(pending.createdAt)}.
         {inFiltering ? t(' If approved, the jury\'s filtering votes will be cleared and they vote again on the revised budget.') : ''}
       </div>
       {pending.reason ? (

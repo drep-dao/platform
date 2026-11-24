@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { eventsApi, type ScheduledEvent } from '@/lib/api';
+import { fmtDateTime } from './round-ui';
 import { useT } from '@/lib/prefs-context';
 import { card } from '@/lib/ui';
 
@@ -137,7 +138,7 @@ export function ScheduleEvent() {
                       {live ? <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 text-[11px] font-medium text-indigo-700 dark:text-indigo-300">{t('live now')}</span> : ended ? <span className="rounded-full bg-neutral-400/20 px-2 py-0.5 text-[11px] text-neutral-600 dark:text-neutral-300">{t('ended')}</span> : null}
                     </div>
                     <div className="mt-0.5 text-xs text-neutral-500">
-                      {new Date(ev.startAt).toLocaleString()} → {new Date(ev.endAt).toLocaleString()}
+                      {fmtDateTime(ev.startAt)} → {fmtDateTime(ev.endAt)}
                     </div>
                     <a href={ev.url} target="_blank" rel="noreferrer" className="break-all text-xs text-emerald-700 underline dark:text-emerald-400">{ev.url}</a>
                   </div>

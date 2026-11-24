@@ -26,7 +26,15 @@ import { useT } from '@/lib/prefs-context';
 import { Markdown } from './markdown';
 
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
-const fmtDate = (iso: string) => new Date(iso).toLocaleString();
+const fmtDate = (iso: string) =>
+  new Date(iso).toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  });
 const fmtTime = (unix: number) => (unix ? new Date(unix * 1000).toLocaleDateString() : '—');
 const shortId = (id: string) => (id.length > 24 ? `${id.slice(0, 14)}…${id.slice(-6)}` : id);
 

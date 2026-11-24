@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { treasuryApi, matchesProposalSearch, type BoardAction } from '@/lib/api';
+import { fmtDateTime } from './round-ui';
 import { useAuth } from '@/lib/auth-context';
 import { CopyButton } from './copy-button';
 import { useExplorer } from '@/lib/explorer';
@@ -205,7 +206,7 @@ export function BoardActions({ onChange, history = false, refreshKey = 0, filter
               </span>
               <span className="flex items-center gap-3">
                 {/* When several similar actions queue up, the timestamp tells them apart. */}
-                <span className="text-xs text-neutral-400" title={t('When this action was prepared')}>{t('prepared')} {new Date(a.createdAt).toLocaleString()}</span>
+                <span className="text-xs text-neutral-400" title={t('When this action was prepared')}>{t('prepared')} {fmtDateTime(a.createdAt)}</span>
                 {a.amountAda != null ? <span className="tabular-nums text-neutral-500">{a.amountAda.toLocaleString()} ₳</span> : null}
               </span>
             </div>
@@ -356,7 +357,7 @@ export function BoardActions({ onChange, history = false, refreshKey = 0, filter
               <li key={a.id} className="rounded border border-neutral-200 px-3 py-2 text-xs dark:border-neutral-800">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-medium">{actionLabel(a)}</span>
-                  <span className="text-xs text-neutral-400">{t('prepared')} {new Date(a.createdAt).toLocaleString()}</span>
+                  <span className="text-xs text-neutral-400">{t('prepared')} {fmtDateTime(a.createdAt)}</span>
                   <span className="flex items-center gap-2 text-neutral-500">
                     {a.amountAda != null ? <span className="tabular-nums">{a.amountAda.toLocaleString()} ₳</span> : null}
                     <span className="rounded bg-neutral-100 px-1.5 py-0.5 dark:bg-neutral-800">{a.status === 'CONFIRMED' ? t('PAID') : a.status}</span>
@@ -364,7 +365,7 @@ export function BoardActions({ onChange, history = false, refreshKey = 0, filter
                 </div>
                 {/* Consistent metadata on EVERY item: when · who signed · on-chain tx. */}
                 <div className="mt-1 text-[11px] text-neutral-500">
-                  {new Date(a.createdAt).toLocaleString()}
+                  {fmtDateTime(a.createdAt)}
                   {a.signedBy.length > 0
                     ? <> · {t('Signed by')} <span className="text-neutral-700 dark:text-neutral-300">{a.signedBy.join(', ')}</span></>
                     : a.committedBy.length > 0

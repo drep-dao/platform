@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { treasuryApi, treasuryBucketsApi, type TreasuryOverview, type HotWalletHistoryItem, type TreasuryBucket } from '@/lib/api';
+import { fmtDateTime } from './round-ui';
 import { useAuth } from '@/lib/auth-context';
 import { useExplorer } from '@/lib/explorer';
 import { useT } from '@/lib/prefs-context';
@@ -192,7 +193,7 @@ export function HotWalletControls({ onChange }: { onChange?: () => void }) {
                             broadcast) → broadcasting → PAID. */}
                         <StatusChip h={h} />
                       </span>
-                      <span className="text-[11px] text-neutral-500">{new Date(h.at).toLocaleString()}</span>
+                      <span className="text-[11px] text-neutral-500">{fmtDateTime(h.at)}</span>
                     </div>
                     {h.txHash ? (
                       <div className="mt-0.5 break-all">

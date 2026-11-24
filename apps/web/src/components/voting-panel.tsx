@@ -16,7 +16,7 @@ import {
 } from '@/lib/api';
 import { ProposalDetail } from './proposal-detail';
 import { MarkdownEditor } from './markdown';
-import { BackButton } from './round-ui';
+import { BackButton, fmtDateTime } from './round-ui';
 
 // Per-DRep vote flag shown in the card's top-right corner.
 const VOTE_FLAG: Record<string, string> = {
@@ -172,7 +172,7 @@ function VoteCard({
               <li key={i} className="rounded border border-neutral-200 bg-white p-2 dark:border-neutral-800 dark:bg-neutral-900">
                 <div className="mb-0.5 flex items-center gap-2 text-[10px]">
                   <span className={`font-bold uppercase ${h.choice === 'NO' ? 'text-red-600' : h.choice === 'YES' ? 'text-emerald-600' : 'text-neutral-500'}`}>{h.choice}</span>
-                  <span className="text-neutral-400">{new Date(h.castAt).toLocaleString()}</span>
+                  <span className="text-neutral-400">{fmtDateTime(h.castAt)}</span>
                 </div>
                 <div className="whitespace-pre-wrap text-neutral-600 dark:text-neutral-300">{h.rationale}</div>
               </li>

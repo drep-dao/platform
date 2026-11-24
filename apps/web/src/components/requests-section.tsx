@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { internalProposalsApi, proposalCheckerApi, requestsApi, submitterApi, REQUEST_KIND_LABEL, REQUEST_KINDS, type InternalProposalSummary, type PcFinding, type PcResult, type PcScan, type RequestFieldValue, type RequestFormConfig, type RequestFormElement, type RequestTypeView, type RequestView } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
+import { fmtDateTime } from './round-ui';
 import { useT } from '@/lib/prefs-context';
 import { useUrlNav } from '@/lib/use-url-nav';
 import { card } from '@/lib/ui';
@@ -195,7 +196,7 @@ function RequestCard({ r, isBoard, mine, onEdit, onChanged }: { r: RequestView; 
           </button>
           {(isBoard || mine) ? <MissingRequiredFields r={d} mine={mine} /> : null}
           <RequestFieldsView r={d} />
-          {r.expectedResponseAt ? <p className="text-xs text-neutral-500">{t('Response expected by:')} <span className={`font-medium ${new Date(r.expectedResponseAt).getTime() < Date.now() && r.status === 'ACTIVE' ? 'text-red-600 dark:text-red-400' : 'text-neutral-700 dark:text-neutral-300'}`}>{new Date(r.expectedResponseAt).toLocaleString()}</span></p> : null}
+          {r.expectedResponseAt ? <p className="text-xs text-neutral-500">{t('Response expected by:')} <span className={`font-medium ${new Date(r.expectedResponseAt).getTime() < Date.now() && r.status === 'ACTIVE' ? 'text-red-600 dark:text-red-400' : 'text-neutral-700 dark:text-neutral-300'}`}>{fmtDateTime(r.expectedResponseAt)}</span></p> : null}
 
           {/* §R — submitter contact, so a reader can reach them directly. Same data as the public directory. */}
           {d.submitterEmail || d.submitterTelegram || d.submitterSocialLinks?.length ? (
@@ -390,7 +391,7 @@ function ResultPanel({ r, isBoard, onChanged }: { r: RequestView; isBoard: boole
       ) : r.result ? (
         <>
           <div className="prose prose-sm max-w-none text-sm dark:prose-invert"><Markdown>{r.result}</Markdown></div>
-          {r.resultAt ? <p className="mt-1 text-xs text-neutral-500">{t('Updated')} {new Date(r.resultAt).toLocaleString()}</p> : null}
+          {r.resultAt ? <p className="mt-1 text-xs text-neutral-500">{t('Updated')} {fmtDateTime(r.resultAt)}</p> : null}
         </>
       ) : (
         <p className="text-xs text-emerald-800/70 dark:text-emerald-300/70">{t('No result yet — add the response to this request.')}</p>

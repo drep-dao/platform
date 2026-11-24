@@ -3,6 +3,7 @@ import { safeHref } from '@/lib/safe-url';
 
 import { useCallback, useEffect, useState } from 'react';
 import { boardSubmittersApi, type SubmitterApplication } from '@/lib/api';
+import { fmtDateTime } from './round-ui';
 import { ClampedMarkdown } from './clamped-markdown';
 import { useT } from '@/lib/prefs-context';
 
@@ -97,7 +98,7 @@ export function SubmitterReviewPanel({ onChange, history = false }: { onChange?:
                 <ul className="mt-1 space-y-1">
                   {a.history.map((h, i) => (
                     <li key={i} className="rounded border border-neutral-200 p-1.5 dark:border-neutral-800">
-                      <div className="text-neutral-400">{t('Replaced')} {new Date(h.snapshotAt).toLocaleString()}</div>
+                      <div className="text-neutral-400">{t('Replaced')} {fmtDateTime(h.snapshotAt)}</div>
                       <div className="flex items-center gap-2">
                         {h.logoDataUrl ? <img src={h.logoDataUrl} alt="" className="h-6 w-6 rounded object-cover" /> : null}
                         <span className="font-medium">{h.displayName}</span> · {h.country}

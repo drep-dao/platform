@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { proposalCheckerApi as api, type PcScan, type PcScanTool } from '@/lib/api';
+import { fmtDateTime } from './round-ui';
 import { listInjectedWallets, getStakeAddress, signMessageWithStakeKey, type Cip30Api, type Cip30WalletEntry } from '@/lib/cip30';
 import { useT } from '@/lib/prefs-context';
 import { ResultCard, frameworkScore, scoreColor } from './proposal-checker';
@@ -403,7 +404,7 @@ export function PublicScanPage() {
                           <StatusChip status={s.status} />
                         </span>
                         <span className="text-xs text-neutral-400">
-                          {new Date(s.createdAt).toLocaleString()}
+                          {fmtDateTime(s.createdAt)}
                           {s.status === 'DONE' ? (() => {
                             const fw = frameworkScore(s.questions ?? []);
                             return (

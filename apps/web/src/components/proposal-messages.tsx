@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { messagesApi, type MessageThread } from '@/lib/api';
+import { fmtDateTime } from './round-ui';
 import { useT } from '@/lib/prefs-context';
 
 /** One message thread (board ↔ submitter back-and-forth) with a reply box. */
@@ -50,7 +51,7 @@ export function MessageThreadCard({ thread, canBoard, showProposal = false, onCh
           <li key={e.id} className={`flex ${e.fromBoard ? 'justify-start' : 'justify-end'}`}>
             <div className={`max-w-[85%] rounded-lg px-3 py-1.5 text-sm ${e.fromBoard ? 'bg-emerald-50 dark:bg-emerald-950/30' : 'bg-sky-50 dark:bg-sky-950/30'}`}>
               <div className="text-[11px] text-neutral-500">
-                {e.author ?? (e.fromBoard ? tr('Board') : tr('Submitter'))} · {e.fromBoard ? tr('Board') : tr('Submitter')} · {new Date(e.createdAt).toLocaleString()}
+                {e.author ?? (e.fromBoard ? tr('Board') : tr('Submitter'))} · {e.fromBoard ? tr('Board') : tr('Submitter')} · {fmtDateTime(e.createdAt)}
               </div>
               <div className="whitespace-pre-wrap">{e.body}</div>
             </div>

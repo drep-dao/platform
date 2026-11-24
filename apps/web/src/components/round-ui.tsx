@@ -89,8 +89,23 @@ export function ProposalCounts({ counts, activeStage }: { counts?: Record<string
   );
 }
 
-export const fmtDateTime = (iso: string | null | undefined) =>
-  iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+export const fmtDateTime = (v: string | number | Date | null | undefined) => {
+  if (v === null || v === undefined || v === '') return '—';
+  const d = v instanceof Date ? v : new Date(v);
+  // Explicit components (not dateStyle/timeStyle — those throw when combined with
+  // timeZoneName). `undefined` locale + the viewer's own zone, plus a short zone
+  // label so a time is never ambiguous across time zones (e.g. "Nov 25, 2026, 9:00 AM GMT+1").
+  return Number.isNaN(d.getTime())
+    ? '—'
+    : d.toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        timeZoneName: 'short',
+      });
+};
 
 /** A ticking "now" (ms) that updates every `intervalMs` — for live countdowns. */
 export function useNow(intervalMs = 1000): number {

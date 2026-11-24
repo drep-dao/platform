@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { quickPollApi, type QuickPollView, type ReviewMode } from '@/lib/api';
+import { fmtDateTime } from './round-ui';
 import { useAuth } from '@/lib/auth-context';
 import { useT } from '@/lib/prefs-context';
 
@@ -109,7 +110,7 @@ function QuickPollCard({ poll, isBoard, launching, onLaunch, onChange }: {
         <span className="font-medium">{poll.categoryName ?? t('category')} {t('· tie of')} {poll.candidates.length}</span>
         <span className="flex items-center gap-2">
           <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${STATUS_CLS[poll.status]}`}>{poll.status}</span>
-          {poll.status === 'ACTIVE' && poll.endsAt ? <span className="text-xs text-neutral-500">{t('ends')} {new Date(poll.endsAt).toLocaleString()}{poll.extensions > 0 ? ` · ${t('extended')} ${poll.extensions}×` : ''}</span> : null}
+          {poll.status === 'ACTIVE' && poll.endsAt ? <span className="text-xs text-neutral-500">{t('ends')} {fmtDateTime(poll.endsAt)}{poll.extensions > 0 ? ` · ${t('extended')} ${poll.extensions}×` : ''}</span> : null}
           {poll.status === 'PENDING_BOARD' && isBoard ? (
             <button onClick={onLaunch} disabled={launching} className="rounded bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
               {launching ? '…' : t('Launch poll')}

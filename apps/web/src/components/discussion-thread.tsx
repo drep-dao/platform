@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { useT } from '@/lib/prefs-context';
+import { fmtDateTime } from './round-ui';
 import { Markdown, MarkdownEditor } from './markdown';
 import { Avatar } from './fallback-avatar';
 
@@ -79,7 +80,7 @@ function Card({
         <div className="mb-0.5 flex items-center justify-between text-xs text-neutral-500">
           <span className="flex items-center gap-1.5"><Avatar src={c.authorAvatar} name={c.authorName} className="h-5 w-5 shrink-0 rounded-full" /><span className="font-semibold text-blue-600 dark:text-blue-400">{c.authorName}</span>{(() => { const r = roleTone(c.authorRole); return <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${r.cls}`}>{t(r.label)}</span>; })()}</span>
           <span className="flex items-center gap-2">
-            <span>{new Date(c.createdAt).toLocaleString()}</span>
+            <span>{fmtDateTime(c.createdAt)}</span>
             {!c.deleted && (c.isMine || canModerate) ? <button onClick={() => onDelete(c.id)} className="text-rose-600 hover:underline">{t('Delete')}</button> : null}
           </span>
         </div>

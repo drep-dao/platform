@@ -6,7 +6,7 @@ import { CurrentUser, type AuthContext } from '../auth/current-user.decorator';
 import { RateLimit } from '../common/rate-limit/rate-limit.decorator';
 import { ProposalCheckerService } from './proposal-checker.service';
 import { AiError } from './ai.service';
-import { CreateLinkDto, CreatePublicScanDto, CreateRuleDocDto, CreateUploadDto, EditPublicScanDto, GenerateTierDto, GovActionTitlesDto, MyScansDto, PublicScanTxDto, ScoreDto, SetActiveDto, TemplateTiersDto, UpdateAiDto, UpdatePublicScanDto } from './dto';
+import { CreateLinkDto, CreatePublicScanDto, CreateRuleDocDto, CreateUploadDto, EditPublicScanDto, GenerateTierDto, GovActionTitlesDto, MyScansDto, ProbeLinksDto, PublicScanTxDto, ScoreDto, SetActiveDto, TemplateTiersDto, UpdateAiDto, UpdatePublicScanDto } from './dto';
 
 /** Map a typed AI failure to an HTTP status + { code, message } the frontend can show plainly. */
 function aiHttp(e: unknown): never {
@@ -161,6 +161,13 @@ export class ProposalCheckerController {
   @RateLimit({ points: 20, durationSec: 60, by: 'ip' })
   createScan(@Body() dto: CreatePublicScanDto) {
     return this.svc.createPublicScan(dto);
+  }
+
+  // Public form: confirm each pasted link can be read before submitting a scan.
+  @Post('probe-links')
+  @RateLimit({ points: 30, durationSec: 60, by: 'ip' })
+  probeLinks(@Body() dto: ProbeLinksDto) {
+    return this.svc.probeLinks(dto.urls);
   }
 
   // Declared before 'scan/:id' so "mine" is not captured as an id.

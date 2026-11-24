@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { proposalCheckerApi as api, type PcScan, type PcScanTool } from '@/lib/api';
+import { proposalCheckerApi as api, type PcScan, type PcScanTool, type PcLinkProbe } from '@/lib/api';
 import { fmtDateTime } from './round-ui';
 import { listInjectedWallets, getStakeAddress, signMessageWithStakeKey, type Cip30Api, type Cip30WalletEntry } from '@/lib/cip30';
 import { useT } from '@/lib/prefs-context';
@@ -63,6 +63,10 @@ export function PublicScanPage() {
   const [mine, setMine] = useState<PcScan[] | null>(null);
   const [form, setForm] = useState({ title: '', amount: '', abstract: '', motivation: '', rationale: '', links: [] as string[] });
   const [linkDraft, setLinkDraft] = useState('');
+  // Per-link load check: 'checking' while probing, then the result (✓ loads / ✕ cannot load). Keyed by
+  // URL; probedRef remembers which URLs were already checked so the effect probes only new ones.
+  const [probes, setProbes] = useState<Record<string, PcLinkProbe | 'checking'>>({});
+  const probedRef = useRef<Set<string>>(new Set());
   const [tx, setTx] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -104,6 +108,19 @@ export function PublicScanPage() {
     }, 15000);
     return () => clearInterval(t);
   }, [scan?.id, scan?.status, scan?.payments.length]);
+
+  // Check that each added link can actually be read (and warm the server-side cache the scan reuses), so
+  // the user sees a ✓/✗ per link before paying. Probes only links not yet checked; refs keep it loop-free.
+  useEffect(() => {
+    if (view !== 'form') return;
+    const missing = form.links.filter((l) => l && !probedRef.current.has(l));
+    if (!missing.length) return;
+    missing.forEach((u) => probedRef.current.add(u));
+    setProbes((p) => { const n = { ...p }; missing.forEach((u) => { n[u] = 'checking'; }); return n; });
+    api.probeLinks(missing)
+      .then((r) => setProbes((p) => { const n = { ...p }; r.results.forEach((res) => { n[res.url] = res; }); return n; }))
+      .catch(() => setProbes((p) => { const n = { ...p }; missing.forEach((u) => { n[u] = { url: u, ok: false, kind: /github\.com/i.test(u) ? 'github' : 'document', note: 'could not check' }; }); return n; }));
+  }, [form.links, view]);
 
   const connect = useCallback(async (entry: Cip30WalletEntry) => {
     setBusy('connect'); setErr(null);
@@ -350,13 +367,23 @@ export function PublicScanPage() {
                     <span className="mb-1 block text-neutral-500">{t('Links (optional — GitHub repos, specs; add one at a time)')}</span>
                     {form.links.length ? (
                       <ul className="mb-1.5 space-y-1">
-                        {form.links.map((l, i) => (
+                        {form.links.map((l, i) => {
+                          const pr = probes[l];
+                          return (
                           <li key={i} className="flex items-center gap-2 text-xs">
                             {/github\.com/i.test(l) ? <span className="shrink-0 rounded bg-neutral-200 px-1 text-[10px] text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300">GitHub</span> : null}
                             <span className="min-w-0 flex-1 truncate font-mono text-neutral-600 dark:text-neutral-300">{l}</span>
+                            {pr === 'checking' ? (
+                              <span className="shrink-0 text-[10px] text-neutral-400">…{t('checking')}</span>
+                            ) : pr ? (
+                              <span className={`shrink-0 text-[10px] font-medium ${pr.ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-500'}`} title={pr.note || ''}>
+                                {pr.ok ? `✓ ${t('loads')}` : `✕ ${t('cannot load')}`}
+                              </span>
+                            ) : null}
                             <button type="button" onClick={() => setForm((f) => ({ ...f, links: f.links.filter((_, j) => j !== i) }))} className="shrink-0 text-red-600 hover:underline">{t('remove')}</button>
                           </li>
-                        ))}
+                          );
+                        })}
                       </ul>
                     ) : null}
                     <div className="flex gap-2">
@@ -367,6 +394,7 @@ export function PublicScanPage() {
                       <button type="button" onClick={addLink} disabled={!linkDraft.trim() || form.links.length >= 10}
                         className="shrink-0 rounded-md border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800">{t('Next link')}</button>
                     </div>
+                    <p className="mt-1 text-[11px] text-neutral-400">{t('Each added link — and any URL written in your proposal text — is fetched and its content used in the analysis. A link that cannot load is skipped; you’ll see it here and in the result’s “Sources considered”.')}</p>
                   </div>
                   {editing ? (
                     <div className="flex items-center gap-3">

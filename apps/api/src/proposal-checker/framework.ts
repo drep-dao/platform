@@ -25,6 +25,35 @@ export interface ReviewFramework {
   areas: ReviewArea[];
 }
 
+/** One evidence passage with its resolved origin: `proposal` = the quote is in the proposal text,
+ *  `external` = it was found in a fetched link (url names which). Origin is computed deterministically
+ *  from the fetched source texts (not the model), so it is reliable. */
+export interface EvidenceItem {
+  quote: string;
+  from: 'proposal' | 'external';
+  url?: string; // set when from === 'external'
+}
+
+/** One source the scorer read, for the "Sources considered" panel. `kind` = what it is; `ok` = whether
+ *  its content was successfully loaded; `github` carries repo stats when kind === 'github'. */
+export interface ScanSource {
+  kind: 'proposal' | 'document' | 'github';
+  url?: string; // omitted for the proposal itself
+  ok: boolean;
+  note?: string; // 'truncated', the failure reason, or a short descriptor
+  chars?: number; // extracted characters (documents / the proposal)
+  github?: {
+    repo: string;
+    contributors?: number;
+    commits?: number;
+    language?: string;
+    stars?: number;
+    lastPush?: string;
+    effort?: string; // e.g. "1 full-time · 2 part-time · 5 occasionally"
+    participation?: string; // e.g. "active in 34 of the last 52 weeks"
+  };
+}
+
 /** One assessed framework question. `outcome` is always one of the framework's outcome labels. */
 export interface ReviewFinding {
   id: number;
@@ -39,7 +68,10 @@ export interface ReviewFinding {
   risk?: string;
   condition?: string;
   templateRefs?: string[];
-  evidence?: string[]; // the exact passage(s) from the proposal used — one or more short quotes
+  // The exact passage(s) used. The model returns plain strings; after scoring each is resolved to an
+  // EvidenceItem carrying whether it came from the proposal or an external link (back-compat: a stored
+  // result may still hold plain strings, read as proposal quotes).
+  evidence?: (string | EvidenceItem)[];
   evidenceCited?: string; // 'yes' | 'no' | 'na' — did the proposal cite a source for this answer
   // Snapshotted from the area at scoring time so a stored result renders correctly even if the framework
   // later changes. 'verification' findings are excluded from the score and shown as a per-force trust check.
@@ -306,4 +338,79 @@ export function pctFromFindings(findings: ReviewFinding[]): number {
     weight += o.includes('condition') ? 0.5 : o.includes('unsupported') || o.includes('unanswered') ? 0 : o.includes('supported') ? 1 : 0;
   }
   return n ? Math.round((weight / n) * 100) : 0;
+}
+
+// ── link + evidence helpers (source attribution for the "Sources considered" panel) ─────────────
+
+/** Extract http(s) URLs written in free text (a proposal body), deduped and cleaned of trailing
+ *  sentence punctuation. Lets the scorer read links mentioned IN the proposal, not only the explicit
+ *  link fields / on-chain references. Capped so a link-dump can't blow past the fetch budget. */
+export function urlsFromText(text: string): string[] {
+  if (!text) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const re = /https?:\/\/[^\s<>[\]"'`]+/gi;
+  for (const m of text.matchAll(re)) {
+    let u = m[0].replace(/[.,;:!?]+$/, '');
+    while (u.endsWith(')') && !u.slice(0, -1).includes('(')) u = u.slice(0, -1); // unbalanced trailing paren(s)
+    const key = u.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(u);
+    if (out.length >= 20) break;
+  }
+  return out;
+}
+
+/** Normalise text for substring matching: lowercase + collapse whitespace. */
+function normForMatch(s: string): string {
+  return String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/** Resolve one evidence quote to its origin. The proposal is checked FIRST (a quote the proposal
+ *  itself contains reads as "proposal" even if a linked doc repeats it); then each external source.
+ *  Unmatched defaults to proposal, since the model is instructed to quote the proposal. Deterministic
+ *  — it never trusts the model to self-label the source. */
+export function resolveEvidenceOrigin(
+  quote: string,
+  proposalNorm: string,
+  sources: { url: string; textNorm: string }[],
+): EvidenceItem {
+  const q = normForMatch(quote);
+  const seg = q.split(/\s*(?:\.\.\.|…)\s*/).find((s) => s.length >= 15) ?? q; // skip "…" gaps
+  const needle = seg.slice(0, 80);
+  const hit = (hay: string) => needle.length >= 8 && hay.includes(needle);
+  if (!needle || hit(proposalNorm)) return { quote: String(quote), from: 'proposal' };
+  for (const s of sources) if (hit(s.textNorm)) return { quote: String(quote), from: 'external', url: s.url };
+  return { quote: String(quote), from: 'proposal' };
+}
+
+/** Attribute every finding's evidence quotes to their origin (proposal vs a specific link), in place
+ *  of the plain strings the model returned. Also flips evidenceCited to 'yes' when a quote resolved to
+ *  an external source (the proposal is genuinely backed by a link), so the evidence rate reflects it. */
+export function attributeFindingsEvidence(
+  findings: ReviewFinding[],
+  proposalText: string,
+  sources: { url: string; text: string }[],
+): ReviewFinding[] {
+  const proposalNorm = normForMatch(proposalText);
+  const srcNorm = sources.filter((s) => s.text).map((s) => ({ url: s.url, textNorm: normForMatch(s.text) }));
+  return findings.map((f) => {
+    const quotes = Array.isArray(f.evidence) ? f.evidence : [];
+    const resolved: EvidenceItem[] = quotes.map((e) =>
+      typeof e === 'string' ? resolveEvidenceOrigin(e, proposalNorm, srcNorm) : e,
+    );
+    const anyExternal = resolved.some((e) => e.from === 'external');
+    return { ...f, evidence: resolved, evidenceCited: anyExternal ? 'yes' : f.evidenceCited };
+  });
+}
+
+/** Classify one contributor's effort from their commits over the weeks they were active. */
+export function classifyEffort(commits: number, activeWeeks: number): 'full-time' | 'part-time' | 'occasionally' | 'rarely' {
+  if (activeWeeks <= 0 || commits <= 0) return 'rarely';
+  const perWeek = commits / activeWeeks;
+  if (perWeek >= 10) return 'full-time';
+  if (perWeek >= 3) return 'part-time';
+  if (perWeek >= 1) return 'occasionally';
+  return 'rarely';
 }

@@ -2790,8 +2790,19 @@ export interface PcReviewOutcome { key: string; label: string; definition: strin
 export interface PcReviewQuestion { id: number; text: string }
 export interface PcReviewArea { key: string; title: string; description?: string; templateRefs?: string[]; questions: PcReviewQuestion[] }
 export interface PcReviewFramework { title: string; attribution?: string; guidance: string; outcomes: PcReviewOutcome[]; areas: PcReviewArea[] }
+// One evidence passage with its resolved origin (proposal text vs a specific fetched link).
+export interface PcEvidenceItem { quote: string; from: 'proposal' | 'external'; url?: string }
+// One source the scorer read, for the "Sources considered" panel.
+export interface PcSource {
+  kind: 'proposal' | 'document' | 'github';
+  url?: string;
+  ok: boolean;
+  note?: string;
+  chars?: number;
+  github?: { repo: string; contributors?: number; commits?: number; language?: string; stars?: number; lastPush?: string; effort?: string; participation?: string };
+}
 // One assessed framework question; `outcome` is one of the framework's outcome labels.
-export interface PcFinding { id: number; tier?: 'base' | 'middle' | 'large'; area: string; question: string; outcome: string; reason?: string; risk?: string; condition?: string; templateRefs?: string[]; evidence?: string | string[]; evidenceCited?: string; role?: 'force' | 'verification'; verifies?: string }
+export interface PcFinding { id: number; tier?: 'base' | 'middle' | 'large'; area: string; question: string; outcome: string; reason?: string; risk?: string; condition?: string; templateRefs?: string[]; evidence?: string | (string | PcEvidenceItem)[]; evidenceCited?: string; role?: 'force' | 'verification'; verifies?: string }
 export interface PcTierNames { small: string; middle: string; large: string }
 export interface PcTierConfig { enabled: boolean; smallMax: number; middleMax: number; names: PcTierNames; middleQuestions: string[]; largeQuestions: string[] }
 export interface PcResult {
@@ -2808,6 +2819,7 @@ export interface PcResult {
   visionFindings?: PcFinding[]; // per-question Vision 2030 detail
   summary?: string | null;
   questions: PcFinding[]; // framework findings (one per question)
+  sources?: PcSource[] | null; // what the scorer read: proposal + each link (ok/failed, GitHub stats)
   model?: string | null;
   createdAt: string;
   // Only present on a freshly-created score (board); the public list omits these.
@@ -2884,6 +2896,8 @@ export const proposalCheckerApi = {
     request<{ questions: string[] }>('/proposal-checker/template-tiers/generate', { method: 'POST', body: JSON.stringify({ tier, count }) }),
   // Public pay-to-scan
   scanTool: () => request<PcScanTool>('/proposal-checker/scan-tool'),
+  probeLinks: (urls: string[]) =>
+    request<{ results: PcLinkProbe[] }>('/proposal-checker/probe-links', { method: 'POST', body: JSON.stringify({ urls }), signal: AbortSignal.timeout(60000) }),
   scanSignMessage: (stake: string) => request<{ message: string }>(`/proposal-checker/scan-sign-message?stake=${encodeURIComponent(stake)}`),
   createScan: (body: { walletStakeAddr: string; walletPaymentAddr?: string; title: string; abstract?: string; motivation?: string; rationale?: string; amountAda?: number; extraLinks?: string[] }) =>
     request<PcScanCreated>('/proposal-checker/scan', { method: 'POST', body: JSON.stringify(body) }),
@@ -2905,7 +2919,8 @@ export interface PcPublicScanConfig { enabled: boolean; feeAda: number; address:
 export interface PcScanTool { enabled: boolean; feeAda: number; address: string; network: string; tiers: { enabled: boolean; smallMax: number; middleMax: number; names: PcTierNames } }
 export interface PcScanCreated { id: string; toAddress: string; feeAda: number; status: string }
 /** The fields ResultCard renders — satisfied by both PcResult and PcScan. */
-export interface PcScored { model?: string | null; scorePct: number | null; questions?: PcFinding[] | null; templateFindings?: PcFinding[] | null; visionFindings?: PcFinding[] | null; visionPct?: number | null }
+export interface PcScored { model?: string | null; scorePct: number | null; questions?: PcFinding[] | null; templateFindings?: PcFinding[] | null; visionFindings?: PcFinding[] | null; visionPct?: number | null; sources?: PcSource[] | null }
+export interface PcLinkProbe { url: string; ok: boolean; kind: 'document' | 'github'; note?: string }
 export interface PcScan extends PcScored {
   id: string;
   walletStakeAddr: string;

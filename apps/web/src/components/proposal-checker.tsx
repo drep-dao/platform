@@ -20,9 +20,12 @@ import {
   type PcScored,
   type PcScan,
   type PcScanList,
+  type PcEvidenceItem,
+  type PcSource,
   type RuleDocSummary,
 } from '@/lib/api';
 import { useT } from '@/lib/prefs-context';
+import { safeHref } from '@/lib/safe-url';
 import { Markdown } from './markdown';
 
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
@@ -796,19 +799,63 @@ function tallyOutcomes(items: PcFinding[]): [string, number][] {
 }
 
 /** The findings detail for one scoring dimension: tally, evidence rate, optional radar, per-area list. */
-/** Normalise a finding's evidence (legacy single string or an array of quotes) to a clean list. */
-function toQuotes(v?: string | string[]): string[] {
+/** Normalise a finding's evidence to a clean list of items carrying each quote's origin. Handles the
+ *  legacy shapes (a single string, or an array of strings = proposal quotes) and the new
+ *  {quote, from, url} items, so stored results from before source attribution still render. */
+function toQuotes(v?: string | (string | PcEvidenceItem)[]): PcEvidenceItem[] {
   const raw = Array.isArray(v) ? v : v ? [v] : [];
   const clean = (s: string) => s.trim().replace(/^["“”''\s]+/, '').replace(/["“”''\s]+$/, '').trim();
   const seen = new Set<string>();
-  const out: string[] = [];
+  const out: PcEvidenceItem[] = [];
   for (const item of raw) {
-    const s = clean(String(item || ''));
-    if (!s || seen.has(s.toLowerCase())) continue;
-    seen.add(s.toLowerCase());
-    out.push(s);
+    const isObj = !!item && typeof item === 'object';
+    const quote = clean(String((isObj ? (item as PcEvidenceItem).quote : item) || ''));
+    if (!quote || seen.has(quote.toLowerCase())) continue;
+    seen.add(quote.toLowerCase());
+    const from = isObj && (item as PcEvidenceItem).from === 'external' ? 'external' : 'proposal';
+    out.push({ quote, from, url: isObj ? (item as PcEvidenceItem).url : undefined });
   }
   return out;
+}
+
+/** Per-quote origin marker: a document glyph (from the proposal) or a link glyph that opens the external
+ *  source (tooltip = the source URL), so a reader can tell where each piece of evidence came from. */
+function EvidenceSourceIcon({ item }: { item: PcEvidenceItem }) {
+  const t = useT();
+  if (item.from === 'external') {
+    const href = item.url ? safeHref(item.url) : undefined;
+    const label = `${t('From a linked source')}${item.url ? ` — ${item.url}` : ''}`;
+    const icon = (
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5" />
+        <path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.5-1.5" />
+      </svg>
+    );
+    return href ? (
+      <a href={href} target="_blank" rel="noopener noreferrer" title={label} aria-label={label} className="mt-0.5 shrink-0 text-sky-600 hover:text-sky-700 dark:text-sky-400">{icon}</a>
+    ) : (
+      <span title={label} aria-label={label} className="mt-0.5 shrink-0 text-sky-600 dark:text-sky-400">{icon}</span>
+    );
+  }
+  const label = t('From the proposal text');
+  return (
+    <span title={label} aria-label={label} className="mt-0.5 shrink-0 text-neutral-400">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <path d="M14 2v6h6M8 13h8M8 17h8M8 9h2" />
+      </svg>
+    </span>
+  );
+}
+
+/** One evidence quote line: origin icon + the quoted passage. */
+function EvidenceQuote({ item }: { item: PcEvidenceItem }) {
+  return (
+    <span className="flex items-start gap-1">
+      <EvidenceSourceIcon item={item} />
+      <span className="italic text-neutral-500">“{item.quote}”</span>
+    </span>
+  );
 }
 
 /** Tiny per-item marker: did the proposal point to a source for this answer? */
@@ -822,14 +869,14 @@ function EvidenceLabel({ cited }: { cited?: string }) {
 
 /** The quoted passages for a finding. One quote → shown in full, no toggle. Several → the first is
  *  shown and a chevron reveals ALL of them, so the toggle always adds content (never a dead click). */
-function EvidenceBlock({ quotes }: { quotes: string[] }) {
+function EvidenceBlock({ quotes }: { quotes: PcEvidenceItem[] }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   if (!quotes.length) return null;
   if (quotes.length === 1) {
     return (
-      <div className="rounded bg-neutral-50 dark:bg-neutral-900">
-        <p className="p-1 italic text-neutral-500">“{quotes[0]}”</p>
+      <div className="rounded bg-neutral-50 p-1 dark:bg-neutral-900">
+        <EvidenceQuote item={quotes[0]} />
       </div>
     );
   }
@@ -837,10 +884,10 @@ function EvidenceBlock({ quotes }: { quotes: string[] }) {
     <div className="rounded bg-neutral-50 dark:bg-neutral-900">
       {open ? (
         <ul className="space-y-1 p-1">
-          {quotes.map((q, i) => <li key={i} className="italic text-neutral-500">“{q}”</li>)}
+          {quotes.map((q, i) => <li key={i}><EvidenceQuote item={q} /></li>)}
         </ul>
       ) : (
-        <p className="line-clamp-2 p-1 italic text-neutral-500">“{quotes[0]}”</p>
+        <div className="p-1"><EvidenceQuote item={quotes[0]} /></div>
       )}
       <button onClick={() => setOpen((o) => !o)} className="px-1 pb-1 text-[10px] font-medium text-sky-600 hover:underline dark:text-sky-400">
         {open ? `▲ ${t('Show less')}` : `▼ ${t('Show all evidence')} (${quotes.length})`}
@@ -954,6 +1001,104 @@ function DimSection({ title, pct, caption, defaultOpen, children }: { title: str
   );
 }
 
+/** Small kind glyph for a source row (document vs GitHub repo). */
+function SourceKindIcon({ kind }: { kind: PcSource['kind'] }) {
+  if (kind === 'github') {
+    return (
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" className="mt-0.5 shrink-0 text-neutral-500" aria-hidden="true">
+        <path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48l-.01-1.7c-2.78.6-3.37-1.34-3.37-1.34-.46-1.16-1.11-1.47-1.11-1.47-.9-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.52 2.34 1.08 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.56-1.11-4.56-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.6 9.6 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85l-.01 2.75c0 .27.18.58.69.48A10 10 0 0 0 12 2z" />
+      </svg>
+    );
+  }
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 shrink-0 text-neutral-500" aria-hidden="true">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M8 13h8M8 17h8M8 9h2" />
+    </svg>
+  );
+}
+
+/** GitHub repo stats on a source row — developers, commits, effort split, participation. */
+function GithubStats({ g }: { g: NonNullable<PcSource['github']> }) {
+  const t = useT();
+  const head = [
+    g.contributors != null ? `${g.contributors} ${t('developers')}` : '',
+    g.commits != null ? `${g.commits.toLocaleString()} ${t('commits')}` : '',
+    g.language || '',
+    g.stars != null ? `★ ${g.stars.toLocaleString()}` : '',
+  ].filter(Boolean).join(' · ');
+  return (
+    <div className="mt-1 space-y-0.5 rounded bg-neutral-50 p-1.5 text-[11px] text-neutral-600 dark:bg-neutral-900 dark:text-neutral-300">
+      {head ? <p>{head}</p> : null}
+      {g.effort ? <p><span className="text-neutral-400">{t('Developer effort')}: </span>{g.effort}</p> : null}
+      {g.participation ? <p><span className="text-neutral-400">{t('Participation')}: </span>{g.participation}</p> : null}
+    </div>
+  );
+}
+
+/** One row in the Sources panel: the proposal itself, or a fetched link with its load status + stats. */
+function SourceRow({ s }: { s: PcSource }) {
+  const t = useT();
+  return (
+    <li className="rounded border border-neutral-100 p-1.5 text-xs dark:border-neutral-800">
+      <div className="flex items-start justify-between gap-2">
+        <span className="flex min-w-0 items-start gap-1.5">
+          <SourceKindIcon kind={s.kind} />
+          {s.kind === 'proposal' ? (
+            <span className="font-medium text-neutral-700 dark:text-neutral-200">{t('Proposal text')}</span>
+          ) : s.url ? (
+            <a href={safeHref(s.url)} target="_blank" rel="noopener noreferrer" className="truncate text-sky-600 hover:underline dark:text-sky-400" title={s.url}>{s.url}</a>
+          ) : (
+            <span className="truncate text-neutral-500">{t('link')}</span>
+          )}
+        </span>
+        {s.kind === 'proposal' ? (
+          <span className="shrink-0 rounded px-1 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">✓ {t('read')}</span>
+        ) : (
+          <span className={`shrink-0 rounded px-1 py-0.5 text-[10px] font-medium ${s.ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-500'}`}>
+            {s.ok ? `✓ ${t('loaded')}` : `✕ ${t('could not load')}`}
+          </span>
+        )}
+      </div>
+      {!s.ok && s.note ? <p className="mt-0.5 text-amber-700 dark:text-amber-500">{s.note}</p> : null}
+      {s.ok && s.kind !== 'github' && s.chars ? (
+        <p className="mt-0.5 text-neutral-400">{s.chars.toLocaleString()} {t('characters read')}{s.note === 'truncated' ? ` · ${t('truncated')}` : ''}</p>
+      ) : null}
+      {s.github ? <GithubStats g={s.github} /> : null}
+    </li>
+  );
+}
+
+/** "Sources considered": everything the scorer read — the proposal plus each link, whether it loaded,
+ *  and for GitHub repos the code/contributor stats. Reassures the reader the links WERE used. */
+function SourcesPanel({ sources }: { sources?: PcSource[] | null }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  if (!sources || !sources.length) return null;
+  const links = sources.filter((s) => s.kind !== 'proposal');
+  const okCount = links.filter((s) => s.ok).length;
+  return (
+    <div className="rounded-md border border-neutral-200 dark:border-neutral-800">
+      <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left">
+        <span className="flex flex-wrap items-center gap-2">
+          <span className="text-sm text-neutral-500 dark:text-neutral-400">{open ? '▼' : '▶'}</span>
+          <span className="text-sm font-semibold">{t('Sources considered')}</span>
+          <span className="text-[11px] text-neutral-400">
+            {links.length ? `${okCount}/${links.length} ${t('links loaded')}` : t('proposal text only')}
+          </span>
+        </span>
+      </button>
+      {open ? (
+        <div className="space-y-1.5 border-t border-neutral-200 p-3 dark:border-neutral-800">
+          <p className="text-[11px] text-neutral-400">{t('Everything the scorer read when judging this proposal. Each link marked “loaded” was fetched and its content used in the analysis; one marked “could not load” was attempted but skipped.')}</p>
+          <ul className="space-y-1.5">
+            {sources.map((s, i) => <SourceRow key={i} s={s} />)}
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /** The three scoring dimensions as collapsible sections — Template, Triangle Forces, Cardano Vision 2030. */
 export function ResultCard({ r, framework, prepend }: { r: PcScored; framework?: PcReviewFramework | null; prepend?: React.ReactNode }) {
   const t = useT();
@@ -983,6 +1128,7 @@ export function ResultCard({ r, framework, prepend }: { r: PcScored; framework?:
       <DimSection title={t('Cardano Vision 2030')} pct={visPct} caption={t('How well the proposal aligns with the Cardano 2030 Strategy.')}>
         <FindingsBody findings={visionFindings} radar attribution={t('Questions derived from the Cardano 2030 Strategy (Intersect Product Committee).')} />
       </DimSection>
+      <SourcesPanel sources={r.sources} />
     </div>
   );
 }

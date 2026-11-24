@@ -3,7 +3,7 @@ import { Prisma } from '@drep-dao/db';
 import { PrismaService } from '../prisma/prisma.service';
 import { CardanoQueryService, type GovAction, type GovActionMeta } from '../cardano/cardano-query.service';
 import { AiService, AiError } from './ai.service';
-import { renderFramework, pctFromFindings, type ReviewFramework } from './framework';
+import { renderFramework, pctFromFindings, urlsFromText, attributeFindingsEvidence, classifyEffort, type ReviewFramework, type ReviewFinding, type ScanSource } from './framework';
 import { extractText, parseDataUrl, fetchAndExtract, MAX_EXTRACTED_CHARS } from './text-extract';
 import { verifyCip30Signature } from '../auth/cip30';
 
@@ -12,6 +12,9 @@ const MAX_ORIGINAL_BYTES = 6 * 1024 * 1024;
 const MAX_FETCH_BYTES = 30 * 1024 * 1024; // proposal reference PDFs can be large (image-heavy)
 /** Per external document fed to the AI at score time (keeps the prompt bounded). */
 const MAX_EXTRA_LINK_CHARS = 15_000;
+
+/** One fetched link during scoring: the text fed to the model + the ScanSource summary for the UI. */
+type FetchedSource = { url: string; kind: 'document' | 'github'; ok: boolean; text: string; source: ScanSource };
 
 // ── Public paid proposal-scan — config keys (platform_config) + defaults ────────
 const PUBLIC_SCAN_ENABLED = 'PUBLIC_SCAN_ENABLED';
@@ -438,7 +441,7 @@ export class ProposalCheckerService {
     id: string; walletStakeAddr: string; walletPaymentAddr: string | null; title: string; abstract: string; motivation: string;
     rationale: string; amountAda?: Prisma.Decimal | null; extraLinks: string[]; priceAda: bigint; toAddress: string; feeTxHash: string | null; feeSeenOnchainAt: Date | null;
     status: string; attempts: number; error: string | null; scorePct: number | null; templateFindings: unknown; questions: unknown;
-    visionPct: number | null; visionFindings: unknown; model: string | null; prompt?: string | null; rawResponse?: string | null; createdAt: Date;
+    visionPct: number | null; visionFindings: unknown; sources?: unknown; model: string | null; prompt?: string | null; rawResponse?: string | null; createdAt: Date;
     version?: number; parentScanId?: string | null;
   }, board = false, payments: ScanPaymentRow[] = []) {
     const paidLovelace = payments.reduce((sum, p) => sum + (p.lovelace ?? 0n), 0n);
@@ -463,6 +466,7 @@ export class ProposalCheckerService {
       attempts: s.attempts,
       error: s.error,
       scorePct: s.scorePct, templateFindings: s.templateFindings, questions: s.questions, visionPct: s.visionPct, visionFindings: s.visionFindings,
+      sources: s.sources ?? null,
       model: s.model,
       version: s.version ?? 1,
       parentId: s.parentScanId ?? null,
@@ -602,7 +606,7 @@ export class ProposalCheckerService {
     if (!template) throw new BadRequestException('No active template is configured — ask the board.');
     try {
       const proposalText = this.pastedProposalToText(scan);
-      const { tpl, fw, vis, combinedPrompt, combinedRaw } = await this.scoreContent({ templateId: template.id, template, proposalText, extraLinks: scan.extraLinks, refUris: [], amountAda: scan.amountAda });
+      const { tpl, fw, vis, combinedPrompt, combinedRaw, sources } = await this.scoreContent({ templateId: template.id, template, proposalText, extraLinks: scan.extraLinks, refUris: [], amountAda: scan.amountAda });
       await this.prisma.publicScan.update({
         where: { id },
         data: {
@@ -610,6 +614,7 @@ export class ProposalCheckerService {
           scorePct: tpl.pct, templateFindings: tpl.findings as unknown as Prisma.InputJsonValue,
           questions: fw.findings as unknown as Prisma.InputJsonValue,
           visionPct: vis.pct, visionFindings: vis.findings as unknown as Prisma.InputJsonValue,
+          sources: sources as unknown as Prisma.InputJsonValue,
           model: fw.model, prompt: combinedPrompt, rawResponse: combinedRaw, error: null,
         },
       });
@@ -723,13 +728,23 @@ export class ProposalCheckerService {
       : '(No pre-compiled checklist available — enumerate the distinct requirements from the TEMPLATE above yourself and score each.)';
 
     // The proposal's references (its full doc, work packages, PDF…) are part of the evidence — fetch
-    // their CONTENT and score over it too. Combined with any board/user-supplied links. GitHub repos get
-    // code/contributor metadata; the rest are read as documents. Best-effort — unreadable links are noted.
-    const links = [...new Set([...(opts.extraLinks ?? []), ...(opts.refUris ?? [])].map((l) => (l || '').trim()).filter(Boolean))].slice(0, 10);
-    const githubLinks = links.filter((l) => parseGithubRepo(l));
-    const otherLinks = links.filter((l) => !parseGithubRepo(l));
-    const externalBlock = await this.renderLinkBlock(otherLinks, async (url) => (await this.fetchDocText(url)).text.slice(0, MAX_EXTRA_LINK_CHARS));
-    const githubBlock = await this.renderLinkBlock(githubLinks, (url) => this.fetchGithubInfo(url));
+    // their CONTENT and score over it too. The link set is: board/user-supplied links, the proposal's
+    // on-chain references, AND any URL written in the proposal text itself — so behaviour is the same
+    // whether the proposal is on-chain or pasted. GitHub repos get code/contributor stats; the rest are
+    // read as documents. Each is fetched once (best-effort); failures are noted, never fatal.
+    const links = [...new Set(
+      [...(opts.extraLinks ?? []), ...(opts.refUris ?? []), ...urlsFromText(opts.proposalText)]
+        .map((l) => (l || '').trim()).filter(Boolean),
+    )].slice(0, 10);
+    const fetched = await Promise.all(links.map((url) => this.fetchSource(url)));
+    const externalBlock = this.buildLinkBlock(fetched.filter((f) => f.kind === 'document'));
+    const githubBlock = this.buildLinkBlock(fetched.filter((f) => f.kind === 'github'));
+    // "Sources considered": the proposal itself + every link, with load status (and GitHub stats). This
+    // is what the UI shows so a reader sees exactly what the scorer read and whether each link loaded.
+    const sources: ScanSource[] = [
+      { kind: 'proposal', ok: true, chars: opts.proposalText.length },
+      ...fetched.map((f) => f.source),
+    ];
 
     const framework = await this.ai.reviewFramework();
     const vision = await this.ai.visionFramework();
@@ -764,6 +779,13 @@ export class ProposalCheckerService {
     // Tag each template finding with its tier so the UI can colour Base/Middle/Large and the tier is
     // snapshotted into the stored result (history survives later config edits).
     tpl.findings = tpl.findings.map((f) => ({ ...f, tier: tierById.get(f.id) ?? 'base' }));
+    // Resolve each evidence quote to its origin (proposal vs a specific link), deterministically, BEFORE
+    // the backstop below — so a requirement genuinely backed by an external link (evidenceCited flips to
+    // 'yes') is not capped for "no external source". The UI then marks each quote proposal/link + tooltip.
+    const fetchedTexts = fetched.map((f) => ({ url: f.url, text: f.text }));
+    tpl.findings = attributeFindingsEvidence(tpl.findings, opts.proposalText, fetchedTexts);
+    fw.findings = attributeFindingsEvidence(fw.findings, opts.proposalText, fetchedTexts);
+    vis.findings = attributeFindingsEvidence(vis.findings, opts.proposalText, fetchedTexts);
     // Deterministic backstop for the evidence hard-rule the model does not reliably obey on polished
     // proposals (it marks evidence-seeking template requirements "Supported" while citing no external
     // source — e.g. PFMS: 25/25 Supported, all evidenceCited=no). An evidence-seeking requirement
@@ -783,7 +805,7 @@ export class ProposalCheckerService {
 
     const combinedPrompt = `=== TEMPLATE PROMPT ===\n${templateRendered}\n\n=== FRAMEWORK PROMPT ===\n${frameworkRendered}\n\n=== VISION 2030 PROMPT ===\n${visionRendered}`;
     const combinedRaw = `=== TEMPLATE RESPONSE ===\n${tpl.raw}\n\n=== FRAMEWORK RESPONSE ===\n${fw.raw}\n\n=== VISION 2030 RESPONSE ===\n${vis.raw}`;
-    return { tpl, fw, vis, combinedPrompt, combinedRaw, model: fw.model, tier };
+    return { tpl, fw, vis, combinedPrompt, combinedRaw, model: fw.model, tier, sources };
   }
 
   async score(templateId: string, govActionId: string, userId: string | null, extraLinks: string[] = []) {
@@ -795,10 +817,11 @@ export class ProposalCheckerService {
       throw new BadRequestException("couldn't load this governance action's metadata (the anchor may be offline) — try another action");
     }
     const refUris = (meta.references ?? []).map((r) => r.uri).filter((u): u is string => !!u && /^(https?|ipfs):/i.test(u));
-    const { tpl, fw, vis, combinedPrompt, combinedRaw } = await this.scoreContent({ templateId, template, proposalText, extraLinks, refUris, amountAda: action.withdrawalAda });
+    const { tpl, fw, vis, combinedPrompt, combinedRaw, sources } = await this.scoreContent({ templateId, template, proposalText, extraLinks, refUris, amountAda: action.withdrawalAda });
 
     const saved = await this.prisma.proposalCheckResult.create({
       data: {
+        sources: sources as unknown as Prisma.InputJsonValue,
         templateId,
         govActionId: action.proposalId,
         govActionTitle: meta.title ?? null,
@@ -819,24 +842,89 @@ export class ProposalCheckerService {
       select: { id: true, scorePct: true, visionPct: true, model: true, govActionId: true, govActionTitle: true, govActionType: true, amountAda: true, submittedAt: true, templateId: true, createdAt: true },
     });
     // The board that just ran it sees the full log immediately; the public list never carries these.
-    return { ...saved, summary: null, templateFindings: tpl.findings, questions: fw.findings, visionFindings: vis.findings, prompt: combinedPrompt, response: combinedRaw };
+    return { ...saved, summary: null, templateFindings: tpl.findings, questions: fw.findings, visionFindings: vis.findings, sources, prompt: combinedPrompt, response: combinedRaw };
   }
 
-  /** Fetch each link with `fetchOne` (concurrently, order preserved), labelling the source; a
-   *  failure becomes an inline note. Concurrency keeps many references from exceeding the score timeout. */
-  private async renderLinkBlock(links: string[], fetchOne: (url: string) => Promise<string>): Promise<string> {
-    if (!links.length) return '';
-    const blocks = await Promise.all(
-      links.map(async (link) => {
-        try { return `Source: ${link}\n${await fetchOne(link)}`; }
-        catch (e) { return `Source: ${link}\n[could not be read: ${e instanceof Error ? e.message : e}]`; }
+  /** Build the prompt block for a set of already-fetched sources (order preserved). An unreadable link
+   *  becomes an inline note so the model knows it was attempted but could not be read. */
+  private buildLinkBlock(items: FetchedSource[]): string {
+    if (!items.length) return '';
+    return items
+      .map((f) => (f.ok ? `Source: ${f.url}\n${f.text}` : `Source: ${f.url}\n[could not be read: ${f.source.note ?? 'unknown error'}]`))
+      .join('\n\n----\n\n');
+  }
+
+  /** Fetch ONE link for scoring: a GitHub repo → code/contributor stats; anything else → document text.
+   *  Never throws — a failure yields ok:false + the reason, so one bad link can't fail the whole score.
+   *  Returns the text fed to the model AND the ScanSource summary shown in "Sources considered". */
+  private async fetchSource(url: string): Promise<FetchedSource> {
+    const gh = parseGithubRepo(url);
+    if (gh) {
+      try {
+        const { text, stats } = await this.fetchGithubInfo(url);
+        return { url, kind: 'github', ok: true, text, source: { kind: 'github', url, ok: true, github: stats } };
+      } catch (e) {
+        const note = e instanceof Error ? e.message : String(e);
+        return { url, kind: 'github', ok: false, text: '', source: { kind: 'github', url, ok: false, note, github: { repo: `${gh.owner}/${gh.repo}` } } };
+      }
+    }
+    try {
+      const { text, note } = await this.fetchDocText(url);
+      const clipped = text.slice(0, MAX_EXTRA_LINK_CHARS);
+      const truncated = text.length > clipped.length;
+      return { url, kind: 'document', ok: true, text: clipped, source: { kind: 'document', url, ok: true, chars: text.length, note: note || (truncated ? 'truncated' : undefined) } };
+    } catch (e) {
+      const note = e instanceof Error ? e.message : String(e);
+      return { url, kind: 'document', ok: false, text: '', source: { kind: 'document', url, ok: false, note } };
+    }
+  }
+
+  /** Pre-check that each link can actually be read, for the public form BEFORE a scan is paid/run — so the
+   *  user gets a ✓/✗ per link and is reassured the links will be used. A GitHub repo is checked for
+   *  existence (not full stats, to stay fast); other links are fetched (and cached, so the later score
+   *  reuses the content). SSRF-guarded; never throws — each link reports its own status. */
+  async probeLinks(urls: string[]): Promise<{ results: { url: string; ok: boolean; kind: 'document' | 'github'; note?: string }[] }> {
+    const clean = [...new Set((urls ?? []).map((u) => (u || '').trim()).filter(Boolean))].slice(0, 10);
+    const results = await Promise.all(
+      clean.map(async (url) => {
+        const gh = parseGithubRepo(url);
+        const kind: 'document' | 'github' = gh ? 'github' : 'document';
+        try {
+          if (!/^(https?|ipfs):/i.test(url)) throw new Error('enter a valid http(s) link');
+          if (gh) {
+            const headers: Record<string, string> = { Accept: 'application/vnd.github+json', 'User-Agent': 'drep-council' };
+            if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+            const res = await fetch(`https://api.github.com/repos/${gh.owner}/${gh.repo}`, { headers, signal: AbortSignal.timeout(12_000) });
+            if (!res.ok) throw new Error(`GitHub API returned ${res.status}`);
+            return { url, ok: true, kind };
+          }
+          const { note } = await this.fetchDocText(url); // warms the cache the score reuses
+          return { url, ok: true, kind, note };
+        } catch (e) {
+          return { url, ok: false, kind, note: e instanceof Error ? e.message : String(e) };
+        }
       }),
     );
-    return blocks.join('\n\n----\n\n');
+    return { results };
   }
 
-  /** GitHub repository summary for code-quality assessment: metadata, contributor count, README. */
-  private async fetchGithubInfo(url: string): Promise<string> {
+  /** GitHub REST call that tolerates the 202 "statistics are being generated" response: retry once after
+   *  a short delay, then give up (null) rather than block the score. */
+  private async githubStat<T>(url: string, headers: Record<string, string>): Promise<T | null> {
+    for (let i = 0; i < 2; i++) {
+      const res = await fetch(url, { headers, signal: AbortSignal.timeout(12_000) }).catch(() => null);
+      if (!res) return null;
+      if (res.status === 202) { await new Promise((r) => setTimeout(r, 1500)); continue; } // computing
+      if (!res.ok) return null;
+      return (await res.json().catch(() => null)) as T | null;
+    }
+    return null;
+  }
+
+  /** GitHub repository summary for code-quality assessment: metadata, contributor count, commit count,
+   *  a rough per-developer effort split (full/part-time/occasionally/rarely) and recent participation,
+   *  plus the README. Returns the text fed to the model AND structured stats for the Sources panel. */
+  private async fetchGithubInfo(url: string): Promise<{ text: string; stats: NonNullable<ScanSource['github']> }> {
     const gh = parseGithubRepo(url);
     if (!gh) throw new Error('not a GitHub repository URL');
     const headers: Record<string, string> = { Accept: 'application/vnd.github+json', 'User-Agent': 'drep-council' };
@@ -846,16 +934,40 @@ export class ProposalCheckerService {
     if (!res.ok) throw new Error(`GitHub API returned ${res.status}`);
     const r = (await res.json()) as Record<string, unknown>;
     const s = (k: string) => (typeof r[k] === 'string' ? (r[k] as string) : '?');
-    const n = (k: string) => (typeof r[k] === 'number' ? String(r[k] as number) : '?');
+    const num = (k: string) => (typeof r[k] === 'number' ? (r[k] as number) : undefined);
 
-    let contributors = 'unknown';
+    // Contributor count (Link-header "last" page of a 1-per-page list).
+    let contributors: number | undefined;
     try {
       const c = await fetch(`${base}/contributors?per_page=1&anon=true`, { headers, signal: AbortSignal.timeout(15_000) });
-      if (c.ok) {
-        const m = /[?&]page=(\d+)>;\s*rel="last"/.exec(c.headers.get('link') || '');
-        contributors = m ? m[1] : '1';
+      if (c.ok) { const m = /[?&]page=(\d+)>;\s*rel="last"/.exec(c.headers.get('link') || ''); contributors = m ? Number(m[1]) : 1; }
+    } catch { /* leave undefined */ }
+
+    // Commit count on the default branch (same Link-header trick).
+    let commits: number | undefined;
+    try {
+      const c = await fetch(`${base}/commits?per_page=1`, { headers, signal: AbortSignal.timeout(15_000) });
+      if (c.ok) { const m = /[?&]page=(\d+)>;\s*rel="last"/.exec(c.headers.get('link') || ''); commits = m ? Number(m[1]) : 1; }
+    } catch { /* leave undefined */ }
+
+    // Per-developer effort from weekly commit counts; repo participation from the weekly totals.
+    let effort: string | undefined;
+    let participation: string | undefined;
+    const sc = await this.githubStat<{ total: number; weeks: { w: number; c: number }[] }[]>(`${base}/stats/contributors`, headers).catch(() => null);
+    if (Array.isArray(sc) && sc.length) {
+      const buckets: Record<string, number> = { 'full-time': 0, 'part-time': 0, occasionally: 0, rarely: 0 };
+      for (const a of sc) {
+        const weeks = Array.isArray(a.weeks) ? a.weeks : [];
+        const activeWeeks = weeks.filter((w) => (w.c || 0) > 0).length;
+        buckets[classifyEffort(a.total || 0, activeWeeks)] += 1;
       }
-    } catch { /* leave as unknown */ }
+      effort = Object.entries(buckets).filter(([, k]) => k > 0).map(([label, k]) => `${k} ${label}`).join(' · ');
+    }
+    const part = await this.githubStat<{ all: number[] }>(`${base}/stats/participation`, headers).catch(() => null);
+    if (part && Array.isArray(part.all) && part.all.length) {
+      const active = part.all.filter((w) => w > 0).length;
+      participation = `active in ${active} of the last ${part.all.length} weeks`;
+    }
 
     let readme = '';
     try {
@@ -863,15 +975,26 @@ export class ProposalCheckerService {
       if (rd.ok) readme = (await rd.text()).slice(0, MAX_EXTRA_LINK_CHARS);
     } catch { /* README optional */ }
 
+    const stats: NonNullable<ScanSource['github']> = {
+      repo: s('full_name') !== '?' ? s('full_name') : `${gh.owner}/${gh.repo}`,
+      contributors, commits,
+      language: s('language') !== '?' ? s('language') : undefined,
+      stars: num('stargazers_count'),
+      lastPush: s('pushed_at') !== '?' ? s('pushed_at') : undefined,
+      effort, participation,
+    };
     const meta = [
-      `Repository: ${s('full_name') !== '?' ? s('full_name') : `${gh.owner}/${gh.repo}`}`,
+      `Repository: ${stats.repo}`,
       typeof r.description === 'string' && r.description ? `Description: ${r.description}` : '',
-      `Primary language: ${s('language')}`,
-      `Stars: ${n('stargazers_count')} · Forks: ${n('forks_count')} · Open issues: ${n('open_issues_count')}`,
-      `Contributors (developers): ${contributors}`,
+      stats.language ? `Primary language: ${stats.language}` : '',
+      `Stars: ${stats.stars ?? '?'} · Forks: ${num('forks_count') ?? '?'} · Open issues: ${num('open_issues_count') ?? '?'}`,
+      `Contributors (developers): ${contributors ?? 'unknown'}`,
+      commits != null ? `Commits (default branch): ${commits}` : '',
+      effort ? `Developer effort (commits/active week): ${effort}` : '',
+      participation ? `Participation: ${participation}` : '',
       `Created: ${s('created_at')} · Last push: ${s('pushed_at')} · Archived: ${r.archived ? 'yes' : 'no'}`,
     ].filter(Boolean).join('\n');
-    return readme ? `${meta}\n\nREADME:\n${readme}` : meta;
+    return { text: readme ? `${meta}\n\nREADME:\n${readme}` : meta, stats };
   }
 
   // ── results (public read-only) ────────────────────────────────────────────────
@@ -887,7 +1010,7 @@ export class ProposalCheckerService {
       where: templateId ? { templateId } : {},
       orderBy: { createdAt: 'desc' },
       take: Math.max(1, Math.min(200, limit)),
-      select: { id: true, templateId: true, govActionId: true, govActionTitle: true, govActionType: true, amountAda: true, submittedAt: true, scorePct: true, templateFindings: true, visionPct: true, visionFindings: true, summary: true, questions: true, model: true, createdAt: true },
+      select: { id: true, templateId: true, govActionId: true, govActionTitle: true, govActionType: true, amountAda: true, submittedAt: true, scorePct: true, templateFindings: true, visionPct: true, visionFindings: true, summary: true, questions: true, sources: true, model: true, createdAt: true },
     });
   }
 

@@ -1118,6 +1118,7 @@ model ProposalCheckResult {
   questions      Json // Triangle Forces framework findings
   prompt         String?               @db.Text // the exact prompt sent to the AI (board-only log)
   rawResponse    String?               @map("raw_response") @db.Text // the raw AI response (board-only log)
+  sources        Json?                 // the sources the scorer read: proposal + each link (ok/failed, kind, GitHub stats) — shown as "Sources considered"
   model          String?
   createdBy      String?               @map("created_by") @db.Uuid
   createdAt      DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -1166,6 +1167,7 @@ model PublicScan {
   model             String?
   prompt            String?   @db.Text // board-only log
   rawResponse       String?   @map("raw_response") @db.Text // board-only log
+  sources           Json?     // the sources the scorer read: proposal + each link (ok/failed, kind, GitHub stats) — shown as "Sources considered"
   // Versioning: "Edit and Rescan" forks a DONE scan into a new PENDING version that copies its content,
   // keeps the old one, and links back to its parent. version = parent.version + 1.
   parentScanId      String?     @map("parent_scan_id") @db.Uuid

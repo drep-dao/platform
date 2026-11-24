@@ -109,6 +109,11 @@ export class SetActiveDto {
   @IsBoolean() active!: boolean;
 }
 
+export class ProbeLinksDto {
+  // The links the user wants to check (public form) — confirm each can actually be read before scanning.
+  @IsArray() @ArrayMaxSize(10) @IsString({ each: true }) @MaxLength(2000, { each: true }) urls!: string[];
+}
+
 export class GovActionTitlesDto {
   @IsArray() @ArrayMaxSize(200) @IsString({ each: true }) @MaxLength(120, { each: true }) ids!: string[];
 }

@@ -16,6 +16,13 @@ const MAX_EXTRA_LINK_CHARS = 15_000;
 /** One fetched link during scoring: the text fed to the model + the ScanSource summary for the UI. */
 type FetchedSource = { url: string; kind: 'document' | 'github'; ok: boolean; text: string; source: ScanSource };
 
+/** Prepended to the external/GitHub link blocks so the model actually QUOTES linked evidence (not only
+ *  the proposal). Without a verbatim quote the deterministic matcher has nothing to attribute, so the
+ *  "from a linked source" icons + evidence credit never appear. Embedded in the data so it holds even
+ *  when the board runs a custom scoring prompt. */
+const LINK_EVIDENCE_HINT =
+  'These sources are EVIDENCE, not just context. When the backing for an answer is here rather than in the proposal, quote that passage VERBATIM in "evidence" (keep the exact wording so it can be matched to its Source) and set "evidenceCited":"yes". Do not paraphrase — quote word-for-word.';
+
 // ── Public paid proposal-scan — config keys (platform_config) + defaults ────────
 const PUBLIC_SCAN_ENABLED = 'PUBLIC_SCAN_ENABLED';
 const PUBLIC_SCAN_FEE_ADA = 'PUBLIC_SCAN_FEE_ADA';
@@ -755,8 +762,11 @@ export class ProposalCheckerService {
       '#FRAMEWORK_QUESTIONS': renderFramework(framework),
       '#VISION_REFERENCE': await this.ai.visionReference(),
       '#VISION_QUESTIONS': renderFramework(vision),
-      '#EXTERNAL_LINKS': externalBlock || '(none provided)',
-      '#GITHUB_LINKS': githubBlock || '(none provided)',
+      // The hint is embedded in the data block so it applies even when the board uses a CUSTOM prompt
+      // (which may still say "quote the proposal"): the model must quote linked evidence verbatim, so the
+      // deterministic matcher can attribute it and the "Sources" + per-quote link icons actually appear.
+      '#EXTERNAL_LINKS': externalBlock ? `${LINK_EVIDENCE_HINT}\n\n${externalBlock}` : '(none provided)',
+      '#GITHUB_LINKS': githubBlock ? `${LINK_EVIDENCE_HINT}\n\n${githubBlock}` : '(none provided)',
     };
     // Order matters: longer tokens (TEMPLATE_RUBRIC, VISION_*) before TEMPLATE_RULES so the right one wins.
     const render = (prompt: string) => prompt.replace(/#(?:PROPOSAL|TEMPLATE_RUBRIC|TEMPLATE_RULES|FRAMEWORK_QUESTIONS|VISION_REFERENCE|VISION_QUESTIONS|EXTERNAL_LINKS|GITHUB_LINKS)\b/g, (m: string) => values[m] ?? m);

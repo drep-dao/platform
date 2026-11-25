@@ -83,7 +83,7 @@ export function PublicLanding({ onConnect, onExplore, onOpenVote, onOpenGroupVot
             ) : <span />}
             {governance ? (
               <button onClick={() => setDonateOpen(true)}
-                className="inline-flex shrink-0 items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-[#0b5f3b] shadow-lg shadow-emerald-950/20 ring-1 ring-black/5 transition hover:bg-emerald-50">
+                className="group inline-flex shrink-0 items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-[#0b5f3b] shadow-lg shadow-emerald-950/20 ring-1 ring-black/5 transition hover:bg-emerald-50">
                 <HeartIcon />
                 <span className="hidden sm:inline">{t('Donate to DRep Council')}</span>
                 <span className="sm:hidden">{t('Donate')}</span>
@@ -306,7 +306,7 @@ export function PublicLanding({ onConnect, onExplore, onOpenVote, onOpenGroupVot
 
 function HeartIcon() {
   return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+    <svg viewBox="0 0 24 24" className="h-4 w-4 text-[#0b5f3b] transition-colors duration-200 group-hover:text-rose-500" fill="currentColor" aria-hidden="true">
       <path d="M12 21s-6.7-4.35-9.33-8.07C1.1 10.6 1.6 7.6 3.9 6.2c1.9-1.15 4.2-.6 5.5 1.03L12 9.5l2.6-2.27c1.3-1.63 3.6-2.18 5.5-1.03 2.3 1.4 2.8 4.4 1.23 6.73C18.7 16.65 12 21 12 21z" />
     </svg>
   );

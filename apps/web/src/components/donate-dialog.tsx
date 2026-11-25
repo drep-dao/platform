@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { treasuryApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { connectWalletForTx, type Cip30WalletEntry } from '@/lib/cip30';
@@ -74,6 +74,7 @@ export function DonateDialog({ open, onClose }: { open: boolean; onClose: () => 
         {txHash ? (
           // ---- Success ----
           <div className="text-center">
+            <Confetti />
             <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
               <CheckIcon />
             </div>
@@ -141,10 +142,12 @@ export function DonateDialog({ open, onClose }: { open: boolean; onClose: () => 
                 </p>
               ) : (
                 wallets.map((w) => (
+                  // Icon in a fixed left slot (absolute) so every wallet icon lines up in one column
+                  // while the label stays centred.
                   <button key={w.key} type="button" disabled={!amountValid || !!busy} onClick={() => donate(w)}
-                    className="flex w-full items-center justify-center gap-2 rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50">
-                    {w.icon ? <img src={w.icon} alt="" className="h-5 w-5" /> : null}
-                    {busy === w.key ? t('Confirm in your wallet…') : `${t('Donate with')} ${w.name}`}
+                    className="relative flex w-full items-center justify-center rounded-full bg-emerald-600 px-11 py-2.5 text-sm font-semibold text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50">
+                    {w.icon ? <img src={w.icon} alt="" className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 object-contain" /> : null}
+                    <span>{busy === w.key ? t('Confirm in your wallet…') : `${t('Donate with')} ${w.name}`}</span>
                   </button>
                 ))
               )}
@@ -155,6 +158,56 @@ export function DonateDialog({ open, onClose }: { open: boolean; onClose: () => 
       </div>
     </div>
   );
+}
+
+/** A one-shot confetti burst for the thank-you moment — a full-screen canvas, dependency-free.
+ *  Skipped when the viewer prefers reduced motion. */
+function Confetti() {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    const canvas = ref.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+    const dpr = window.devicePixelRatio || 1;
+    let W = window.innerWidth, H = window.innerHeight;
+    const resize = () => { W = window.innerWidth; H = window.innerHeight; canvas.width = W * dpr; canvas.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); };
+    resize();
+    const colors = ['#10b981', '#34d399', '#fbbf24', '#f472b6', '#60a5fa', '#a78bfa', '#f87171'];
+    const parts = Array.from({ length: 150 }, () => ({
+      x: W / 2 + (Math.random() - 0.5) * W * 0.4,
+      y: H * 0.32 + (Math.random() - 0.5) * 40,
+      vx: (Math.random() - 0.5) * 9,
+      vy: Math.random() * -8 - 2,
+      rot: Math.random() * Math.PI * 2,
+      vr: (Math.random() - 0.5) * 0.35,
+      size: 6 + Math.random() * 6,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      round: Math.random() < 0.4,
+    }));
+    const start = performance.now();
+    let raf = 0;
+    const tick = (now: number) => {
+      const el = now - start;
+      ctx.clearRect(0, 0, W, H);
+      for (const p of parts) {
+        p.vy += 0.16; p.vx *= 0.99; p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+        ctx.save();
+        ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+        ctx.globalAlpha = Math.max(0, 1 - el / 3000);
+        ctx.fillStyle = p.color;
+        if (p.round) { ctx.beginPath(); ctx.arc(0, 0, p.size / 2, 0, Math.PI * 2); ctx.fill(); }
+        else ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.55);
+        ctx.restore();
+      }
+      if (el < 3200) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    window.addEventListener('resize', resize);
+    return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', resize); };
+  }, []);
+  return <canvas ref={ref} className="pointer-events-none fixed inset-0 z-[60]" aria-hidden="true" />;
 }
 
 function CheckIcon() {

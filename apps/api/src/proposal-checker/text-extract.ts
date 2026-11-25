@@ -45,6 +45,27 @@ async function assertPublicHost(hostname: string): Promise<void> {
 /** Max characters of extracted text we keep/feed the AI (keeps prompts + storage bounded). */
 export const MAX_EXTRACTED_CHARS = 60_000;
 
+/** Browser-like request headers. Some public sites (lightweight UA-sniffing or default-bot filters)
+ *  refuse an undici/node default UA; a realistic header set lets those sites load. It does NOT defeat
+ *  full bot-management walls (e.g. Cloudflare) — those stay a genuine "could not load". */
+const BROWSER_HEADERS: Record<string, string> = {
+  'user-agent':
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'accept-language': 'en-US,en;q=0.9',
+};
+
+/** Parse a `Retry-After` header (delta-seconds or HTTP-date) into a bounded wait in ms, clamped to
+ *  0–3000 ms so a throttled first hit gets one short retry without stalling the scan. */
+export function retryAfterMs(h: string | null): number {
+  if (!h) return 1000;
+  const secs = Number(h);
+  if (Number.isFinite(secs)) return Math.min(Math.max(secs, 0), 3) * 1000;
+  const date = Date.parse(h);
+  if (!Number.isNaN(date)) return Math.min(Math.max(date - Date.now(), 0), 3000);
+  return 1000;
+}
+
 export type ExtractResult = { text: string; note?: string };
 
 /** Decode a `data:<mime>;base64,<...>` data URL into { mime, buffer }. */
@@ -173,16 +194,24 @@ export async function fetchAndExtract(
   // exports (which redirect to public googleusercontent hosts) still work.
   let fetchUrl = first;
   let res: Response | null = null;
-  for (let hop = 0; hop < 5; hop++) {
+  let retried = false;
+  for (let hop = 0; hop < 6; hop++) {
     if (!/^https?:\/\//i.test(fetchUrl)) throw new Error('enter a valid http(s) link');
     await assertPublicHost(new URL(fetchUrl).hostname);
-    res = await fetch(fetchUrl, { signal: AbortSignal.timeout(20_000), redirect: 'manual' }).catch((e) => {
+    res = await fetch(fetchUrl, { signal: AbortSignal.timeout(20_000), redirect: 'manual', headers: BROWSER_HEADERS }).catch((e) => {
       throw new Error(e instanceof Error ? e.message : String(e));
     });
     if (res.status >= 300 && res.status < 400) {
       const loc = res.headers.get('location');
       if (!loc) break;
       fetchUrl = new URL(loc, fetchUrl).toString();
+      continue;
+    }
+    // One bounded retry on 429 — some sites throttle the first hit, then serve the second.
+    if (res.status === 429 && !retried) {
+      retried = true;
+      const waitMs = retryAfterMs(res.headers.get('retry-after'));
+      await new Promise((r) => setTimeout(r, waitMs));
       continue;
     }
     break;

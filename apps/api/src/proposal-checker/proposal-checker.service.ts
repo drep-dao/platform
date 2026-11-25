@@ -21,7 +21,7 @@ type FetchedSource = { url: string; kind: 'document' | 'github'; ok: boolean; te
  *  "from a linked source" icons + evidence credit never appear. Embedded in the data so it holds even
  *  when the board runs a custom scoring prompt. */
 const LINK_EVIDENCE_HINT =
-  'These sources are EVIDENCE, not just context. When the backing for an answer is here rather than in the proposal, quote that passage VERBATIM in "evidence" (keep the exact wording so it can be matched to its Source) and set "evidenceCited":"yes". Do not paraphrase — quote word-for-word.';
+  'These sources are EVIDENCE, not just context — mine them. Whenever a linked source CONFIRMS, QUANTIFIES, EXTENDS or CONTRADICTS a claim, or supplies a concrete fact the proposal states only vaguely or omits (a figure, deliverable, deadline, audit result, track record, or code-repository activity), quote THAT passage VERBATIM in "evidence" (keep the exact wording so it can be matched to its Source) and set "evidenceCited":"yes". Include the linked quote ALONGSIDE any proposal quote, so a reviewer can judge the item from the evidence shown without opening the link — this is what speeds the review up. Quote only passages genuinely RELEVANT to the item; do not pad with unrelated text, and do not paraphrase — quote word-for-word.';
 
 // ── Public paid proposal-scan — config keys (platform_config) + defaults ────────
 const PUBLIC_SCAN_ENABLED = 'PUBLIC_SCAN_ENABLED';

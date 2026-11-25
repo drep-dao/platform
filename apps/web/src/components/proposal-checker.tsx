@@ -1001,8 +1001,15 @@ function DimSection({ title, pct, caption, defaultOpen, children }: { title: str
   );
 }
 
-/** Small kind glyph for a source row (document vs GitHub repo). */
+/** Small kind glyph for a source row (document, GitHub repo, or image). */
 function SourceKindIcon({ kind }: { kind: PcSource['kind'] }) {
+  if (kind === 'image') {
+    return (
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 shrink-0 text-neutral-500" aria-hidden="true">
+        <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="m21 15-5-5L5 21" />
+      </svg>
+    );
+  }
   if (kind === 'github') {
     return (
       <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" className="mt-0.5 shrink-0 text-neutral-500" aria-hidden="true">
@@ -1031,6 +1038,74 @@ function GithubStats({ g }: { g: NonNullable<PcSource['github']> }) {
       {head ? <p>{head}</p> : null}
       {g.effort ? <p><span className="text-neutral-400">{t('Developer effort')}: </span>{g.effort}</p> : null}
       {g.participation ? <p><span className="text-neutral-400">{t('Participation')}: </span>{g.participation}</p> : null}
+      {g.topContributors && g.topContributors.length ? (
+        <p className="pt-0.5">
+          <span className="text-neutral-400">{t('Top contributors')}: </span>
+          {g.topContributors.slice(0, 6).map((c, i) => (
+            <span key={c.login}>
+              {i > 0 ? ', ' : ''}
+              <a href={`https://github.com/${encodeURIComponent(c.login)}`} target="_blank" rel="noopener noreferrer" className="text-sky-600 hover:underline dark:text-sky-400">{c.login}</a>
+              <span className="text-neutral-400"> ({c.commits.toLocaleString()}, {t(c.effort)})</span>
+            </span>
+          ))}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/** Replicates the backend's classifyEffort so a developer's effort can be recomputed from their TOTAL
+ *  work across several repositories (not just one). Keep the thresholds in sync with framework.ts. */
+function effortOf(commits: number, weeks: number): string {
+  if (weeks <= 0 || commits <= 0) return 'rarely';
+  const perWeek = commits / weeks;
+  return perWeek >= 10 ? 'full-time' : perWeek >= 3 ? 'part-time' : perWeek >= 1 ? 'occasionally' : 'rarely';
+}
+
+/** Aggregate view across all GitHub repositories a proposal links: how much work was done in total, the
+ *  overall full/part-time split by each developer's TOTAL contribution, and which developers appear across
+ *  several repos (with their per-repo commits). Shown once below the per-repo rows. */
+function GithubAggregate({ sources }: { sources: PcSource[] }) {
+  const t = useT();
+  const repos = sources.filter((s) => s.kind === 'github' && s.github);
+  if (repos.length < 2) return null; // only meaningful once several repos are linked
+  const devs = new Map<string, { commits: number; weeks: number; repos: { repo: string; commits: number }[] }>();
+  for (const s of repos) {
+    const repoName = s.github!.repo || s.url || '';
+    for (const c of s.github!.topContributors ?? []) {
+      const d = devs.get(c.login) ?? { commits: 0, weeks: 0, repos: [] };
+      d.commits += c.commits; d.weeks += c.activeWeeks; d.repos.push({ repo: repoName, commits: c.commits });
+      devs.set(c.login, d);
+    }
+  }
+  const totalCommits = repos.reduce((n, s) => n + (s.github!.commits ?? 0), 0);
+  const buckets: Record<string, number> = { 'full-time': 0, 'part-time': 0, occasionally: 0, rarely: 0 };
+  for (const d of devs.values()) buckets[effortOf(d.commits, d.weeks)] += 1;
+  const effortLine = Object.entries(buckets).filter(([, k]) => k > 0).map(([l, k]) => `${k} ${t(l)}`).join(' · ');
+  const crossRepo = [...devs.entries()].filter(([, d]) => d.repos.length >= 2).sort((a, b) => b[1].commits - a[1].commits).slice(0, 8);
+  const head = [
+    `${repos.length} ${t('repositories')}`,
+    totalCommits ? `${totalCommits.toLocaleString()} ${t('commits')}` : '',
+    devs.size ? `${devs.size} ${t('named developers')}` : '',
+  ].filter(Boolean).join(' · ');
+  return (
+    <div className="mt-2 space-y-1 rounded-md border border-neutral-200 bg-neutral-50 p-2 text-[11px] text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300">
+      <p className="text-xs font-semibold text-neutral-700 dark:text-neutral-200">{t('Across all repositories')}</p>
+      {head ? <p>{head}</p> : null}
+      {effortLine ? <p><span className="text-neutral-400">{t('Overall effort (by each developer’s total work)')}: </span>{effortLine}</p> : null}
+      {crossRepo.length ? (
+        <div>
+          <p className="text-neutral-400">{t('Developers contributing to several repositories')}:</p>
+          <ul className="mt-0.5 space-y-0.5">
+            {crossRepo.map(([login, d]) => (
+              <li key={login}>
+                <a href={`https://github.com/${encodeURIComponent(login)}`} target="_blank" rel="noopener noreferrer" className="text-sky-600 hover:underline dark:text-sky-400">{login}</a>
+                <span className="text-neutral-400"> — {d.repos.length} {t('repos')}, {d.commits.toLocaleString()} {t('commits')} ({t(effortOf(d.commits, d.weeks))})</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1093,6 +1168,7 @@ function SourcesPanel({ sources }: { sources?: PcSource[] | null }) {
           <ul className="space-y-1.5">
             {sources.map((s, i) => <SourceRow key={i} s={s} />)}
           </ul>
+          <GithubAggregate sources={sources} />
         </div>
       ) : null}
     </div>

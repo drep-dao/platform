@@ -37,7 +37,7 @@ export interface EvidenceItem {
 /** One source the scorer read, for the "Sources considered" panel. `kind` = what it is; `ok` = whether
  *  its content was successfully loaded; `github` carries repo stats when kind === 'github'. */
 export interface ScanSource {
-  kind: 'proposal' | 'document' | 'github';
+  kind: 'proposal' | 'document' | 'github' | 'image';
   url?: string; // omitted for the proposal itself
   ok: boolean;
   note?: string; // 'truncated', the failure reason, or a short descriptor
@@ -51,6 +51,10 @@ export interface ScanSource {
     lastPush?: string;
     effort?: string; // e.g. "1 full-time · 2 part-time · 5 occasionally"
     participation?: string; // e.g. "active in 34 of the last 52 weeks"
+    // Top named contributors (login + commit count + their effort) so the UI can show WHO did the work
+    // per repo and aggregate contributors who appear across several repos. Omitted when GitHub returns
+    // no named stats (anonymised accounts, or stats still computing).
+    topContributors?: { login: string; commits: number; activeWeeks: number; effort: string }[];
   };
 }
 
@@ -359,6 +363,29 @@ export function urlsFromText(text: string): string[] {
     out.push(u);
     if (out.length >= 20) break;
   }
+  return out;
+}
+
+/** Image URLs embedded in the proposal: markdown images `![alt](url)` plus bare links ending in an
+ *  image extension. These carry evidence (budget tables, charts, roadmaps) that is often NOT in the text,
+ *  so they are sent to a vision pass rather than fetched as documents. SVG is skipped (vision can't read
+ *  it). De-duplicated, order preserved. */
+export function imageUrlsFromText(text: string): string[] {
+  if (!text) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const add = (raw: string) => {
+    let u = (raw || '').trim().replace(/[.,;:!?]+$/, '');
+    while (u.endsWith(')') && !u.slice(0, -1).includes('(')) u = u.slice(0, -1);
+    if (!/^https?:\/\//i.test(u)) return;
+    if (/\.svg(\?|#|$)/i.test(u)) return; // vision models reject SVG
+    const key = u.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(u);
+  };
+  for (const m of text.matchAll(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/gi)) add(m[1]); // markdown images
+  for (const m of text.matchAll(/https?:\/\/[^\s<>[\]"'`)]+\.(?:png|jpe?g|gif|webp)(?:\?[^\s<>[\]"'`)]*)?/gi)) add(m[0]); // bare image links
   return out;
 }
 

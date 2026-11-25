@@ -3,7 +3,7 @@ import { Prisma } from '@drep-dao/db';
 import { PrismaService } from '../prisma/prisma.service';
 import { CardanoQueryService, type GovAction, type GovActionMeta } from '../cardano/cardano-query.service';
 import { AiService, AiError } from './ai.service';
-import { renderFramework, pctFromFindings, urlsFromText, attributeFindingsEvidence, classifyEffort, type ReviewFramework, type ReviewFinding, type ScanSource } from './framework';
+import { renderFramework, pctFromFindings, urlsFromText, imageUrlsFromText, attributeFindingsEvidence, classifyEffort, type ReviewFramework, type ReviewFinding, type ScanSource } from './framework';
 import { extractText, parseDataUrl, fetchAndExtract, MAX_EXTRACTED_CHARS } from './text-extract';
 import { verifyCip30Signature } from '../auth/cip30';
 
@@ -739,17 +739,38 @@ export class ProposalCheckerService {
     // on-chain references, AND any URL written in the proposal text itself — so behaviour is the same
     // whether the proposal is on-chain or pasted. GitHub repos get code/contributor stats; the rest are
     // read as documents. Each is fetched once (best-effort); failures are noted, never fatal.
+    // Images embedded in the proposal (budget tables, charts, roadmaps) carry evidence that is often NOT
+    // in the text. Pull them out FIRST so they are read by a vision pass instead of being fetched as
+    // documents (a .png has no extractable text), and excluded from the document/GitHub link set.
+    const imageUrls = imageUrlsFromText(opts.proposalText);
+    const imageSet = new Set(imageUrls.map((u) => u.toLowerCase()));
     const links = [...new Set(
       [...(opts.extraLinks ?? []), ...(opts.refUris ?? []), ...urlsFromText(opts.proposalText)]
         .map((l) => (l || '').trim()).filter(Boolean),
-    )].slice(0, 10);
+    )].filter((l) => !imageSet.has(l.toLowerCase())).slice(0, 10);
     const fetched = await Promise.all(links.map((url) => this.fetchSource(url)));
     const externalBlock = this.buildLinkBlock(fetched.filter((f) => f.kind === 'document'));
     const githubBlock = this.buildLinkBlock(fetched.filter((f) => f.kind === 'github'));
-    // "Sources considered": the proposal itself + every link, with load status (and GitHub stats). This
-    // is what the UI shows so a reader sees exactly what the scorer read and whether each link loaded.
+
+    // Vision pass: transcribe the proposal's images into a FIGURES block appended to the proposal text, so
+    // all three dimensions AND the evidence attributor use the figures' content. One extra call, not three.
+    // Degrades safely: if the model can't read the images, the figures are skipped and the images are shown
+    // as not-read in the sources panel rather than failing the whole score.
+    let figures = '';
+    let imageNote: string | undefined;
+    if (imageUrls.length) {
+      try { figures = await this.ai.describeImages(imageUrls); }
+      catch (e) { imageNote = e instanceof Error ? e.message : String(e); }
+    }
+    const proposalText = figures
+      ? `${opts.proposalText}\n\n# FIGURES — content transcribed from images embedded in the proposal\n${figures}`
+      : opts.proposalText;
+
+    // "Sources considered": the proposal itself + every image read + every link, with load status (and
+    // GitHub stats). This is what the UI shows so a reader sees exactly what the scorer read.
     const sources: ScanSource[] = [
-      { kind: 'proposal', ok: true, chars: opts.proposalText.length },
+      { kind: 'proposal', ok: true, chars: proposalText.length },
+      ...imageUrls.map((url) => ({ kind: 'image' as const, url, ok: !!figures, note: figures ? undefined : (imageNote ?? 'image not read') })),
       ...fetched.map((f) => f.source),
     ];
 
@@ -758,7 +779,7 @@ export class ProposalCheckerService {
     const values: Record<string, string> = {
       '#TEMPLATE_RULES': template.extractedText,
       '#TEMPLATE_RUBRIC': rubricBlock,
-      '#PROPOSAL': opts.proposalText,
+      '#PROPOSAL': proposalText,
       '#FRAMEWORK_QUESTIONS': renderFramework(framework),
       '#VISION_REFERENCE': await this.ai.visionReference(),
       '#VISION_QUESTIONS': renderFramework(vision),
@@ -793,9 +814,9 @@ export class ProposalCheckerService {
     // the backstop below — so a requirement genuinely backed by an external link (evidenceCited flips to
     // 'yes') is not capped for "no external source". The UI then marks each quote proposal/link + tooltip.
     const fetchedTexts = fetched.map((f) => ({ url: f.url, text: f.text }));
-    tpl.findings = attributeFindingsEvidence(tpl.findings, opts.proposalText, fetchedTexts);
-    fw.findings = attributeFindingsEvidence(fw.findings, opts.proposalText, fetchedTexts);
-    vis.findings = attributeFindingsEvidence(vis.findings, opts.proposalText, fetchedTexts);
+    tpl.findings = attributeFindingsEvidence(tpl.findings, proposalText, fetchedTexts);
+    fw.findings = attributeFindingsEvidence(fw.findings, proposalText, fetchedTexts);
+    vis.findings = attributeFindingsEvidence(vis.findings, proposalText, fetchedTexts);
     // Deterministic backstop for the evidence hard-rule the model does not reliably obey on polished
     // proposals (it marks evidence-seeking template requirements "Supported" while citing no external
     // source — e.g. PFMS: 25/25 Supported, all evidenceCited=no). An evidence-seeking requirement
@@ -960,18 +981,26 @@ export class ProposalCheckerService {
       if (c.ok) { const m = /[?&]page=(\d+)>;\s*rel="last"/.exec(c.headers.get('link') || ''); commits = m ? Number(m[1]) : 1; }
     } catch { /* leave undefined */ }
 
-    // Per-developer effort from weekly commit counts; repo participation from the weekly totals.
+    // Per-developer effort from weekly commit counts; repo participation from the weekly totals; plus the
+    // named top contributors (login + commits + effort) so the UI can show WHO did the work and aggregate
+    // developers who appear across several repos.
     let effort: string | undefined;
     let participation: string | undefined;
-    const sc = await this.githubStat<{ total: number; weeks: { w: number; c: number }[] }[]>(`${base}/stats/contributors`, headers).catch(() => null);
+    let topContributors: { login: string; commits: number; activeWeeks: number; effort: string }[] | undefined;
+    const sc = await this.githubStat<{ total: number; author?: { login?: string }; weeks: { w: number; c: number }[] }[]>(`${base}/stats/contributors`, headers).catch(() => null);
     if (Array.isArray(sc) && sc.length) {
       const buckets: Record<string, number> = { 'full-time': 0, 'part-time': 0, occasionally: 0, rarely: 0 };
+      const named: { login: string; commits: number; activeWeeks: number; effort: string }[] = [];
       for (const a of sc) {
         const weeks = Array.isArray(a.weeks) ? a.weeks : [];
         const activeWeeks = weeks.filter((w) => (w.c || 0) > 0).length;
-        buckets[classifyEffort(a.total || 0, activeWeeks)] += 1;
+        const eff = classifyEffort(a.total || 0, activeWeeks);
+        buckets[eff] += 1;
+        const login = a.author?.login;
+        if (login) named.push({ login, commits: a.total || 0, activeWeeks, effort: eff });
       }
       effort = Object.entries(buckets).filter(([, k]) => k > 0).map(([label, k]) => `${k} ${label}`).join(' · ');
+      if (named.length) topContributors = named.sort((x, y) => y.commits - x.commits).slice(0, 8);
     }
     const part = await this.githubStat<{ all: number[] }>(`${base}/stats/participation`, headers).catch(() => null);
     if (part && Array.isArray(part.all) && part.all.length) {
@@ -991,7 +1020,7 @@ export class ProposalCheckerService {
       language: s('language') !== '?' ? s('language') : undefined,
       stars: num('stargazers_count'),
       lastPush: s('pushed_at') !== '?' ? s('pushed_at') : undefined,
-      effort, participation,
+      effort, participation, topContributors,
     };
     const meta = [
       `Repository: ${stats.repo}`,

@@ -26,6 +26,11 @@ const DEFAULT_MAX_TOKENS = 8000; // reasoning models spend part of this on reaso
 const DEFAULT_TEMPERATURE = 0.2; // scoring wants consistency; low temperature = more deterministic
 const DEFAULT_CHECK_INTERVAL_HOURS = 24;
 const OPENAI_BASE = 'https://api.openai.com/v1';
+const MAX_PROPOSAL_IMAGES = 8; // vision pass: cap images per proposal to bound cost/latency
+
+/** A chat message's content: plain text, or (for the vision pass) a mix of text and image parts. */
+type ChatPart = { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string; detail?: 'low' | 'high' | 'auto' } };
+type ChatMessage = { role: string; content: string | ChatPart[] };
 
 /** Placeholders each prompt may reference, replaced with live data at score time. Required ones must
  *  appear in a board-edited prompt. Three dimensions, three prompts, each with its own placeholders. */
@@ -404,7 +409,7 @@ export class AiService {
   }
 
   // ── chat-completions calls (OpenAI-compatible) ───────────────────────────────
-  private async chat(key: string, model: string, messages: { role: string; content: string }[], maxTokens: number, jsonMode: boolean): Promise<Record<string, unknown>> {
+  private async chat(key: string, model: string, messages: ChatMessage[], maxTokens: number, jsonMode: boolean): Promise<Record<string, unknown>> {
     const url = `${await this.baseUrl()}/chat/completions`;
     const temp = await this.temperature();
     const send = (modern: boolean): Promise<Response> => {
@@ -534,6 +539,26 @@ Return STRICT JSON only: {"questions": ["<question>", ...]}`;
     try { parsed = JSON.parse(raw) as typeof parsed; } catch { parsed = {}; }
     const findings = buildFindings(questionSet, parsed.findings);
     return { pct: pctFromFindings(findings), findings, raw, model };
+  }
+
+  /** Vision pass: read the images embedded in a proposal and transcribe each one's content (text, tables,
+   *  chart values, budget lines, roadmaps) into plain text, so the three scoring dimensions can use figures
+   *  that are not written in the proposal text. Returns '' when no images are given. Needs a vision-capable
+   *  model (the configured gpt-4o is); a non-vision model surfaces as an AiError the caller can note. */
+  async describeImages(imageUrls: string[]): Promise<string> {
+    const urls = [...new Set((imageUrls ?? []).map((u) => (u || '').trim()).filter(Boolean))].slice(0, MAX_PROPOSAL_IMAGES);
+    if (!urls.length) return '';
+    const key = await this.apiKey();
+    if (!key) throw new AiError('no_key', 'No API key is configured.');
+    const model = await this.model();
+    const instr =
+      'These images are figures embedded in a Cardano governance proposal (budget tables, charts, download/usage graphs, roadmaps, screenshots). For EACH image, transcribe its content FAITHFULLY and in full: every label, number, table row, chart value, budget line, axis and legend, plus a one-line note of what it depicts. Preserve exact figures and units — do not round, summarise or judge. Output a numbered list, one entry per image: "Figure N: <transcription>".';
+    const content: ChatPart[] = [
+      { type: 'text', text: instr },
+      ...urls.map((url) => ({ type: 'image_url' as const, image_url: { url, detail: 'high' as const } })),
+    ];
+    const resp = await this.chat(key, model, [{ role: 'user', content }], await this.maxTokens(), false);
+    return this.firstMessage(resp).trim();
   }
 
   private firstMessage(resp: Record<string, unknown>): string {

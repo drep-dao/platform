@@ -2794,12 +2794,12 @@ export interface PcReviewFramework { title: string; attribution?: string; guidan
 export interface PcEvidenceItem { quote: string; from: 'proposal' | 'external'; url?: string }
 // One source the scorer read, for the "Sources considered" panel.
 export interface PcSource {
-  kind: 'proposal' | 'document' | 'github';
+  kind: 'proposal' | 'document' | 'github' | 'image';
   url?: string;
   ok: boolean;
   note?: string;
   chars?: number;
-  github?: { repo: string; contributors?: number; commits?: number; language?: string; stars?: number; lastPush?: string; effort?: string; participation?: string };
+  github?: { repo: string; contributors?: number; commits?: number; language?: string; stars?: number; lastPush?: string; effort?: string; participation?: string; topContributors?: { login: string; commits: number; activeWeeks: number; effort: string }[] };
 }
 // One assessed framework question; `outcome` is one of the framework's outcome labels.
 export interface PcFinding { id: number; tier?: 'base' | 'middle' | 'large'; area: string; question: string; outcome: string; reason?: string; risk?: string; condition?: string; templateRefs?: string[]; evidence?: string | (string | PcEvidenceItem)[]; evidenceCited?: string; role?: 'force' | 'verification'; verifies?: string }

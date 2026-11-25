@@ -23,6 +23,7 @@ export interface TreasuryTx {
   proposalPublicId?: string; // R<round>-P<n>
   proposalTitle?: string;
   submitter?: string; // display name of the fee payer (incoming submission fees)
+  donorComment?: string; // §donate — the donor's message attached to an incoming donation (CIP-20)
   destAddress?: string; // recipient (outgoing board actions)
   // §15 — board-provided context (overrides `label` for display when set).
   annotationTitle?: string;
@@ -785,6 +786,14 @@ export class TreasuryService implements OnModuleInit {
     const scanPays = await this.prisma.publicScanPayment.findMany({ select: { txHash: true, scan: { select: { title: true } } } });
     const scanPayTitleByHash = new Map(scanPays.map((p) => [p.txHash.toLowerCase(), p.scan?.title ?? null]));
 
+    // §donate — public donations keyed by tx hash, so an incoming donation reads as "donation"
+    // (with the donor's comment) instead of "anonymous income".
+    const donations = await this.prisma.treasuryDonation.findMany({
+      where: { txHash: { not: null } },
+      select: { txHash: true, comment: true },
+    });
+    const donationByHash = new Map(donations.map((d) => [(d.txHash as string).toLowerCase(), d.comment]));
+
     const transactions: TreasuryTx[] = txs.map((t): TreasuryTx | null => {
       const net = t.inLovelace - t.outLovelace;
       const fee = feeByHash.get(t.hash);
@@ -830,6 +839,10 @@ export class TreasuryService implements OnModuleInit {
           tx.label = 'Proposal Score tool payment';
           const title = scanPayTitleByHash.get(t.hash.toLowerCase());
           if (title) tx.proposalTitle = title;
+        } else if (donationByHash.has(t.hash.toLowerCase())) {
+          tx.label = 'donation';
+          const comment = donationByHash.get(t.hash.toLowerCase());
+          if (comment) tx.donorComment = comment;
         } else tx.label = 'anonymous income';
       } else if (action) {
         tx.label = actionLabel(action);

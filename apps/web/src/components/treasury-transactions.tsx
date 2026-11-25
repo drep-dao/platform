@@ -184,6 +184,16 @@ export function TreasuryTransactions() {
                   </div>
                 ) : null}
 
+                {/* §donate — the donor's comment carried on-chain with an incoming donation (CIP-20). */}
+                {t.donorComment ? (
+                  <div className="mt-1 flex items-start gap-1.5 rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300">
+                    <svg viewBox="0 0 24 24" className="mt-0.5 h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                    </svg>
+                    <span className="italic">“{t.donorComment}”</span>
+                  </div>
+                ) : null}
+
                 {/* §15 — the 3-of-5 board members whose signatures sent this tx. */}
                 {t.signers && t.signers.length > 0 ? (
                   <div className="mt-1 text-xs text-neutral-600 dark:text-neutral-400">

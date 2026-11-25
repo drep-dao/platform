@@ -241,6 +241,54 @@ export class CardanoQueryService {
     if (!res.ok) throw new Error(`submittx ${res.status}: ${await res.text()}`);
   }
 
+  /** Whether a submit failure is a CONNECTION hiccup (Koios's submit-api briefly losing its node —
+   *  `TxCmdTxSubmitConnectionError`) rather than a genuine ledger rejection. Only the former is
+   *  worth retrying / failing over — a real rejection (DecoderError, ValueNotConserved, …) won't
+   *  change on a retry. */
+  private isSubmitConnError(s: string): boolean {
+    return /TxSubmitConnectionError|ConnectionError|does not exist|Network\.Socket|ECONN|fetch failed|timed out/i.test(s);
+  }
+
+  /**
+   * Submit a signed tx resiliently. Koios /submittx is primary; a transient CONNECTION failure
+   * (Koios's submit backend momentarily can't reach its node) is retried with backoff and then
+   * fails over to Blockfrost /tx/submit when a Blockfrost key is configured. A genuine ledger
+   * rejection is thrown immediately (retrying/failing over can't help). Throws the last error.
+   */
+  async submitTx(hex: string): Promise<void> {
+    const body = Buffer.from(hex, 'hex');
+    const delays = [0, 600, 1800, 3600];
+    let lastErr = 'tx submit failed';
+    let lastWasConn = false;
+    for (const d of delays) {
+      if (d) await new Promise((r) => setTimeout(r, d));
+      try {
+        const res = await this.koiosFetch('/submittx', { method: 'POST', headers: { 'Content-Type': 'application/cbor' }, body });
+        if (res.ok) return;
+        const text = await res.text();
+        lastErr = `submittx ${res.status}: ${text.slice(0, 400)}`;
+        lastWasConn = this.isSubmitConnError(text);
+        if (!lastWasConn) break; // a real ledger rejection — stop retrying
+      } catch (e) {
+        lastErr = e instanceof Error ? e.message : String(e);
+        lastWasConn = true; // network-level error reaching Koios → retryable
+      }
+    }
+    // Fail over to Blockfrost only for a connection-class failure (and only if a key is configured).
+    if (lastWasConn && this.blockfrostKey) {
+      try {
+        const res = await this.blockfrostFetch('/tx/submit', { method: 'POST', headers: { 'Content-Type': 'application/cbor' }, body });
+        if (res.ok) return;
+        lastErr = `blockfrost tx/submit ${res.status}: ${(await res.text()).slice(0, 400)}`;
+      } catch (e) {
+        lastErr = `blockfrost: ${e instanceof Error ? e.message : String(e)}`;
+      }
+    }
+    const err = new Error(lastErr) as Error & { connectionError?: boolean };
+    err.connectionError = lastWasConn;
+    throw err;
+  }
+
   /** A Blockfrost fetch — prepends the base and adds the project_id header. Throws if no key. */
   private async blockfrostFetch(pathAndQuery: string, init?: RequestInit): Promise<Response> {
     if (!this.blockfrostKey) throw new Error('Blockfrost not configured');

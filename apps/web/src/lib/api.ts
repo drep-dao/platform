@@ -333,14 +333,38 @@ export interface TreasuryTx {
   proposalPublicId?: string;
   proposalTitle?: string;
   submitter?: string;
+  donorComment?: string; // the donor's message on an incoming donation (CIP-20)
   destAddress?: string;
   annotationTitle?: string; // board-provided title (overrides label)
   annotationNote?: string;
   annotatedBy?: string;
 }
 
+export interface DonationRow {
+  id: string;
+  address: string | null;
+  comment: string | null;
+  amountAda: number;
+  txHash: string | null;
+  at: string | null;
+}
+export interface DonationsView {
+  donations: DonationRow[];
+  count: number;
+  totalAda: number;
+}
+
 export const treasuryApi = {
   overview: () => request<TreasuryOverview>('/dao/treasury'),
+  /** §donate — public list of confirmed donations for the Donators panel. */
+  donations: () => request<DonationsView>('/dao/treasury/donations'),
+  /** §donate — build the unsigned donation tx (donor's UTxOs → treasury + optional CIP-20 comment). */
+  donatePrepare: (body: { amountAda: number; comment?: string; changeAddressHex: string; utxosHex: string[] }) =>
+    request<{ donationId: string; txHex: string; toAddress: string; amountAda: number }>(
+      '/dao/treasury/donate/prepare', { method: 'POST', body: JSON.stringify(body) }),
+  /** §donate — attach the donor's signature and submit the donation on-chain. */
+  donateSubmit: (body: { donationId: string; witnessHex: string }) =>
+    request<{ txHash: string }>('/dao/treasury/donate/submit', { method: 'POST', body: JSON.stringify(body) }),
   transactions: (params?: { direction?: 'IN' | 'OUT' | 'INTERNAL'; q?: string; page?: number }) => {
     const sp = new URLSearchParams();
     if (params?.direction) sp.set('direction', params.direction);

@@ -7,6 +7,7 @@ import { MultisigSetup } from './multisig-setup';
 import { HotWalletControls } from './hot-wallet-controls';
 import { TreasuryBucketsPanel } from './treasury-buckets-panel';
 import { TreasuryTransactions } from './treasury-transactions';
+import { Donators } from './donators';
 import { useTreasuryAutoRefresh } from '@/lib/treasury-refresh';
 import { useT } from '@/lib/prefs-context';
 import { useAuth } from '@/lib/auth-context';
@@ -24,7 +25,7 @@ const roundColor = 'bg-gradient-to-r from-violet-400 to-violet-600';
 export function TreasuryOverview() {
   const t = useT();
   const { profile } = useAuth();
-  const [subTab, setSubTab] = useState<'overview' | 'transactions' | 'setup'>('overview');
+  const [subTab, setSubTab] = useState<'overview' | 'transactions' | 'donators' | 'setup'>('overview');
   const [data, setData] = useState<Overview | null>(null);
   const [buckets, setBuckets] = useState<TreasuryBucket[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -57,7 +58,7 @@ export function TreasuryOverview() {
 
       {/* §15 — Overview | Transactions sub-menu. */}
       <div className="flex gap-1 border-b border-neutral-200 dark:border-neutral-800">
-        {(([['overview', t('Overview')], ['transactions', t('Transactions')], ...(profile ? [['setup', t('Treasury multisig setup')]] : [])] as const) as ['overview' | 'transactions' | 'setup', string][]).map(([key, label]) => (
+        {(([['overview', t('Overview')], ['transactions', t('Transactions')], ['donators', t('Donators')], ...(profile ? [['setup', t('Treasury multisig setup')]] : [])] as const) as ['overview' | 'transactions' | 'donators' | 'setup', string][]).map(([key, label]) => (
           <button
             key={key}
             onClick={() => setSubTab(key)}
@@ -74,6 +75,8 @@ export function TreasuryOverview() {
 
       {subTab === 'transactions' ? (
         <TreasuryTransactions />
+      ) : subTab === 'donators' ? (
+        <Donators />
       ) : subTab === 'setup' ? (
         // §15 — multisig setup: roster of board key submissions + assembled script address
         // (or "not yet built" banner). Moved to its own tab to keep the Overview focused.

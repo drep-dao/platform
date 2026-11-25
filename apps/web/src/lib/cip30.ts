@@ -15,8 +15,19 @@ export interface Cip30Api {
    *  TransactionWitnessSet CBOR (vkey witnesses only — combine with the
    *  native script server-side). */
   signTx(txCbor: string, partialSign?: boolean): Promise<string>;
+  /** Hex-encoded TransactionUnspentOutputs the wallet can spend (CIP-30). May be undefined/empty
+   *  when the account holds no ADA. Used to fund a donation tx built server-side. */
+  getUtxos?(amount?: string, paginate?: { page: number; limit: number }): Promise<string[] | undefined>;
+  /** Hex-encoded change address (CIP-30) — where a donation's change returns. */
+  getChangeAddress?(): Promise<string>;
   /** CIP-95 — present on Lace/Eternl etc. */
   cip95?: { getPubDRepKey(): Promise<string> };
+}
+
+/** Enable a wallet for transaction building/signing (donations) — no login, no stake signature.
+ *  Returns the CIP-30 api; throws if the user rejects the connection. */
+export async function connectWalletForTx(entry: Cip30WalletEntry): Promise<Cip30Api> {
+  return enableWallet(entry);
 }
 
 /** Best-effort DRep ID via CIP-95; null if the wallet doesn't support it. */

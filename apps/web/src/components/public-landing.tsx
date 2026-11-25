@@ -4,6 +4,7 @@ import { useEffect, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import { publicApi, eventsApi, type PublicOverview, type ActiveVote, type ScheduledEvent } from '@/lib/api';
 import { usePrefs } from '@/lib/prefs-context';
 import { brand } from '@/lib/brand';
+import { DonateDialog } from './donate-dialog';
 
 /** ₳ with thousands separators; em-dash when the value is unknown (chain hiccup). */
 function ada(n: number | null | undefined): string {
@@ -26,6 +27,7 @@ export function PublicLanding({ onConnect, onExplore, onOpenVote, onOpenGroupVot
   const [data, setData] = useState<PublicOverview | null>(null);
   const [events, setEvents] = useState<ScheduledEvent[]>([]);
   const [failed, setFailed] = useState(false);
+  const [donateOpen, setDonateOpen] = useState(false);
   const governance = brand.kind === 'governance';
 
   useEffect(() => {
@@ -71,12 +73,23 @@ export function PublicLanding({ onConnect, onExplore, onOpenVote, onOpenGroupVot
         <div className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full"
           style={{ background: 'radial-gradient(circle, rgba(255,255,255,.16), transparent 60%)' }} />
         <div className="relative">
-          {hero.badge ? (
-            <span className="mb-4 inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1.5 text-[13px] font-medium">
-              <span className="h-1.5 w-1.5 rounded-full" style={{ background: '#7dffc0' }} />
-              {hero.badge}
-            </span>
-          ) : null}
+          {/* Top row: status badge (left) and the prominent Donate button (top-right, governance). */}
+          <div className="mb-4 flex items-start justify-between gap-3">
+            {hero.badge ? (
+              <span className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1.5 text-[13px] font-medium">
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: '#7dffc0' }} />
+                {hero.badge}
+              </span>
+            ) : <span />}
+            {governance ? (
+              <button onClick={() => setDonateOpen(true)}
+                className="inline-flex shrink-0 items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-[#0b5f3b] shadow-lg shadow-emerald-950/20 ring-1 ring-black/5 transition hover:bg-emerald-50">
+                <HeartIcon />
+                <span className="hidden sm:inline">{t('Donate to DRep Council')}</span>
+                <span className="sm:hidden">{t('Donate')}</span>
+              </button>
+            ) : null}
+          </div>
           <h1 className="max-w-[18ch] text-4xl font-bold leading-[1.03] tracking-tight sm:text-5xl">{hero.title}</h1>
           <p className="mt-3 max-w-[52ch] text-[16.5px] text-emerald-100/90">{hero.blurb}</p>
           <div className="mt-6 flex flex-wrap gap-2.5">
@@ -285,7 +298,17 @@ export function PublicLanding({ onConnect, onExplore, onOpenVote, onOpenGroupVot
         {data?.admissionOpen ? <span>{t('Open admission — any registered DRep can join & vote')}</span> : null}
         {failed ? <span className="text-amber-600 dark:text-amber-500">{t('Some live figures are temporarily unavailable.')}</span> : null}
       </div>
+
+      <DonateDialog open={donateOpen} onClose={() => setDonateOpen(false)} />
     </div>
+  );
+}
+
+function HeartIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+      <path d="M12 21s-6.7-4.35-9.33-8.07C1.1 10.6 1.6 7.6 3.9 6.2c1.9-1.15 4.2-.6 5.5 1.03L12 9.5l2.6-2.27c1.3-1.63 3.6-2.18 5.5-1.03 2.3 1.4 2.8 4.4 1.23 6.73C18.7 16.65 12 21 12 21z" />
+    </svg>
   );
 }
 

@@ -1,11 +1,13 @@
-import { IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { BoardGuard } from '../auth/board.guard';
 import { CurrentUser, AuthContext } from '../auth/current-user.decorator';
+import { RateLimit } from '../common/rate-limit/rate-limit.decorator';
 import { TreasuryService } from './treasury.service';
 import { MultisigBroadcastService } from './multisig-broadcast.service';
+import { DonationService } from './donation.service';
 
 export class PrepareTopUpDto {
   @IsNumber() @Min(1) amountAda!: number;
@@ -51,6 +53,18 @@ export class AnnotateTxDto {
   @IsOptional() @IsString() @MaxLength(120) title?: string;
   @IsOptional() @IsString() @MaxLength(2000) description?: string;
 }
+/** Public donation — the donor's wallet UTxOs + change address, the amount, and an optional
+ *  comment that becomes CIP-20 (674) on-chain metadata. No auth: anyone may donate. */
+export class DonatePrepareDto {
+  @IsNumber() @Min(1) amountAda!: number;
+  @IsOptional() @IsString() @MaxLength(1000) comment?: string;
+  @IsString() @MaxLength(400) changeAddressHex!: string;
+  @IsArray() @ArrayMaxSize(300) @IsString({ each: true }) @MaxLength(5000, { each: true }) utxosHex!: string[];
+}
+export class DonateSubmitDto {
+  @IsUUID() donationId!: string;
+  @IsString() @MaxLength(100000) witnessHex!: string;
+}
 
 // §15 Treasury overview + board actions (prepare/approve multisig spends).
 @Controller()
@@ -58,6 +72,7 @@ export class TreasuryController {
   constructor(
     private readonly treasury: TreasuryService,
     private readonly broadcast: MultisigBroadcastService,
+    private readonly donation: DonationService,
   ) {}
 
   // §15 — treasury balances/buckets are on-chain, public: readable without login (read-only).
@@ -65,6 +80,28 @@ export class TreasuryController {
   @Get('dao/treasury')
   overview() {
     return this.treasury.overview();
+  }
+
+  /** §donate — public list of confirmed donations (address, comment, amount) for the Donators panel. */
+  @UseGuards(OptionalJwtAuthGuard)
+  @Get('dao/treasury/donations')
+  donations() {
+    return this.donation.listDonations();
+  }
+
+  /** Public donation, phase 1 — build the unsigned tx that sends ADA to the treasury (with the
+   *  optional comment as CIP-20 metadata). The donor's wallet signs the returned CBOR. No login. */
+  @RateLimit({ points: 10, durationSec: 60, by: 'ip' })
+  @Post('dao/treasury/donate/prepare')
+  donatePrepare(@Body() dto: DonatePrepareDto) {
+    return this.donation.prepare(dto);
+  }
+
+  /** Public donation, phase 2 — attach the donor's signature and submit the donation on-chain. */
+  @RateLimit({ points: 10, durationSec: 60, by: 'ip' })
+  @Post('dao/treasury/donate/submit')
+  donateSubmit(@Body() dto: DonateSubmitDto) {
+    return this.donation.submit(dto);
   }
 
   /** §15 — on-chain tx history for the treasury addresses, enriched with context.

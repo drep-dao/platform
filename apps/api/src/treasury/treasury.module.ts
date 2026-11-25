@@ -10,11 +10,12 @@ import { MultisigBroadcastService } from './multisig-broadcast.service';
 import { TreasuryBucketsService } from './treasury-buckets.service';
 import { PledgeReturnService } from './pledge-return.service';
 import { TreasuryBucketsController } from './treasury-buckets.controller';
+import { DonationService } from './donation.service';
 
 @Module({
   imports: [AuthModule, CardanoModule],
   controllers: [TreasuryController, BoardMultisigController, TreasuryBucketsController],
-  providers: [TreasuryService, BoardMultisigService, MultisigBroadcastService, TreasuryBucketsService, PledgeReturnService, BoardGuard],
+  providers: [TreasuryService, BoardMultisigService, MultisigBroadcastService, TreasuryBucketsService, PledgeReturnService, DonationService, BoardGuard],
   exports: [TreasuryService, BoardMultisigService, TreasuryBucketsService, PledgeReturnService],
 })
 export class TreasuryModule {}

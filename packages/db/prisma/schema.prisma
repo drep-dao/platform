@@ -1388,6 +1388,28 @@ model TreasuryTxAnnotation {
   @@map("treasury_tx_annotation")
 }
 
+// A public donation to the treasury: anyone connects a wallet and sends ADA to the multisig,
+// optionally attaching a comment that rides along as CIP-20 (label 674) on-chain metadata and is
+// shown against the incoming tx in the treasury history. Two phases: the platform builds the
+// unsigned tx (PREPARED, txCbor cached), the donor's wallet signs it, the platform submits it
+// (SUBMITTED, txHash recorded). No login required.
+model TreasuryDonation {
+  id             String    @id @default(uuid()) @db.Uuid
+  amountLovelace BigInt    @map("amount_lovelace")
+  comment        String? // donor's message; chunked into CIP-20 674 metadata and shown in the tx detail
+  toAddress      String    @map("to_address") // treasury address the donation is sent to (snapshot)
+  changeAddress  String    @map("change_address") // donor's change address (from their wallet)
+  fromAddress    String?   @map("from_address") // donor's first input address, resolved at submit
+  txCbor         String?   @map("tx_cbor") // the unsigned tx (body + 674 aux data) awaiting the donor's signature
+  txHash         String?   @unique @map("tx_hash") // the on-chain tx hash, set once submitted
+  status         String    @default("PREPARED") // PREPARED | SUBMITTED
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  submittedAt    DateTime? @map("submitted_at") @db.Timestamptz(6)
+
+  @@index([txHash])
+  @@map("treasury_donation")
+}
+
 model MultisigSignature {
   id          String   @id @default(uuid()) @db.Uuid
   actionId    String   @map("action_id") @db.Uuid
